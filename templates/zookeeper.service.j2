@@ -1,0 +1,16 @@
+[Unit]
+Description=Apache Zookeeper distributed key-value pair service
+After=network.target auditd.service
+ConditionPathExists=!/etc/ssh/sshd_not_to_be_run
+
+[Service]
+EnvironmentFile=-/etc/default/zookeeper
+#ExecStartPre=/usr/sbin/sshd -t
+ExecStart={{KAFKA_HOME}}/bin/zookeeper-server-start.sh {{KAFKA_HOME}}/configs/zookeeper.properties
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+
+[Install]
+WantedBy=multi-user.target
+Alias=zookeeper.service

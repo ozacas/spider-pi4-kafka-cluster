@@ -57,8 +57,49 @@
   hosts: kafka-hosts zookeeper-hosts
   tasks:
     - unarchive:
-        src: sw/kafka_2.13-2.4.0.tgz
+        src: https://archive.apache.org/dist/kafka/2.4.0/kafka_2.13-2.4.0.tgz
         dest: /home/acas
+        remote_src: yes
+        creates: /home/acas/kafka
       register: unpacked
     - command: mv /home/acas/kafka_2.13-2.4.0 /home/acas/kafka
       when: unpacked.changed
+
+- name: ensure zookeeper properties are installed
+  hosts: zookeeper-hosts
+  become: yes
+  tasks:
+    - file:
+        path: /data/zookeeper
+        owner: root
+        group: root
+        mode: '0750'
+        state: directory
+    - template: 
+        src: templates/zookeeper.properties.j2
+        dest: /home/acas/kafka/config/zookeeper.properties
+        owner: acas
+        group: acas
+        mode: '0644'
+      register: zookeeper_properties
+ 
+- name: setup zookeeper systemd service
+  hosts: zookeeper-hosts
+  become: yes
+  vars:
+    KAFKA_HOME: "/home/acas/kafka"
+  tasks:
+    - template:
+        src: templates/zookeeper.service.j2
+        dest: /etc/systemd/system/zookeeper.service
+        owner: root
+        group: root
+        mode: '0644'
+      register: zookeeper_service
+    - systemd:
+         daemon_reload: yes
+      when: zookeeper_service.changed or zookeeper_properties.changed
+    - systemd:
+         enabled: yes
+         state: restarted
+         name: zookeeper
