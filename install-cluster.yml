@@ -1,0 +1,64 @@
+
+- name: update all packages
+  become: yes
+  hosts: kafka-hosts zookeeper-hosts
+  tasks:
+    - pacman:
+        update_cache: yes
+    - pacman:
+        upgrade: yes
+
+- name: install required packages for kafka/zookeeper hosts
+  hosts: kafka-hosts zookeeper-hosts
+  become: yes
+  tasks:
+    - pacman:
+        name:
+          - jdk-openjdk
+          - gnu-netcat
+          - wget
+          - ca-certificates  
+          - zip 
+          - net-tools
+          - vim 
+          - nano 
+          - tar
+        state: present
+
+- name: disable swap on kafka/zookeeper hosts
+  hosts: kafka-hosts zookeeper-hosts
+  become: yes
+  tasks:
+    - sysctl:
+        name: vm.swappiness
+        value: '1'
+        state: present
+
+- name: ensure all kafka/zookeeper cluster nodes have same host entries
+  hosts: all
+  become: yes
+  tasks: 
+     - blockinfile:
+         path: /etc/hosts
+         block: |
+           192.168.1.80 pi1
+           192.168.1.81 pi2
+           192.168.1.82 pi3
+           192.168.1.83 pi4
+           192.168.1.84 pi5
+           192.168.1.82 kafka1
+           192.168.1.82 zookeeper1
+           192.168.1.83 kafka2
+           192.168.1.83 zookeeper2
+           192.168.1.84 kafka3
+           192.168.1.84 zookeeper3
+
+- name: ensure kafka/zookeeper stable software is installed under /home/acas/kafka
+  hosts: kafka-hosts zookeeper-hosts
+  tasks:
+    - unarchive:
+        src: sw/kafka_2.13-2.4.0.tgz
+        dest: /home/acas
+      register: unpacked
+    - command: mv /home/acas/kafka_2.13-2.4.0 /home/acas/kafka
+      when: unpacked.changed
