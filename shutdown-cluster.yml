@@ -1,0 +1,7 @@
+
+- name: poweroff cluster
+  become: 'yes'
+  become_method: 'sudo'
+  hosts: kafka-hosts vagrant-hosts zookeeper-hosts
+  tasks:
+    - command: /sbin/poweroff
