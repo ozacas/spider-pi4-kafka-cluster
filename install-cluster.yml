@@ -75,6 +75,16 @@
         group: root
         mode: '0750'
         state: directory
+    - stat: path=/data/zookeeper/myid
+        register: st
+    - template:
+        src: templates/zookeeper.node.id.j2
+        dest: /data/zookeeper/myid
+	owner: root
+        group: root
+        mode: '0644'
+        state: present
+      when: not st.stat.exists
     - template: 
         src: templates/zookeeper.properties.j2
         dest: /home/acas/kafka/config/zookeeper.properties
@@ -103,3 +113,4 @@
          enabled: yes
          state: restarted
          name: zookeeper
+
