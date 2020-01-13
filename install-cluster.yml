@@ -7,6 +7,18 @@
         update_cache: yes
     - pacman:
         upgrade: yes
+      register: reboot_required
+
+- name: ensure lots of open files on all kafka/zookeeper hosts
+  become: yes
+  hosts: kafka-hosts zookeeper-hosts
+  tasks:
+    - blockinfile:
+        path: /etc/security/limits.conf
+        block: |
+          * hard nofile 100000
+          * soft nofile 100000
+      register: reboot_required
 
 - name: install required packages for kafka/zookeeper hosts
   hosts: kafka-hosts zookeeper-hosts
@@ -53,6 +65,14 @@
            192.168.1.84 kafka3
            192.168.1.84 zookeeper3
 
+# if a reboot is required, do that now and wait for it to come back for the rest of the play
+- name: reboot kafka/zookeeper nodes iff required
+  hosts: kafka-hosts zookeeper-hosts
+  become: yes
+  tasks:
+    - reboot:
+      when: reboot_required.changed
+  
 - name: ensure kafka/zookeeper stable software is installed under /home/acas/kafka
   hosts: kafka-hosts zookeeper-hosts
   tasks:
@@ -68,6 +88,8 @@
 - name: ensure zookeeper properties are installed
   hosts: zookeeper-hosts
   become: yes
+  vars:
+    - id_list: { '192.168.1.82': '1', '192.168.1.83': '2', '192.168.1.84': '3' }
   tasks:
     - file:
         path: /data/zookeeper
@@ -76,14 +98,13 @@
         mode: '0750'
         state: directory
     - stat: path=/data/zookeeper/myid
-        register: st
+      register: st
     - template:
         src: templates/zookeeper.node.id.j2
         dest: /data/zookeeper/myid
-	owner: root
+        owner: root
         group: root
         mode: '0644'
-        state: present
       when: not st.stat.exists
     - template: 
         src: templates/zookeeper.properties.j2
@@ -92,7 +113,7 @@
         group: acas
         mode: '0644'
       register: zookeeper_properties
- 
+
 - name: setup zookeeper systemd service
   hosts: zookeeper-hosts
   become: yes
@@ -113,4 +134,46 @@
          enabled: yes
          state: restarted
          name: zookeeper
+      ignore_errors: yes # ignore service already enabled errors
 
+- name: ensure kafka properties are installed
+  hosts: kafka-hosts
+  become: yes
+  vars:
+    KAFKA_HOME: "/home/acas/kafka"
+  tasks:
+    - file:
+        path: /data/kafka
+        owner: root
+        group: root
+        mode: '0750'
+        state: directory 
+    - template:
+        src: templates/kafka.properties.j2
+        dest: "{{ KAFKA_HOME }}/config/server.properties"
+        owner: root
+        group: root
+        mode: '0644'
+      register: kafka_properties
+
+- name: setup kafka systemd service
+  hosts: kafka-hosts
+  become: yes
+  vars: 
+    KAFKA_HOME: "/home/acas/kafka"
+  tasks:
+    - template:
+        src: templates/kafka.service.j2
+        dest: /etc/systemd/system/kafka.service
+        owner: root
+        group: root
+        mode: '0644'
+      register: kafka_service
+    - systemd:
+        daemon_reload: yes
+      when: kafka_service.changed or kafka_properties.changed
+    - systemd:
+         enabled: yes
+         state: restarted
+         name: kafka
+      ignore_errors: yes # ignore service already enabled error

@@ -1,7 +1,14 @@
 
+- name: stop kafka first, then zookeeper
+  become: yes
+  hosts: kafka-hosts
+  tasks:
+    - systemd: name=kafka state=stopped
+    - systemd: name=zookeeper state=stopped 
+#    - wait_for: port=2081 state=drained
+ 
 - name: poweroff cluster
-  become: 'yes'
-  become_method: 'sudo'
+  become: yes
   hosts: kafka-hosts vagrant-hosts zookeeper-hosts
   tasks:
     - command: /sbin/poweroff

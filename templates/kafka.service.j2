@@ -1,0 +1,16 @@
+[Unit]
+Description=Apache Kafka distributed message queue service
+After=network.target zookeeper.service
+ConditionPathExists=
+
+[Service]
+EnvironmentFile=-/etc/default/kafka
+#ExecStartPre=/usr/sbin/sshd -t
+ExecStart={{KAFKA_HOME}}/bin/kafka-server-start.sh {{KAFKA_HOME}}/config/server.properties
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+
+[Install]
+WantedBy=multi-user.target
+Alias=kafka.service

@@ -18,6 +18,6 @@ initLimit=10
 syncLimit=5
 # zoo servers
 # these hostnames such as `zookeeper-1` come from the /etc/hosts file
-server.1=zookeeper1:2888:3888
-server.2=zookeeper2:2888:3888
-server.3=zookeeper3:2888:3888
+server.{{ id_list['192.168.1.82'] }}=zookeeper1:2888:3888
+server.{{ id_list['192.168.1.83'] }}=zookeeper2:2888:3888
+server.{{ id_list['192.168.1.84'] }}=zookeeper3:2888:3888
