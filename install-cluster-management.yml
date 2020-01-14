@@ -1,0 +1,49 @@
+
+- name: install zookeeper management (port 9000) on kafka1
+  hosts: kafka-manager
+  become: yes
+  tasks:
+    -  pause: seconds=5
+
+- name: unpack software archive on kafka1
+  hosts: kafka-manager
+  become: yes
+  tasks:
+    - unarchive:
+        src: software/kafka-manager-2.0.0.2.zip
+        dest: /home/acas
+        owner: root
+        group: root
+        mode: '0640'
+    - file:
+        path: /home/acas/kafka-manager-2.0.0.2/bin/kafka-manager
+        mode: '0755'
+        state: file
+        owner: root
+        group: root 
+
+- name: ensure kafka manager is started at boot
+  hosts: kafka-manager
+  become: yes
+  tasks:
+    - template:
+        src: templates/kafka-manager.service.j2
+        dest: /etc/systemd/system/kafka-manager.service
+        mode: '0644'
+        owner: root
+        group: root
+      register: manager_service
+    - template:
+        src: templates/kafka-manager.conf.j2
+        dest: /home/acas/kafka-manager-2.0.0.2/conf/application.conf
+        owner: root
+        group: root
+        mode: '0644'
+    - systemd:
+        daemon_reload: yes
+      when: manager_service.changed
+    - systemd:
+        name: kafka-manager
+        state: restarted
+        enabled: yes
+      ignore_errors: yes # dont error out if service already enabled

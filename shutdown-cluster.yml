@@ -1,5 +1,11 @@
 
-- name: stop kafka first, then zookeeper
+- name: stop kafka manager
+  become: yes
+  hosts: kafka-manager
+  tasks:
+    - systemd: name=kafka-manager state=stopped
+
+- name: stop kafka, then zookeeper
   become: yes
   hosts: kafka-hosts
   tasks:
