@@ -1,0 +1,14 @@
+[Unit]
+Description=MongoDB document server which all thug instances dump results into
+After=network.target 
+ConditionPathExists=
+
+[Service]
+ExecStart={{MONGO_HOME}}/bin/mongod --config /etc/mongodb.conf
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+
+[Install]
+WantedBy=multi-user.target
+Alias=mongodb.service

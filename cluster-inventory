@@ -15,5 +15,8 @@
 192.168.1.83
 192.168.1.84
 
+[mongodb-host]
+192.168.1.80
+
 [control-workstation]
 192.68.1.151 ansible_connection=local

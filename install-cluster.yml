@@ -177,3 +177,57 @@
          state: restarted
          name: kafka
       ignore_errors: yes # ignore service already enabled error
+
+- name: setup mongo on database host for thug to store into
+  hosts: mongodb-host
+  become: yes
+  vars:
+    MONGO_HOME: "/data/mongodb"
+    MONGO_SW: "{{ MONGO_HOME }}/mongodb-linux-aarch64-ubuntu1804-4.2.2"
+  tasks:
+    - file:
+         path: "{{ item }}"
+         owner: root
+         group: root
+         mode: '0750'
+         state: directory
+      with_items:
+         - "{{ MONGO_HOME }}"
+         - "{{ MONGO_HOME }}/data"
+         - "{{ MONGO_HOME }}/logs"
+# install the ubuntu arm64 community edition, since the manjaro repos have a broken mongod
+    - stat: path="{{ MONGO_SW }}"
+      register: mongo_software
+    - unarchive:
+        src: software/mongodb-linux-aarch64-ubuntu1804-4.2.2.tgz
+        dest: "{{ MONGO_HOME }}"
+        owner: root
+        group: root
+      register: installation   
+      when: not mongo_software.stat.exists
+    - file:
+        path: "{{ MONGO_HOME }}/bin"
+        src: "{{ MONGO_HOME }}/mongodb-linux-aarch64-ubuntu1804-4.2.2/bin"
+        state: link
+    - template:
+        src: templates/mongodb.service.j2
+        dest: /etc/systemd/system/mongodb.service
+        owner: root
+        group: root
+      register: mongo_service
+    - template:
+        src: templates/mongodb.conf.j2
+        dest: /etc/mongodb.conf
+        owner: root
+        group: root
+        mode: '0640'
+      register: mongo_defaults
+    - systemd:
+        daemon_reload: yes
+      when: mongo_service.changed or mongo_defaults.changed or installation.changed
+    - systemd:
+        enabled: yes
+        state: restarted
+        name: mongodb
+      ignore_errors: yes # ignore service already enabled error 
+      when: mongo_service.changed or mongo_defaults.changed or installation.changed
