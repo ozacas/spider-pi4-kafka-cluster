@@ -225,9 +225,9 @@
     - systemd:
         daemon_reload: yes
       when: mongo_service.changed or mongo_defaults.changed or installation.changed
+    # always restart the service, maybe this is unsafe...
     - systemd:
         enabled: yes
         state: restarted
         name: mongodb
       ignore_errors: yes # ignore service already enabled error 
-      when: mongo_service.changed or mongo_defaults.changed or installation.changed
