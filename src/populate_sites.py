@@ -1,5 +1,6 @@
 from kafka import KafkaConsumer, KafkaProducer
 import requests
+import json
 from urllib.parse import urlparse
 
 # consume from url_queue topic
@@ -32,3 +33,6 @@ for message in consumer:
            producer.send('4thug', { 'url': u2 })
     else:
            producer.send('failed_url_queue', { 'url': u, 'http_status': s })
+
+producer.flush()
+print(json.pprint(producer.metrics())
