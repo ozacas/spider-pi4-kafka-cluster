@@ -16,4 +16,4 @@ with open('/home/acas/data/filtered_au_websites.csv', 'r') as csv:
 producer.flush()
 
 # obtain metrics on delivery
-print(producer.metrics())
+print(json.dumps(producer.metrics(), sort_keys=True, indent=4)
