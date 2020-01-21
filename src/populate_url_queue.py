@@ -9,7 +9,7 @@ producer = KafkaProducer(bootstrap_servers='kafka1',
 
 with open('/home/acas/data/filtered_au_websites.csv', 'r') as csv:
      for line in csv:
-        url = "https://" + line
+        url = "https://" + line.rstrip()
         future = producer.send('url_queue', {'url': url}) # NB: async!
 
 # ensure all pending sends are done
