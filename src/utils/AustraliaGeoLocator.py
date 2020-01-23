@@ -6,7 +6,7 @@ import geoip2.database
 
 class AustraliaGeoLocator(object):
    
-   def __init__(self, db_location="/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb"): 
+   def __init__(self, db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb"): 
       self.reader = geoip2.database.Reader(db_location) 
 
    def is_ip(self, ip):
