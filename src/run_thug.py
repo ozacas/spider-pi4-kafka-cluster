@@ -1,13 +1,14 @@
 #!/usr/bin/python3
 from kafka import KafkaConsumer, KafkaProducer
-from subprocess import Popen, wait, PIPE
+from subprocess import Popen
 from utils import ThugLogParser
 from urllib.parse import urlparse
 import os
 import random
 
-consumer = KafkaConsumer('4thug', value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'))
+consumer = KafkaConsumer('4thug', bootstrap_servers='kafka1',
+                         value_deserializer=lambda m: json.loads(m.decode('utf-8')))
+producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers='kafka1')
 host = os.uname()[1]
 
 ua = [ "winxpie60", "winxpie61", "winxpie70", "winxpie80", "winxpchrome20",
