@@ -21,36 +21,29 @@ ua = [ "winxpie60", "winxpie61", "winxpie70", "winxpie80", "winxpchrome20",
         "ipadchrome38", "ipadchrome39", "ipadchrome45", "ipadchrome46",
         "ipadchrome47", "ipadsafari7", "ipadsafari8", "ipadsafari9" ]
 
-def determine_coverage(url):
-    # url has no path ie. homepage - do extensive scan to get started
-    u = urlparse(url)
-    if u.path is None or len(u.path) == 0 or u.path == '/':
-       return (500, "--extensive")
-     
-    # default is to fetch a maximum of 100 objects on the requested page and not follow anchors
-    return (100, "")
-
+max_objects = 100 # does not include other links
 for message in consumer:
         url = message.get('url') 
-        max_objects, extensive = determine_coverage(url)
         # thug will produce 1) mongodb output 2) log file
 
         # We process the log here... and push worthy stuff into the relevant queues
         with tempfile.NamedTemporaryFile() as fp:
-           user_agent = random.choice(ua)
+           user_agent = random.choice(ua)     # use a random UA for each url fetched to try to maximise return of suspicious objects over time
            with Popen(["/usr/bin/thug",
                        "--json-logging",      # elasticsearch logging????
                        "--delay=5000",        # be polite
                        "--useragent={}".format(user_agent), # choose random user agent from supported list to maximise coverage
                        "--features-logging",  # ensure JS snippets are recorded in mongo
                        "--no-javaplugin",     # disable functionality we dont need
-                       "-t", "{}".format(max_objects),           # max 100 requests per url from kafka
-                       "{}".format(extensive),      # extensive search ie. follow anchors?
+                       "-t{}".format(max_objects),           # max 100 requests per url from kafka
+                       "--verbose",           # log level == INFO so we can get sub-resources to fetch
                        url
                 ], stderr=fp) as proc:
                status = proc.wait() 
-               producer.send('thug_completion', { 'pid': os.getpid(), 'hostname': host, 'when': now, 'status_code': status, "url_scanned": url, "user_agent_used":  user_agent })
-               if status in [0,1]: # thug succeed?
-                   ThugLogParser(producer).parse(tmp_filename) # will send messages based on log
+               if status != 0: # thug succeed?
+                   # will send messages based on log
+                   ThugLogParser(producer, context={ 'pid': os.getpid(), 'hostname': host, 
+                                                     'when': now, 'status_code': status, 
+                                                     'url_scanned': url, 'user_agent_used': user_agent}).parse(fp.name) 
                else:
                    producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 'when': now, "user_agent_used": user_agent } )
