@@ -8,6 +8,7 @@ import os
 import tempfile
 import json
 import random
+import pymongo
 
 consumer = KafkaConsumer('4thug', bootstrap_servers='kafka1', auto_offset_reset='earliest',
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')))
@@ -50,7 +51,8 @@ for message in consumer:
                        ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
                                                      'when': now, 'thug_exit_status': status, 'ended': str(datetime.utcnow()),
                                                      'url_scanned': url, 'user_agent_used': user_agent},
-                                 geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb").parse(fp.name) 
+                                 geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb",
+                                 mongo=pymongo.MongoClient('192.168.1.80').parse(fp.name) 
                    else:
                        producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )

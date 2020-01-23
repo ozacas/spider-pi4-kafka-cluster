@@ -2,6 +2,7 @@
 import re
 from urllib.parse import urlparse, urljoin
 from .AustraliaGeoLocator import AustraliaGeoLocator
+from datetime import datetime
 
 #[2020-01-22 13:39:45] [MongoDB] Analysis ID: 5e27b5f1c2da48806667697e
 analysis_regex = re.compile("^\[(.*?)\]\s+\[MongoDB\]\s+Analysis\s+ID:\s+([a-z0-9]+)$")
@@ -13,10 +14,11 @@ url_regex = re.compile("^\[(.*?)\]\s+\[HTTP\]\s+URL\:\s+(\S+)\s*\(Content\-type\
 anchor_regex = re.compile('^\[(.*?)\]\s+<a\s+href="([^"]+?)"\s*>.*$')
 
 class ThugLogParser(object):
-   def __init__(self, producer, context={}, geo2_db_location=None):
+   def __init__(self, producer, context={}, geo2_db_location=None, mongo=None):
       self.producer = producer
       self.au_locator = AustraliaGeoLocator(db_location=geo2_db_location)
       self.context = context
+      self.mongo = mongo
       pass
    
    def is_au(self, src_url):
@@ -25,7 +27,16 @@ class ThugLogParser(object):
       up = urlparse(src_url)
       ret = self.au_locator.is_au(up.hostname)
       return ret
-  
+ 
+   def is_already_seen(self, url):
+      if self.mongo is None:
+          return False
+      db = self.mongo.thug
+      urls = db.urls
+      if urls:
+          return urls.count_documents({ 'url': url }) > 0
+      return False
+ 
    def parse(self, filename):
       self.scripts = list()
       self.urls = list()
@@ -58,11 +69,15 @@ class ThugLogParser(object):
                  analysis_id = m.group(2)
                  when = m.group(1)
 
+
       # do not stop processing the thug queue on error...
       try:
           au_anchors = list([ u for u in self.anchors if self.is_au(u) ])
           for au in au_anchors:
-              self.producer.send('4thug', { 'url': au })
+              if not self.is_already_seen(au):
+                  self.producer.send('4thug', { 'url': au })
+              else:
+                  self.producer.send('thug-already-seen', { 'url': au, 'now': str(datetime.utcnow()) })
           self.context.update({ 'analysis_id': analysis_id, 'more_pages_to_visit': len(au_anchors), 'started_at': when })
           self.producer.send('thug-completed-analyses', self.context)
       except Exception as e:
