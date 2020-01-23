@@ -48,7 +48,7 @@ for message in consumer:
                    if status == 0 or status == 1: # thug succeed?
                        # will send messages based on log
                        ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
-                                                     'when': now, 'thug_exit_status': status, 
+                                                     'when': now, 'thug_exit_status': status, 'ended': str(datetime.utcnow()),
                                                      'url_scanned': url, 'user_agent_used': user_agent},
                                  geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb").parse(fp.name) 
                    else:
