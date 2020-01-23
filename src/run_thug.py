@@ -4,6 +4,7 @@ from subprocess import Popen
 from utils import ThugLogParser
 from urllib.parse import urlparse
 import os
+import tempfile
 import json
 import random
 
@@ -25,7 +26,7 @@ ua = [ "winxpie60", "winxpie61", "winxpie70", "winxpie80", "winxpchrome20",
 
 max_objects = 100 # does not include other links
 for message in consumer:
-        url = message.get('url') 
+        url = message.value.get('url') 
         # thug will produce 1) mongodb output 2) log file
 
         # We process the log here... and push worthy stuff into the relevant queues
