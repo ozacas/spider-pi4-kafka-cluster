@@ -1,6 +1,6 @@
 
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from .AustraliaGeoLocator import AustraliaGeoLocator
 
 #[2020-01-22 13:39:45] [MongoDB] Analysis ID: 5e27b5f1c2da48806667697e
@@ -49,7 +49,10 @@ class ThugLogParser(object):
                                                         'url': m.group(2), 'content-type': m.group(3) }
              m = anchor_regex.match(line)
              if m:
-                 self.anchors.add(m.group(2))
+                 href = m.group(2)
+                 if '://' not in href or not href.startswith('//'):
+                     href = urljoin(self.context.get('url_scanned'), href)
+                 self.anchors.add(href)
              m = analysis_regex.match(line)
              if m:
                  analysis_id = m.group(2)
