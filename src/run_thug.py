@@ -48,7 +48,8 @@ for message in consumer:
                    # will send messages based on log
                    ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
                                                      'when': now, 'thug_exit_status': status, 
-                                                     'url_scanned': url, 'user_agent_used': user_agent}).parse(fp.name) 
+                                                     'url_scanned': url, 'user_agent_used': user_agent},
+                                 geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb").parse(fp.name) 
                else:
                    producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )

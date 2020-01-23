@@ -26,13 +26,16 @@ class AustraliaGeoLocator(object):
           return None
 
    def is_au(self, ip_or_host):
-      is_host = not self.is_ip(ip_or_host)
-      if is_host:
-         ip = self.as_ip(ip_or_host)
-         if ip is None:
-            return False # else fallthru...
-      else:
-         ip = ip_or_host
+      try:
+          is_host = not self.is_ip(ip_or_host)
+          if is_host:
+             ip = self.as_ip(ip_or_host)
+             if ip is None:
+                return False # else fallthru...
+          else:
+               ip = ip_or_host
 
-      response = self.reader.city(ip) 
-      return response is not None and response.country.iso_code == 'AU'
+          response = self.reader.city(ip) 
+          return response is not None and response.country.iso_code == 'AU'
+      except:
+          return False # if something goes wrong we say no to AU...
