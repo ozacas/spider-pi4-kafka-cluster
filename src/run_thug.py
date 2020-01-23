@@ -43,13 +43,17 @@ for message in consumer:
                        "--verbose",           # log level == INFO so we can get sub-resources to fetch
                        url
                 ], stderr=fp) as proc:
-               status = proc.wait() 
-               if status == 0: # thug succeed?
-                   # will send messages based on log
-                   ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
+               try:
+                   status = proc.wait(timeout=3600) # max 1 hour for thug
+                   if status == 0 or status == 1: # thug succeed?
+                       # will send messages based on log
+                       ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
                                                      'when': now, 'thug_exit_status': status, 
                                                      'url_scanned': url, 'user_agent_used': user_agent},
                                  geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb").parse(fp.name) 
-               else:
-                   producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
+                   else:
+                       producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )
+               except Exception as e:
+                       producer.send('thug_failure', { 'url_scanned': url, 'exit_status': -1, # -1 == exception eg. timeout
+                                                   'when': now, 'user_agent_used': user_agent, 'msg': str(e) })
