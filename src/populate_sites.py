@@ -6,9 +6,9 @@ import uuid
 from urllib.parse import urlparse
 from datetime import datetime
 
-# consume from url_queue topic
+# consume from url_queue topic. Note the consumer_timeout must be higher than the request timeout or termination will occur
 consumer = KafkaConsumer('url_queue', value_deserializer=lambda m: json.loads(m.decode('utf-8')), 
-                          consumer_timeout_ms=10*1000, bootstrap_servers='kafka1',
+                          consumer_timeout_ms=1000*1000, bootstrap_servers='kafka1',
                           group_id="site_populator", client_id="site_populator_{}_{}".format(os.uname()[1], os.getpid()),
 			  auto_offset_reset='earliest') # want to consume messages posted before this program started
 producer = KafkaProducer(bootstrap_servers='kafka1', value_serializer=lambda m: json.dumps(m).encode('utf-8'))
@@ -20,7 +20,7 @@ for message in consumer:
    when = datetime.now()
    s = 0
    try:
-       req = requests.get(u, timeout=30)
+       req = requests.get(u, timeout=30, allow_redirects=True)
        s = req.status_code
    except Exception as e:
        producer.send('request_failed_queue', { 'url': u, 'msg': str(e) })
