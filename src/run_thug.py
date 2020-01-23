@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 from kafka import KafkaConsumer, KafkaProducer
 from subprocess import Popen
-from utils import ThugLogParser
+from utils.ThugLogParser import ThugLogParser
 from urllib.parse import urlparse
+from datetime import datetime
 import os
 import tempfile
 import json
@@ -28,7 +29,7 @@ max_objects = 100 # does not include other links
 for message in consumer:
         url = message.value.get('url') 
         # thug will produce 1) mongodb output 2) log file
-
+        now = str(datetime.utcnow())
         # We process the log here... and push worthy stuff into the relevant queues
         with tempfile.NamedTemporaryFile() as fp:
            user_agent = random.choice(ua)     # use a random UA for each url fetched to try to maximise return of suspicious objects over time
@@ -43,10 +44,11 @@ for message in consumer:
                        url
                 ], stderr=fp) as proc:
                status = proc.wait() 
-               if status != 0: # thug succeed?
+               if status == 0: # thug succeed?
                    # will send messages based on log
-                   ThugLogParser(producer, context={ 'pid': os.getpid(), 'hostname': host, 
-                                                     'when': now, 'status_code': status, 
+                   ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
+                                                     'when': now, 'thug_exit_status': status, 
                                                      'url_scanned': url, 'user_agent_used': user_agent}).parse(fp.name) 
                else:
-                   producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 'when': now, "user_agent_used": user_agent } )
+                   producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
+                                                   'when': now, 'user_agent_used': user_agent } )
