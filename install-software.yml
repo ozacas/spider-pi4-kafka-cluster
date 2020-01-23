@@ -21,6 +21,24 @@
   become: yes
   tasks:
      - pacman: name=python-pip state=present
+     - pacman:
+         state: present
+         name:
+           libffi
+           ssdeep
+           pkgconfig
+           gcc
+           graphviz
+
+- name: ensure libemu is installed for pygraphviz
+  hosts: thug-hosts
+  become: yes
+  tasks:
+     - unarchive:
+         src: software/libemu_files.tar.gz
+         dest: /
+         owner: root
+         group: root
  
 - name: ensure python3 pre-reqs are installed
   hosts: thug-hosts
@@ -29,6 +47,33 @@
      - pip:
          executable: pip3
          requirements: /home/acas/src/requirements.txt
+
+- name: ensure thug pip3 pre-reqs are installed
+  hosts: thug-hosts
+  become: yes
+  tasks:
+     - pip:
+         executable: pip3
+         name:
+           - PySocks==1.7.1
+           - beautifulsoup4==4.8.2
+           - cchardet==2.1.5
+           - cssutils==1.0.2
+           - elasticsearch==7.1.0
+           - html5lib==1.0.1
+           - lxml==4.4.2
+           - networkx==2.4
+           - pefile==2019.4.18
+           - pygraphviz==1.5
+           - pylibemu==0.6.1
+           - pymongo==3.10.1
+           - python-magic==0.4.15
+           - rarfile==3.1
+           - requests==2.22.0
+           - six==1.13.0
+           - yara-python==3.11.0
+           - zope.interface==4.7.1
+           - cffi
 
 - name: install data files (geolite2 city db, AU seed URLs)
   hosts: thug-hosts
@@ -40,3 +85,48 @@
         src: software/filted_au_websites.csv
         dest: /home/acas/data/filtered_au_websites.csv
         mode: '0644'
+
+- name: thug file install
+  hosts: thug-hosts
+  become: yes
+  tasks:
+    - unarchive:
+        src: software/thug-files.tar.gz
+        dest: /   # will unpack into /usr/lib/python3.8/site-packages
+        owner: root
+        group: root
+    - unarchive:
+        src: software/ssdeep_files.tar.gz
+        dest: /
+        owner: root
+        group: root
+
+- name: ensure ld.so finds libemu
+  hosts: thug-hosts
+  become: yes
+  tasks:
+    - template:
+        src: templates/local.ld.so.conf.j2
+        dest: /etc/ld.so.conf.d/local.conf
+        owner: root
+        group: root
+        mode: '0640'
+      register: template_installed
+    - command: /sbin/ldconfig
+      when: template_installed.changed 
+ 
+- name: ensure /etc/thug files are installed
+  hosts: thug-hosts
+  become: yes
+  tasks:
+    - file:
+        path: /etc/thug
+        owner: root
+        group: root
+        mode: '0755'
+        state: directory
+    - unarchive:
+        src: software/etc_thug_files.tar.gz
+        dest: /etc/thug/
+        owner: root
+        group: root
