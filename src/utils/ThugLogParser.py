@@ -13,9 +13,9 @@ url_regex = re.compile("^\[(.*?)\]\s+\[HTTP\]\s+URL\:\s+(\S+)\s*\(Content\-type\
 anchor_regex = re.compile('^\[(.*?)\]\s+<a\s+href="([^"]+?)"\s*>.*$')
 
 class ThugLogParser(object):
-   def __init__(self, producer, context={}):
+   def __init__(self, producer, context={}, geo2_db_location=None):
       self.producer = producer
-      self.au_locator = AustraliaGeoLocator()
+      self.au_locator = AustraliaGeoLocator(db_location=geo2_db_location)
       self.context = context
       pass
    
@@ -55,8 +55,12 @@ class ThugLogParser(object):
                  analysis_id = m.group(2)
                  when = m.group(1)
 
-      au_anchors = list([ u for u in self.anchors if self.is_au(u) ])
-      for au in au_anchors:
-          self.producer.send('4thug', { 'url': au })
-      self.context.update({ 'analysis_id': analysis_id, 'more_pages_to_visit': len(au_anchors), 'started_at': when })
-      self.producer.send('thug-completed-analyses', self.context)
+      # do not stop processing the thug queue on error...
+      try:
+          au_anchors = list([ u for u in self.anchors if self.is_au(u) ])
+          for au in au_anchors:
+              self.producer.send('4thug', { 'url': au })
+          self.context.update({ 'analysis_id': analysis_id, 'more_pages_to_visit': len(au_anchors), 'started_at': when })
+          self.producer.send('thug-completed-analyses', self.context)
+      except Exception as e:
+          print(e)
