@@ -231,3 +231,17 @@
         state: restarted
         name: mongodb
       ignore_errors: yes # ignore service already enabled error 
+
+- name: ensure thug user exists on thug hosts
+  hosts: thug-hosts
+  become: yes
+  tasks:
+    - command: /usr/bin/useradd --shell /sbin/nologin --comment "Runs run_thug.py only" --user-group thug
+      ignore_errors: yes 
+
+- name: ensure kafka group exists on kafka hosts
+  hosts: kafka-hosts
+  become: yes
+  tasks: 
+    - command: /usr/bin/useradd --user-group --shell /sbin/nologin --comment "Runs kafka/zookeeper only" kafka
+      ignore_errors: yes
