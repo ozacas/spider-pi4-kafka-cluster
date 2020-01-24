@@ -43,6 +43,7 @@ for message in consumer:
                        "--no-shockwave", 
                        "--no-adobepdf",
                        "--no-silverlight",
+                       "--no-honeyagent",
                        "-t{}".format(max_objects),           # max 100 requests per url from kafka
                        "--verbose",           # log level == INFO so we can get sub-resources to fetch
                        url
