@@ -72,17 +72,35 @@
   tasks:
     - reboot:
       when: reboot_required.changed
-  
-- name: ensure kafka/zookeeper stable software is installed under /home/acas/kafka
+
+- name: ensure kafka home directory exists with correct permissions
+  hosts: kafka-hosts
+  become: yes
+  tasks:
+    - file: path=/home/kafka owner=kafka group=kafka mode='0750' state=directory
+    - file: path=/data owner=root group=kafka mode='0750' state=directory
+    - file: path=/data/kafka owner=kafka group=kafka mode='0750' state=directory
+    - file: path=/data/kafka owner=kafka group=kafka recurse=yes # ensure correct ownership of existing data to correspond with service definition
+          
+- name: ensure kafka/zookeeper stable software is installed under /home/kafka
   hosts: kafka-hosts zookeeper-hosts
+  become: yes
   tasks:
     - unarchive:
         src: https://archive.apache.org/dist/kafka/2.4.0/kafka_2.13-2.4.0.tgz
-        dest: /home/acas
+        dest: /home/kafka
         remote_src: yes
-        creates: /home/acas/kafka
+        owner: kafka
+        group: kafka
+        creates: /home/kafka/kafka
       register: unpacked
-    - command: mv /home/acas/kafka_2.13-2.4.0 /home/acas/kafka
+    - command: mv /home/kafka/kafka_2.13-2.4.0 /home/kafka/kafka
+      when: unpacked.changed
+    - file:
+         owner: kafka
+         group: kafka
+         recurse: yes
+         path: /home/kafka/kafka
       when: unpacked.changed
 
 - name: ensure zookeeper properties are installed
@@ -108,9 +126,9 @@
       when: not st.stat.exists
     - template: 
         src: templates/zookeeper.properties.j2
-        dest: /home/acas/kafka/config/zookeeper.properties
-        owner: acas
-        group: acas
+        dest: /home/kafka/kafka/config/zookeeper.properties
+        owner: kafka
+        group: kafka
         mode: '0644'
       register: zookeeper_properties
 
@@ -118,7 +136,7 @@
   hosts: zookeeper-hosts
   become: yes
   vars:
-    KAFKA_HOME: "/home/acas/kafka"
+    KAFKA_HOME: "/home/kafka/kafka"
   tasks:
     - template:
         src: templates/zookeeper.service.j2
@@ -140,19 +158,19 @@
   hosts: kafka-hosts
   become: yes
   vars:
-    KAFKA_HOME: "/home/acas/kafka"
+    KAFKA_HOME: "/home/kafka/kafka"
   tasks:
     - file:
         path: /data/kafka
-        owner: root
-        group: root
+        owner: kafka
+        group: kafka
         mode: '0750'
         state: directory 
     - template:
         src: templates/kafka.properties.j2
         dest: "{{ KAFKA_HOME }}/config/server.properties"
-        owner: root
-        group: root
+        owner: kafka
+        group: kafka
         mode: '0644'
       register: kafka_properties
 
@@ -160,13 +178,13 @@
   hosts: kafka-hosts
   become: yes
   vars: 
-    KAFKA_HOME: "/home/acas/kafka"
+    KAFKA_HOME: "/home/kafka/kafka"
   tasks:
     - template:
         src: templates/kafka.service.j2
         dest: /etc/systemd/system/kafka.service
-        owner: root
-        group: root
+        owner: kafka
+        group: kafka
         mode: '0644'
       register: kafka_service
     - systemd:
@@ -178,6 +196,13 @@
          name: kafka
       ignore_errors: yes # ignore service already enabled error
 
+- name: ensure mongo user and group exists on mongo host
+  hosts: mongodb-host
+  become: yes
+  tasks:
+    - command: /usr/bin/useradd --user-group --shell /sbin/nologin --comment "Run mongodb only" mongo
+      ignore_errors: yes
+
 - name: setup mongo on database host for thug to store into
   hosts: mongodb-host
   become: yes
@@ -187,8 +212,8 @@
   tasks:
     - file:
          path: "{{ item }}"
-         owner: root
-         group: root
+         owner: mongo
+         group: mongo
          mode: '0750'
          state: directory
       with_items:
@@ -201,8 +226,8 @@
     - unarchive:
         src: software/mongodb-linux-aarch64-ubuntu1804-4.2.2.tgz
         dest: "{{ MONGO_HOME }}"
-        owner: root
-        group: root
+        owner: mongo
+        group: mongo
       register: installation   
       when: not mongo_software.stat.exists
     - file:
@@ -212,14 +237,15 @@
     - template:
         src: templates/mongodb.service.j2
         dest: /etc/systemd/system/mongodb.service
-        owner: root
-        group: root
+        owner: mongo
+        group: mongo
+        mode: '0644'
       register: mongo_service
     - template:
         src: templates/mongodb.conf.j2
         dest: /etc/mongodb.conf
-        owner: root
-        group: root
+        owner: mongo
+        group: mongo
         mode: '0640'
       register: mongo_defaults
     - systemd:
@@ -245,3 +271,4 @@
   tasks: 
     - command: /usr/bin/useradd --user-group --shell /sbin/nologin --comment "Runs kafka/zookeeper only" kafka
       ignore_errors: yes
+
