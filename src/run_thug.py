@@ -52,7 +52,7 @@ for message in consumer:
                                                      'when': now, 'thug_exit_status': status, 'ended': str(datetime.utcnow()),
                                                      'url_scanned': url, 'user_agent_used': user_agent},
                                  geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb",
-                                 mongo=pymongo.MongoClient('192.168.1.80').parse(fp.name) 
+                                 mongo=pymongo.MongoClient('192.168.1.80')).parse(fp.name) 
                    else:
                        producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )
