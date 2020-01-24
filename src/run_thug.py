@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 from kafka import KafkaConsumer, KafkaProducer
-from subprocess import Popen
+from subprocess import run
 from utils.ThugLogParser import ThugLogParser
 from urllib.parse import urlparse
 from datetime import datetime
@@ -34,7 +34,8 @@ for message in consumer:
         # We process the log here... and push worthy stuff into the relevant queues
         with tempfile.NamedTemporaryFile() as fp:
            user_agent = random.choice(ua)     # use a random UA for each url fetched to try to maximise return of suspicious objects over time
-           with Popen(["/usr/bin/thug",
+           try:
+               proc = run(["/usr/bin/thug",
                        "--json-logging",      # elasticsearch logging????
                        "--delay=5000",        # be polite
                        "--useragent={}".format(user_agent), # choose random user agent from supported list to maximise coverage
@@ -47,19 +48,19 @@ for message in consumer:
                        "-t{}".format(max_objects),           # max 100 requests per url from kafka
                        "--verbose",           # log level == INFO so we can get sub-resources to fetch
                        url
-                ], stderr=fp) as proc:
-               try:
-                   status = proc.wait(timeout=3600) # max 1 hour for thug
-                   if status == 0 or status == 1: # thug succeed?
-                       # will send messages based on log
-                       ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
-                                                     'when': now, 'thug_exit_status': status, 'ended': str(datetime.utcnow()),
-                                                     'url_scanned': url, 'user_agent_used': user_agent},
-                                 geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb",
-                                 mongo=pymongo.MongoClient('192.168.1.80')).parse(fp.name) 
-                   else:
-                       producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
+                ], stderr=fp, timeout=3600)
+
+               status = proc.returncode
+               if status == 0 or status == 1: # thug succeed?
+                   # will send messages based on log
+                   ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
+                                                 'when': now, 'thug_exit_status': status, 'ended': str(datetime.utcnow()),
+                                                 'url_scanned': url, 'user_agent_used': user_agent},
+                          geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb",
+                          mongo=pymongo.MongoClient('192.168.1.80')).parse(fp.name) 
+               else:
+                   producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )
-               except Exception as e:
-                       producer.send('thug_failure', { 'url_scanned': url, 'exit_status': -1, # -1 == exception eg. timeout
+           except Exception as e:
+               producer.send('thug_failure', { 'url_scanned': url, 'exit_status': -1, # -1 == exception eg. timeout
                                                    'when': now, 'user_agent_used': user_agent, 'msg': str(e) })
