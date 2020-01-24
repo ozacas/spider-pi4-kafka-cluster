@@ -10,6 +10,8 @@ ExecStart={{KAFKA_HOME}}/bin/kafka-server-start.sh {{KAFKA_HOME}}/config/server.
 KillMode=process
 Restart=on-failure
 RestartPreventExitStatus=255
+User=kafka
+Group=kafka
 
 [Install]
 WantedBy=multi-user.target

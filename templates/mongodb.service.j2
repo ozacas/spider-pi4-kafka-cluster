@@ -8,6 +8,8 @@ ExecStart={{MONGO_HOME}}/bin/mongod --config /etc/mongodb.conf
 KillMode=process
 Restart=on-failure
 RestartPreventExitStatus=255
+User=mongo
+Group=mongo
 
 [Install]
 WantedBy=multi-user.target
