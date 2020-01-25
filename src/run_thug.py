@@ -35,6 +35,9 @@ for message in consumer:
         with tempfile.NamedTemporaryFile() as fp:
            user_agent = random.choice(ua)     # use a random UA for each url fetched to try to maximise return of suspicious objects over time
            try:
+               # after sampling over 4000 urls (with random user agents) if a thug run takes longer than 600 seconds, it is likely to take an hour or more.
+               # we cant afford that runtime with available resources, so we limit to 600 seconds and marginally increase the failure rate. In this way, we
+               # get through more pages with available resources
                proc = run(["/usr/bin/thug",
                        "--json-logging",      # elasticsearch logging????
                        "--delay=5000",        # be polite
@@ -48,7 +51,7 @@ for message in consumer:
                        "-t{}".format(max_objects),           # max 100 requests per url from kafka
                        "--verbose",           # log level == INFO so we can get sub-resources to fetch
                        url
-                ], stderr=fp, timeout=3600)
+                ], stderr=fp, timeout=600)
 
                status = proc.returncode
                if status == 0 or status == 1: # thug succeed?
