@@ -5,7 +5,7 @@ import json
 import hashlib
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 from scrapy.utils.project import get_project_settings
 from scrapy.exceptions import DontCloseSpider
 from utils.AustraliaGeoLocator import AustraliaGeoLocator
@@ -93,7 +93,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            elif len(u) > 200:
                producer.send('rejected-urls', { 'url': u, 'reason': 'url too long (over 200)' })
            elif self.au_locator.is_au(up.hostname):
-               producer.send(topic, { 'url': u })  # send to the 4thug queue
+               up = up._replace(fragment='') # remove all fragments from spidering
+               producer.send(topic, { 'url': urlunparse(up) })  # send to the 4thug queue
                sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
