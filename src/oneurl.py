@@ -51,10 +51,10 @@ class KafkaSpiderMixin(object):
                return None
            up = urlparse(url)
            # we implement the blacklist on the dequeue side so that we can blacklist as the crawl proceeds. Not enough to just blacklist on the enqueue side
-           if not self.is_blacklisted(up.hostname.lower()) and not self.is_recently_crawled(url):
+           if not (self.is_blacklisted(up.hostname.lower()) or self.is_recently_crawled(url)):
                valid = True  # no more iterations
            else:
-               self.logger.info("Skipping queued blacklisted URL: {}".format(url))
+               self.logger.info("Skipping undesirable URL: {}".format(url))
 
         self.logger.info("Obtained kafka url: {}".format(url))
         return self.make_requests_from_url(url)
@@ -183,14 +183,12 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         if inline_script:
              self.save_snippet(url_id, script, sha256, md5)
         else:
-             json = { 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) }
-             script = self.db.scripts.find_one(json)
-             if script:
-                 self.db.script_url.insert({ 'url_id': url_id, 'script': ObjectId(script) })
+             s = self.db.scripts.find_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) })
+             if s:
+                 self.db.script_url.insert({ 'url_id': url_id, 'script': s.get(u'_id') })
              else:
-                 json.update({ 'code': script })
-                 script = self.db.script.insert(json)
-                 self.db.script_url.insert( { 'url_id': url_id, 'script': ObjectId(script) })
+                 id = self.db.scripts.insert_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script }).inserted_id
+                 self.db.script_url.insert( { 'url_id': url_id, 'script': id })
 
     def save_inline_script(self, url, inline_script):
         return self.save_script(url, inline_script.encode(), inline_script=True)
@@ -202,6 +200,9 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         content_type = response.headers.get('Content-Type', b'').decode('utf-8')
         ret = []
         url = response.url
+        # dont visit the response url again for a long time
+        self.cache[url] = 1 
+        self.recent_cache[url] = 1
         if content_type.startswith('text/html'):
            src_urls = response.xpath('//script/@src').extract()
            hrefs = response.xpath('//a/@href').extract()
@@ -213,8 +214,6 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            self.logger.info("Queuing links found on {} {}".format(content_type, response.url))
            # but we also want suitable follow-up links for pushing into the 4thug topic
            self.queue_followup_links(self.producer, abs_hrefs)
-           # dont visit the response url again for a long time
-           self.cache[url] = 1
        
            # extract inline javascript and store in mongo...
            inline_scripts = response.xpath('//script/text()').getall()
@@ -222,13 +221,12 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                 self.save_inline_script(response.url, script)
  
            # spider over the JS content... 
-           ret = [self.make_requests_from_url(u) for u in abs_src_urls]
+           ret = [self.make_requests_from_url(u) for u in abs_src_urls if not url in self.recent_cache]
            # FALLTHRU
-        elif 'javascript' in content_type:
-           self.save_script(response.url, response.body)
+        elif 'javascript' in content_type.lower():
+           self.save_script(response.url, response.body, inline_script=False)
         
         self.producer.send('visited', { 'url': url, 'content_size_bytes': len(response.body), 
                                            'content-type': content_type, 'when': str(datetime.utcnow()), 
 					   'sha256': hashlib.sha256(response.body).hexdigest(), 'md5': hashlib.md5(response.body).hexdigest() })
-        self.recent_cache[url] = 1
         return ret
