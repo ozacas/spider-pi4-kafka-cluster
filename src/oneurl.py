@@ -4,11 +4,12 @@ from scrapy import signals
 import json
 import hashlib
 import pymongo
+import argparse
+import pylru
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta
 from kafka import KafkaConsumer, KafkaProducer
 from urllib.parse import urljoin, urlparse, urlunparse
-from scrapy.utils.project import get_project_settings
 from scrapy.exceptions import DontCloseSpider
 from utils.AustraliaGeoLocator import AustraliaGeoLocator
 
@@ -74,19 +75,34 @@ class KafkaSpiderMixin(object):
 class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'oneurl'
     allowed_domains = ['*']  # permitted to crawl anywhere (except unless blacklisted)
+    custom_settings = {
+        'ONEURL_MONGO_HOST': 'pi1', 
+        'ONEURL_MONGO_PORT': 27017,
+        'ONEURL_MAXMIND_DB': '/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb',
+        'ONEURL_MONGO_DB': 'au_js',
+        'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
+        'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
+        'ONEURL_KAFKA_URL_TOPIC': '4thug'
+    }
 
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
-       self.consumer = KafkaConsumer('4thug', bootstrap_servers='kafka1', group_id='scrapy-thug2', auto_offset_reset='earliest',
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers='kafka1')
-       self.au_locator = AustraliaGeoLocator(db_location='/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb')
-       self.mongo = pymongo.MongoClient('pi1', 27017)
-       self.ensure_db_constraints(self.mongo['au_js'])
+       settings = self.custom_settings
+       topic = settings.get('ONEURL_KAFKA_URL_TOPIC', '4thug')
+       bs = settings.get('ONEURL_KAFKA_BOOTSTRAP')
+       grp_id = settings.get('ONEURL_KAFKA_CONSUMER_GROUP')
+       self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
+                         value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout 
+       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=settings.get('ONEURL_KAFKA_BOOTSTRAP'))
+       self.au_locator = AustraliaGeoLocator(db_location=settings.get('ONEURL_MAXMIND_DB'))
+       self.mongo = pymongo.MongoClient(settings.get('ONEURL_MONGO_HOST', settings.get('ONEURL_MONGO_PORT')))
+       self.db = self.mongo[settings.get('ONEURL_MONGO_DB')]
+       self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
+       self.ensure_db_constraints()
 
-    def ensure_db_constraints(self, db):
+    def ensure_db_constraints(self):
        # ensure url collection has a unique key index on url field
-       url_collection = db['urls']
+       url_collection = self.db['urls']
        url_collection.create_index("url", unique=True)
 
        # DONE
@@ -103,7 +119,10 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
     def spider_closed(self, spider):
         spider.logger.info("Closed spider") 
 
-    def queue_followup_links(self, producer, topic, url_list):
+    def find_url(self, url):
+        return self.db.url.find_one({ 'url': url })
+
+    def queue_followup_links(self, producer, url_list):
         """
            URLs which are on an australian IP are sent to kafka
         """
@@ -111,8 +130,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         self.logger.info("Considering {} url's for followup.".format(len(urls)))
         sent = 0
         last_month = datetime.utcnow() - timedelta(weeks=4)
+        topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
         self.logger.info("Looking for URLs not visited since {}".format(str(last_month)))
-        db = self.mongo['au_js']
         for u in urls:
            up = urlparse(u)
            if (up.path.count('/') > 3) or len(up.query) > 10:
@@ -122,53 +141,53 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='') # remove all fragments from spidering
                url = urlunparse(up)
-               result = db.urls.find_one({ 'url': url })
-               if result is None or result.get(u'last_visited', datetime.utcnow()) < last_month:
+               result = self.find_url(url)
+               if (result is None or result.get(u'last_visited', datetime.utcnow()) < last_month) and not url in self.cache:
                    producer.send(topic, { 'url': url })  # send to the 4thug queue
+                   self.cache[url] = 1  # add to cache
                    sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
         self.logger.info("Sent {} url's to kafka".format(sent))
 
-    def save_url(self, db, url):
+    def save_url(self, url):
          last_visited = datetime.utcnow()
          last_month = last_visited - timedelta(weeks=4)
          # ensure last_visited is kept accurate so that we can ignore url's which we've recently seen
-         result = db.urls.replace_one({ 'url': url }, { 'url': url, 'last_visited': last_visited }, upsert=True)
+         result = self.db.urls.replace_one({ 'url': url }, { 'url': url, 'last_visited': last_visited }, upsert=True)
          return result.raw_result.get(u'_id')
 
-    def save_snippet(self, db, url_id, script, sha256, md5):
-         existing = db.snippets.find_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) })
+    def save_snippet(self, url_id, script, sha256, md5):
+         existing = self.db.snippets.find_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) })
          if existing:
-             db.snippet_url.insert({ 'url_id': url_id, 'snippet': ObjectId(existing) })
+             self.db.snippet_url.insert({ 'url_id': url_id, 'snippet': ObjectId(existing.get('_id')) })
          else:
-             snippet = db.snippet.insert({'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script })
-             db.snippet_url.insert({ 'url_id': url_id, 'snippet': ObjectId(snippet) }) 
+             snippet = self.db.snippets.insert({'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script })
+             self.db.snippet_url.insert({ 'url_id': url_id, 'snippet': ObjectId(snippet) }) 
 
     def save_script(self, url, script, inline_script=False):
         # compute hashes to search for
         sha256 = hashlib.sha256(script).hexdigest()
         md5 = hashlib.md5(script).hexdigest()
         # check to see if in mongo already
-        db = self.mongo['au_js']
-        url_id = self.save_url(db, url)
+        url_id = self.save_url(url)
         if inline_script:
-             self.save_snippet(db, url_id, script, sha256, md5)
+             self.save_snippet(url_id, script, sha256, md5)
         else:
              json = { 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) }
-             script = db.scripts.find_one(json)
+             script = self.db.scripts.find_one(json)
              if script:
-                 db.script_url.insert({ 'url_id': url_id, 'script': ObjectId(script) })
+                 self.db.script_url.insert({ 'url_id': url_id, 'script': ObjectId(script) })
              else:
                  json.update({ 'code': script })
-                 script = db.script.insert(json)
-                 db.script_url.insert( { 'url_id': url_id, 'script': ObjectId(script) })
+                 script = self.db.script.insert(json)
+                 self.db.script_url.insert( { 'url_id': url_id, 'script': ObjectId(script) })
 
     def save_inline_script(self, url, inline_script):
         return self.save_script(url, inline_script.encode(), inline_script=True)
 
     def is_blacklisted(self, domain):
-        return self.mongo['au_js'].blacklisted_domains.find_one({ 'domain': domain }) is not None
+        return self.db.blacklisted_domains.find_one({ 'domain': domain }) is not None
 
     def parse(self, response):
         content_type = response.headers.get('Content-Type', b'').decode('utf-8')
@@ -183,7 +202,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            abs_hrefs = [urljoin(response.url, href) for href in hrefs]
            self.logger.info("Queuing links found on {} {}".format(content_type, response.url))
            # but we also want suitable follow-up links for pushing into the 4thug topic
-           self.queue_followup_links(self.producer, '4thug', abs_hrefs)
+           self.queue_followup_links(self.producer, abs_hrefs)
        
            # extract inline javascript and store in mongo...
            inline_scripts = response.xpath('//script/text()').getall()
