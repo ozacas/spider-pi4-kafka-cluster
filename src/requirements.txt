@@ -2,3 +2,4 @@ geoip2
 kafka-python
 certifi
 wheel
+pylru
