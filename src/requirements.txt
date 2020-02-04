@@ -3,3 +3,4 @@ kafka-python
 certifi
 wheel
 pylru
+scrapy
