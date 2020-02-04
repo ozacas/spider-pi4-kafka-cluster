@@ -148,11 +148,12 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='') # remove all fragments from spidering
                url = urlunparse(up)
-               result = self.find_url(url)
-               if (result is None or result.get(u'last_visited', datetime.utcnow()) < last_month) and not url in self.cache:
-                   producer.send(topic, { 'url': url })  # send to the 4thug queue
-                   self.cache[url] = 1  # add to cache
-                   sent = sent + 1
+               if not url in self.cache:
+                   result = self.find_url(url)
+                   if (result is None or result.get(u'last_visited', datetime.utcnow()) < last_month):
+                       producer.send(topic, { 'url': url })  # send to the 4thug queue
+                       self.cache[url] = 1  # add to cache
+                       sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
         self.logger.info("Sent {} url's to kafka".format(sent))
@@ -201,8 +202,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         ret = []
         url = response.url
         # dont visit the response url again for a long time
-        self.cache[url] = 1 
-        self.recent_cache[url] = 1
+        self.cache[url] = 1        # no repeats from kafka
+        self.recent_cache[url] = 1 # no repeats from crawler
         if content_type.startswith('text/html'):
            src_urls = response.xpath('//script/@src').extract()
            hrefs = response.xpath('//a/@href').extract()
