@@ -180,7 +180,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         self.save_url(url)
         url_record = self.db.urls.find_one( { 'url': url } ) # must not fail given it has just been saved...
         url_id = url_record.get(u'_id')
-        self.logger.info("Got oid {} for {}".format(url_id, url))
+        #self.logger.info("Got oid {} for {}".format(url_id, url))
         if inline_script:
              self.save_snippet(url_id, script, sha256, md5)
         else:
