@@ -204,6 +204,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         # dont visit the response url again for a long time
         self.cache[url] = 1        # no repeats from kafka
         self.recent_cache[url] = 1 # no repeats from crawler
+        self.logger.info("Processing page {} {}".format(content_type, response.url))
         if content_type.startswith('text/html'):
            src_urls = response.xpath('//script/@src').extract()
            hrefs = response.xpath('//a/@href').extract()
@@ -212,7 +213,6 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            # ensure relative script src's are absolute... for the spider to follow now
            abs_src_urls = [urljoin(url, src) for src in src_urls]
            abs_hrefs = [urljoin(url, href) for href in hrefs]
-           self.logger.info("Queuing links found on {} {}".format(content_type, response.url))
            # but we also want suitable follow-up links for pushing into the 4thug topic
            self.queue_followup_links(self.producer, abs_hrefs)
        
