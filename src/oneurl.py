@@ -88,7 +88,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
        settings = self.custom_settings
-       topic = settings.get('ONEURL_KAFKA_URL_TOPIC', '4thug')
+       topic = settings.get('ONEURL_KAFKA_URL_TOPIC')
        bs = settings.get('ONEURL_KAFKA_BOOTSTRAP')
        grp_id = settings.get('ONEURL_KAFKA_CONSUMER_GROUP')
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
@@ -154,23 +154,25 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
          last_visited = datetime.utcnow()
          last_month = last_visited - timedelta(weeks=4)
          # ensure last_visited is kept accurate so that we can ignore url's which we've recently seen
-         result = self.db.urls.replace_one({ 'url': url }, { 'url': url, 'last_visited': last_visited }, upsert=True)
-         return result.raw_result.get(u'_id')
+         result = self.db.urls.update_one({ 'url': url }, { "$set": { 'url': url, 'last_visited': last_visited } }, upsert=True)
 
-    def save_snippet(self, url_id, script, sha256, md5):
+    def save_snippet(self, origin_url_id, script, sha256, md5):
          existing = self.db.snippets.find_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) })
          if existing:
-             self.db.snippet_url.insert({ 'url_id': url_id, 'snippet': ObjectId(existing.get('_id')) })
+             self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': ObjectId(existing.get('_id')) })
          else:
-             snippet = self.db.snippets.insert({'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script })
-             self.db.snippet_url.insert({ 'url_id': url_id, 'snippet': ObjectId(snippet) }) 
+             id = self.db.snippets.insert_one({'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script }).inserted_id
+             self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': id }) 
 
     def save_script(self, url, script, inline_script=False):
         # compute hashes to search for
         sha256 = hashlib.sha256(script).hexdigest()
         md5 = hashlib.md5(script).hexdigest()
         # check to see if in mongo already
-        url_id = self.save_url(url)
+        self.save_url(url)
+        url_record = self.db.urls.find_one( { 'url': url } ) # must not fail given it has just been saved...
+        url_id = url_record.get(u'_id')
+        self.logger.info("Got oid {} for {}".format(url_id, url))
         if inline_script:
              self.save_snippet(url_id, script, sha256, md5)
         else:
@@ -203,6 +205,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            self.logger.info("Queuing links found on {} {}".format(content_type, response.url))
            # but we also want suitable follow-up links for pushing into the 4thug topic
            self.queue_followup_links(self.producer, abs_hrefs)
+           # dont visit the response url again for a long time
+           self.cache[response.url] = 1
        
            # extract inline javascript and store in mongo...
            inline_scripts = response.xpath('//script/text()').getall()
