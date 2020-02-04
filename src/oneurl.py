@@ -150,7 +150,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                url = urlunparse(up)
                if not url in self.cache:
                    result = self.find_url(url)
-                   if (result is None or result.get(u'last_visited', datetime.utcnow()) < last_month):
+                   if (result is None or result.get(u'last_visited') < last_month):
                        producer.send(topic, { 'url': url })  # send to the 4thug queue
                        self.cache[url] = 1  # add to cache
                        sent = sent + 1
@@ -205,7 +205,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         self.cache[url] = 1        # no repeats from kafka
         self.recent_cache[url] = 1 # no repeats from crawler
         self.logger.info("Processing page {} {}".format(content_type, response.url))
-        if content_type.startswith('text/html'):
+        if 'html' in content_type:
            src_urls = response.xpath('//script/@src').extract()
            hrefs = response.xpath('//a/@href').extract()
            # TODO FIXME... extract inline script fragments...
@@ -222,7 +222,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                 self.save_inline_script(response.url, script)
  
            # spider over the JS content... 
-           ret = [self.make_requests_from_url(u) for u in abs_src_urls if not url in self.recent_cache]
+           ret = [self.make_requests_from_url(u) for u in abs_src_urls if not u in self.recent_cache]
            # FALLTHRU
         elif 'javascript' in content_type.lower():
            self.save_script(response.url, response.body, inline_script=False)
