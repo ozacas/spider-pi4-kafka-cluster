@@ -35,6 +35,9 @@ class KafkaSpiderMixin(object):
     def is_blacklisted(self, domain):
         return False # overriden in subclass
 
+    def is_recently_crawled(self, url):
+        return False # overridden in subclass
+
     def next_request(self):
         """
         Returns a request to be scheduled.
@@ -48,7 +51,7 @@ class KafkaSpiderMixin(object):
                return None
            up = urlparse(url)
            # we implement the blacklist on the dequeue side so that we can blacklist as the crawl proceeds. Not enough to just blacklist on the enqueue side
-           if not self.is_blacklisted(up.hostname.lower()):
+           if not self.is_blacklisted(up.hostname.lower()) and not self.is_recently_crawled(url):
                valid = True  # no more iterations
            else:
                self.logger.info("Skipping queued blacklisted URL: {}".format(url))
@@ -98,6 +101,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
        self.mongo = pymongo.MongoClient(settings.get('ONEURL_MONGO_HOST', settings.get('ONEURL_MONGO_PORT')))
        self.db = self.mongo[settings.get('ONEURL_MONGO_DB')]
        self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
+       self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering)
        self.ensure_db_constraints()
 
     def ensure_db_constraints(self):
@@ -121,6 +125,9 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def find_url(self, url):
         return self.db.url.find_one({ 'url': url })
+
+    def is_recently_crawled(self, url):
+        return url in self.recent_cache
 
     def queue_followup_links(self, producer, url_list):
         """
@@ -194,19 +201,20 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
     def parse(self, response):
         content_type = response.headers.get('Content-Type', b'').decode('utf-8')
         ret = []
+        url = response.url
         if content_type.startswith('text/html'):
            src_urls = response.xpath('//script/@src').extract()
            hrefs = response.xpath('//a/@href').extract()
            # TODO FIXME... extract inline script fragments...
 
            # ensure relative script src's are absolute... for the spider to follow now
-           abs_src_urls = [urljoin(response.url, src) for src in src_urls]
-           abs_hrefs = [urljoin(response.url, href) for href in hrefs]
+           abs_src_urls = [urljoin(url, src) for src in src_urls]
+           abs_hrefs = [urljoin(url, href) for href in hrefs]
            self.logger.info("Queuing links found on {} {}".format(content_type, response.url))
            # but we also want suitable follow-up links for pushing into the 4thug topic
            self.queue_followup_links(self.producer, abs_hrefs)
            # dont visit the response url again for a long time
-           self.cache[response.url] = 1
+           self.cache[url] = 1
        
            # extract inline javascript and store in mongo...
            inline_scripts = response.xpath('//script/text()').getall()
@@ -219,7 +227,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         elif 'javascript' in content_type:
            self.save_script(response.url, response.body)
         
-        self.producer.send('visited', { 'url': response.url, 'content_size_bytes': len(response.body), 
+        self.producer.send('visited', { 'url': url, 'content_size_bytes': len(response.body), 
                                            'content-type': content_type, 'when': str(datetime.utcnow()), 
 					   'sha256': hashlib.sha256(response.body).hexdigest(), 'md5': hashlib.md5(response.body).hexdigest() })
+        self.recent_cache[url] = 1
         return ret
