@@ -12,6 +12,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from urllib.parse import urljoin, urlparse, urlunparse
 from scrapy.exceptions import DontCloseSpider
 from utils.AustraliaGeoLocator import AustraliaGeoLocator
+from utils.url import as_priority
 
 class KafkaSpiderMixin(object):
 
@@ -136,16 +137,19 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         urls = frozenset(url_list) # de-dupe
         self.logger.info("Considering {} url's for followup.".format(len(urls)))
         sent = 0
+        rejected = 0
+        not_au = 0
         last_month = datetime.utcnow() - timedelta(weeks=4)
         topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
         self.logger.info("Looking for URLs not visited since {}".format(str(last_month)))
         for u in urls:
            up = urlparse(u)
-           if (up.path.count('/') > 3) or len(up.query) > 10:
-               producer.send('rejected-urls', { 'url': u, 'reason': 'too long path/query' })
-           elif len(u) > 200:
-               producer.send('rejected-urls', { 'url': u, 'reason': 'url too long (over 200)' })
+           priority = as_priority(u, up)
+           if priority > 5:
+               producer.send('rejected-urls', { 'url': u, 'reason': 'low priority' })
+               rejected = rejected + 1
            elif self.au_locator.is_au(up.hostname):
+               priority = as_priority(u, up)
                up = up._replace(fragment='') # remove all fragments from spidering
                url = urlunparse(up)
                if not url in self.cache:
@@ -156,7 +160,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                        sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
-        self.logger.info("Sent {} url's to kafka".format(sent))
+               not_au = not_au + 1
+        self.logger.info("Sent {} url's to kafka (rejected {}, not au {})".format(sent, rejected, not_au))
 
     def save_url(self, url):
          last_visited = datetime.utcnow()
