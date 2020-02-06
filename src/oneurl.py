@@ -85,7 +85,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_MONGO_DB': 'au_js',
         'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
-        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen2'
+        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen3'
     }
 
     def __init__(self, *args, **kwargs):
@@ -207,7 +207,10 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         url = response.url
         # dont visit the response url again for a long time
         self.cache[url] = 1        # no repeats from kafka
+        if url in self.recent_cache:
+             return []
         self.recent_cache[url] = 1 # no repeats from crawler
+
         self.logger.info("Processing page {} {}".format(content_type, response.url))
         if 'html' in content_type:
            src_urls = response.xpath('//script/@src').extract()
