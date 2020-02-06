@@ -85,7 +85,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_MONGO_DB': 'au_js',
         'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
-        'ONEURL_KAFKA_URL_TOPIC': '4thug'
+        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen2'
     }
 
     def __init__(self, *args, **kwargs):
@@ -203,7 +203,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         return self.db.blacklisted_domains.find_one({ 'domain': domain }) is not None
 
     def parse(self, response):
-        content_type = response.headers.get('Content-Type', b'').decode('utf-8')
+        content_type = response.headers.get('Content-Type', b'').decode('utf-8').lower()
         url = response.url
         # dont visit the response url again for a long time
         self.cache[url] = 1        # no repeats from kafka
@@ -217,18 +217,19 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            # ensure relative script src's are absolute... for the spider to follow now
            abs_src_urls = [urljoin(url, src) for src in src_urls]
            abs_hrefs = [urljoin(url, href) for href in hrefs]
-           # but we also want suitable follow-up links for pushing into the 4thug topic
+           # but we also want suitable follow-up links for pushing into the url topic
            self.queue_followup_links(self.producer, abs_hrefs)
        
            # extract inline javascript and store in mongo...
            inline_scripts = response.xpath('//script/text()').getall()
            for script in inline_scripts:
                 self.save_inline_script(url, script, content_type=content_type)
+           self.logger.info("Saved {} inline scripts from {}".format(len(inline_scripts), url))
  
            # spider over the JS content... 
            return [self.make_requests_from_url(u) for u in abs_src_urls if not u in self.recent_cache]
            # FALLTHRU
-        elif 'javascript' in content_type.lower():
+        elif 'javascript' in content_type:
            self.save_script(url, response.body, inline_script=False, content_type=content_type)
            self.logger.info("Saved javascript {}".format(url))
            return []
