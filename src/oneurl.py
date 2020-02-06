@@ -172,7 +172,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
              id = self.db.snippets.insert_one({'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script }).inserted_id
              self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': id }) 
 
-    def save_script(self, url, script, inline_script=False):
+    def save_script(self, url, script, inline_script=False, content_type=None):
         # compute hashes to search for
         sha256 = hashlib.sha256(script).hexdigest()
         md5 = hashlib.md5(script).hexdigest()
@@ -191,15 +191,19 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                  id = self.db.scripts.insert_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script }).inserted_id
                  self.db.script_url.insert( { 'url_id': url_id, 'script': id })
 
-    def save_inline_script(self, url, inline_script):
-        return self.save_script(url, inline_script.encode(), inline_script=True)
+        # finally update the kafka visited queue
+        self.producer.send('visited', { 'url': url, 'size_bytes': len(script), 'inline': inline_script,
+                                           'content-type': content_type, 'when': str(datetime.utcnow()), 
+					   'sha256': sha256, 'md5': md5 })
+
+    def save_inline_script(self, url, inline_script, content_type=None):
+        return self.save_script(url, inline_script.encode(), inline_script=True, content_type=content_type)
 
     def is_blacklisted(self, domain):
         return self.db.blacklisted_domains.find_one({ 'domain': domain }) is not None
 
     def parse(self, response):
         content_type = response.headers.get('Content-Type', b'').decode('utf-8')
-        ret = []
         url = response.url
         # dont visit the response url again for a long time
         self.cache[url] = 1        # no repeats from kafka
@@ -219,15 +223,14 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            # extract inline javascript and store in mongo...
            inline_scripts = response.xpath('//script/text()').getall()
            for script in inline_scripts:
-                self.save_inline_script(response.url, script)
+                self.save_inline_script(url, script, content_type=content_type)
  
            # spider over the JS content... 
-           ret = [self.make_requests_from_url(u) for u in abs_src_urls if not u in self.recent_cache]
+           return [self.make_requests_from_url(u) for u in abs_src_urls if not u in self.recent_cache]
            # FALLTHRU
         elif 'javascript' in content_type.lower():
-           self.save_script(response.url, response.body, inline_script=False)
-        
-        self.producer.send('visited', { 'url': url, 'content_size_bytes': len(response.body), 
-                                           'content-type': content_type, 'when': str(datetime.utcnow()), 
-					   'sha256': hashlib.sha256(response.body).hexdigest(), 'md5': hashlib.md5(response.body).hexdigest() })
-        return ret
+           self.save_script(url, response.body, inline_script=False, content_type=content_type)
+           self.logger.info("Saved javascript {}".format(url))
+           return []
+        else:
+           return []
