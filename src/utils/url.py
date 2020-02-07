@@ -9,7 +9,7 @@ def as_priority(url, up):
        penalty = up.path.count('/')  # penalty of up to three depending on depth of page
    if penalty > 3:
        penalty = 3
-   if up.path.lower().endswith((".mp3", ".avi", ".pdf", ".png", ".vob", ".mpeg", ".mpg", ".mp4")):
+   if up.path.lower().endswith((".mp3", ".avi", ".pdf", ".png", ".vob", ".mpeg", ".mpg", ".mp4", ".jpeg", ".jpg")):
        penalty = penalty + 2
    qlen = len(up.query)
    if qlen > 0 and qlen < 20:
