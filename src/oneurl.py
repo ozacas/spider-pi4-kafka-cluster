@@ -39,6 +39,17 @@ class KafkaSpiderMixin(object):
     def is_recently_crawled(self, url):
         return False # overridden in subclass
 
+    def is_suitable(self, url):
+        if self.is_recently_crawled(url):
+           return False
+        up = urlparse(url)
+        if self.is_blacklisted(up.netloc.lower()):
+           return False
+        # check priority when crawling as we dont need everything crawled...
+        if as_priority(url, up) > 4:
+           return False
+        return True
+
     def next_request(self):
         """
         Returns a request to be scheduled.
@@ -50,9 +61,8 @@ class KafkaSpiderMixin(object):
            url = self.process_kafka_message(message)
            if url is None:
                return None
-           up = urlparse(url)
            # we implement the blacklist on the dequeue side so that we can blacklist as the crawl proceeds. Not enough to just blacklist on the enqueue side
-           if not (self.is_blacklisted(up.hostname.lower()) or self.is_recently_crawled(url)):
+           if self.is_suitable(url):
                valid = True  # no more iterations
            else:
                self.logger.info("Skipping undesirable URL: {}".format(url))
@@ -86,7 +96,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_MONGO_DB': 'au_js',
         'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
-        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen3'
+        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen4'
     }
 
     def __init__(self, *args, **kwargs):
