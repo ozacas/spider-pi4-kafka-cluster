@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import scrapy
 from scrapy import signals
+from scrapy.crawler import CrawlerProcess
 import json
 import hashlib
 import pymongo
@@ -96,7 +97,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_MONGO_DB': 'au_js',
         'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
-        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen4'
+        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen4',
+        'LOG_LEVEL': 'INFO'
     }
 
     def __init__(self, *args, **kwargs):
@@ -135,7 +137,12 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         spider.logger.info("Closed spider") 
 
     def find_url(self, url):
-        return self.db.url.find_one({ 'url': url })
+        # cache lookups as mongo calls slow the spider down
+        if url in self.cache:
+            return self.cache[url] 
+        ret = self.db.url.find_one({ 'url': url })
+        self.cache[url] = ret
+        return ret
 
     def is_recently_crawled(self, url):
         return url in self.recent_cache
@@ -159,56 +166,60 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                producer.send('rejected-urls', { 'url': u, 'reason': 'low priority' })
                rejected = rejected + 1
            elif self.au_locator.is_au(up.hostname):
-               priority = as_priority(u, up)
                up = up._replace(fragment='') # remove all fragments from spidering
                url = urlunparse(up)
-               if not url in self.cache:
-                   result = self.find_url(url)
-                   if (result is None or result.get(u'last_visited') < last_month):
-                       producer.send(topic, { 'url': url })  # send to the 4thug queue
-                       self.cache[url] = 1  # add to cache
-                       sent = sent + 1
+               result = self.find_url(url)
+               if (result is None or result.get(u'last_visited') < last_month):
+                   producer.send(topic, { 'url': url })  # send to the 4thug queue
+                   sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
         self.logger.info("Sent {} url's to kafka (rejected {}, not au {})".format(sent, rejected, not_au))
 
-    def save_url(self, url):
-         last_visited = datetime.utcnow()
-         last_month = last_visited - timedelta(weeks=4)
+    def save_url(self, url, now):
+         last_month   = last_visited - timedelta(weeks=4)
          # ensure last_visited is kept accurate so that we can ignore url's which we've recently seen
-         result = self.db.urls.update_one({ 'url': url }, { "$set": { 'url': url, 'last_visited': last_visited } }, upsert=True)
+         result = self.db.urls.update_one({ 'url': url }, { "$set": { 'url': url, 'last_visited': now } }, upsert=True)
+         uid    = result.get(u'upserted_id')
+         # avoid doing find_one() if pymongo has it already to speed up spidering
+         if uid is None:
+             url_record = self.db.urls.find_one( { 'url': url } ) # must not fail given it has just been saved...
+             uid = url_record.get(u'_id')
+         
+         return uid
 
-    def save_snippet(self, origin_url_id, script, sha256, md5):
-         existing = self.db.snippets.find_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) })
-         if existing:
-             self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': ObjectId(existing.get('_id')) })
-         else:
-             id = self.db.snippets.insert_one({'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script }).inserted_id
-             self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': id }) 
+    def save_snippet(self, origin_url_id, script, script_len, sha256, md5):
+         j = { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }
+         ret = self.db.snippets.find_one_and_update(j, 
+                     { "$set": { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len, 'code': script }}, 
+                     upsert=True, return_document=pymongo.ReturnDocument.AFTER)
+         id = ret.get(u'_id')
+         self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': id }) 
 
     def save_script(self, url, script, inline_script=False, content_type=None):
+        # NB: we work hard here to avoid mongo calls which will slow down the spider
+
         # compute hashes to search for
         sha256 = hashlib.sha256(script).hexdigest()
         md5 = hashlib.md5(script).hexdigest()
+
         # check to see if in mongo already
-        self.save_url(url)
-        url_record = self.db.urls.find_one( { 'url': url } ) # must not fail given it has just been saved...
-        url_id = url_record.get(u'_id')
+        now = datetime.utcnow()
+        url_id = self.save_url(url, now)
         #self.logger.info("Got oid {} for {}".format(url_id, url))
+
+        script_len = len(script)
         if inline_script:
-             self.save_snippet(url_id, script, sha256, md5)
+             self.save_snippet(url_id, script, script_len, sha256, md5)
         else:
-             s = self.db.scripts.find_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script) })
-             if s:
-                 self.db.script_url.insert({ 'url_id': url_id, 'script': s.get(u'_id') })
-             else:
-                 id = self.db.scripts.insert_one({ 'sha256': sha256, 'md5': md5, 'size_bytes': len(script), 'code': script }).inserted_id
-                 self.db.script_url.insert( { 'url_id': url_id, 'script': id })
+             s = self.db.scripts.find_one_and_update({ 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }, 
+                           { '$set': { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len, 'code': script }}, return_document=pymongo.ReturnDocument.AFTER)
+             self.db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
 
         # finally update the kafka visited queue
-        self.producer.send('visited', { 'url': url, 'size_bytes': len(script), 'inline': inline_script,
-                                           'content-type': content_type, 'when': str(datetime.utcnow()), 
+        self.producer.send('visited', { 'url': url, 'size_bytes': script_len, 'inline': inline_script,
+                                           'content-type': content_type, 'when': str(now), 
 					   'sha256': sha256, 'md5': md5 })
 
     def save_inline_script(self, url, inline_script, content_type=None):
@@ -221,7 +232,6 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         content_type = response.headers.get('Content-Type', b'').decode('utf-8').lower()
         url = response.url
         # dont visit the response url again for a long time
-        self.cache[url] = 1        # no repeats from kafka
         if url in self.recent_cache:
              return []
         self.recent_cache[url] = 1 # no repeats from crawler
@@ -253,3 +263,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            return []
         else:
            return []
+
+if __name__ == "__main__":
+    process = CrawlerProcess()
+    process.crawl(OneurlSpider)
+    process.start() # the script will block here until the crawling is finished
