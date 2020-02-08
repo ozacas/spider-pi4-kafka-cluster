@@ -137,10 +137,10 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         spider.logger.info("Closed spider") 
 
     def find_url(self, url):
-        # cache lookups as mongo calls slow the spider down
+        # cache lookups as excessive mongo calls slow the spider down
         if url in self.cache:
             return self.cache[url] 
-        ret = self.db.url.find_one({ 'url': url })
+        ret = self.db.urls.find_one({ 'url': url })
         self.cache[url] = ret
         return ret
 
@@ -167,7 +167,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                rejected = rejected + 1
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='') # remove all fragments from spidering
-               url = urlunparse(up)
+               url = urlunparse(up) # search for fragment-free URL
                result = self.find_url(url)
                if (result is None or result.get(u'last_visited') < last_month):
                    producer.send(topic, { 'url': url })  # send to the 4thug queue
@@ -178,16 +178,9 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         self.logger.info("Sent {} url's to kafka (rejected {}, not au {})".format(sent, rejected, not_au))
 
     def save_url(self, url, now):
-         last_month   = last_visited - timedelta(weeks=4)
          # ensure last_visited is kept accurate so that we can ignore url's which we've recently seen
-         result = self.db.urls.update_one({ 'url': url }, { "$set": { 'url': url, 'last_visited': now } }, upsert=True)
-         uid    = result.get(u'upserted_id')
-         # avoid doing find_one() if pymongo has it already to speed up spidering
-         if uid is None:
-             url_record = self.db.urls.find_one( { 'url': url } ) # must not fail given it has just been saved...
-             uid = url_record.get(u'_id')
-         
-         return uid
+         result = self.db.urls.find_one_and_update({ 'url': url }, { "$set": { 'url': url, 'last_visited': now } }, upsert=True, return_document=pymongo.ReturnDocument.AFTER)
+         return result.get(u'_id')
 
     def save_snippet(self, origin_url_id, script, script_len, sha256, md5):
          j = { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }
@@ -214,7 +207,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
              self.save_snippet(url_id, script, script_len, sha256, md5)
         else:
              s = self.db.scripts.find_one_and_update({ 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }, 
-                           { '$set': { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len, 'code': script }}, return_document=pymongo.ReturnDocument.AFTER)
+                           { '$set': { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len, 'code': script }}, upsert=True, return_document=pymongo.ReturnDocument.AFTER)
              self.db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
 
         # finally update the kafka visited queue
