@@ -10,6 +10,7 @@ class AustraliaGeoLocator(object):
    def __init__(self, db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb"): 
       self.reader = geoip2.database.Reader(db_location) 
       self.cache = pylru.lrucache(500)
+      self.dns_cache = pylru.lrucache(500) # DNS lookups are expensive, so avoid them when we can...
 
    def is_ip(self, ip):
       if ip is None:
@@ -22,7 +23,10 @@ class AustraliaGeoLocator(object):
 
    def as_ip(self, host):
       try:
+          if host in self.dns_cache:
+              return self.dns_cache[host]
           ip = socket.gethostbyname(host)
+          self.dns_cache[host] = ip
           return ip
       except:
           return None
