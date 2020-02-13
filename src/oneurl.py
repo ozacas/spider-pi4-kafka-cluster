@@ -97,7 +97,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_MONGO_DB': 'au_js',
         'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
-        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen4',
+        'ONEURL_KAFKA_URL_TOPIC': '4thug.gen5',
         'LOG_LEVEL': 'INFO'
     }
 
