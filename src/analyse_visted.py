@@ -33,6 +33,7 @@ def analyse_script(js, url):
    # save code to a file
    tmpfile = NamedTemporaryFile(delete=False) 
    tmpfile.write(js)   
+   tmpfile.close()
 
    # save to file and run extract-features.jar to identify the javascript features
    process = subprocess.run(["/usr/bin/java", "-jar", "/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar", tmpfile.name, url], capture_output=True)
