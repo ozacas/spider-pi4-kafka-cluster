@@ -170,7 +170,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
                url = urlunparse(up) # search for fragment-free URL
                result = self.find_url(url)
                if (result is None or result.get(u'last_visited') < last_month):
-                   producer.send(topic, { 'url': url })  # send to the 4thug queue
+                   producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to one partition
                    sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
