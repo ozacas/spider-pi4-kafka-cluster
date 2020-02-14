@@ -154,9 +154,9 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         host = up.netloc
         if not host in self.recent_sites:
              self.recent_sites[host] = 0
-        if self.recent_sites[host] > self.custom_settings.get('LRU_MAX_PAGES_PER_SITE'):
-             return True
         self.recent_sites[host] += 1
+        if self.recent_sites[host] > self.custom_settings.get('LRU_MAX_PAGES_PER_SITE'):
+             return True # only eviction from the LRU cache will permit host again
         return False
 
     def queue_followup_links(self, producer, url_list):
