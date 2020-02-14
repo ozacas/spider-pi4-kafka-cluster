@@ -37,13 +37,13 @@ class KafkaSpiderMixin(object):
     def is_blacklisted(self, domain):
         return False # overriden in subclass
 
-    def is_recently_crawled(self, url):
+    def is_recently_crawled(self, url, up):
         return False # overridden in subclass
 
     def is_suitable(self, url):
-        if self.is_recently_crawled(url):
-           return False
         up = urlparse(url)
+        if self.is_recently_crawled(url, up):
+           return False
         if self.is_blacklisted(up.netloc.lower()):
            return False
         # check priority when crawling as we dont need everything crawled...
@@ -98,7 +98,8 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
         'ONEURL_KAFKA_URL_TOPIC': 'thug.gen5',
-        'LOG_LEVEL': 'INFO'
+        'LOG_LEVEL': 'INFO',
+        'LRU_MAX_PAGES_PER_SITE': 50  # only 50 pages per recent_sites cache entry ie. 50 pages per at least 100 sites spidered
     }
 
     def __init__(self, *args, **kwargs):
@@ -115,6 +116,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
        self.db = self.mongo[settings.get('ONEURL_MONGO_DB')]
        self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering)
+       self.recent_sites = pylru.lrucache(100) # last 100 sites (value is page count fetched since cache entry created for host)
        self.ensure_db_constraints()
 
     def ensure_db_constraints(self):
@@ -144,8 +146,18 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         self.cache[url] = ret
         return ret
 
-    def is_recently_crawled(self, url):
-        return url in self.recent_cache
+    def is_recently_crawled(self, url, up):
+        # recently fetched the URL?
+        if url in self.recent_cache:
+             return True
+        # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say no to future urls from the same host until it is evicted from the LRU cache
+        host = up.netloc
+        if not host in self.recent_sites:
+             self.recent_sites[host] = 0
+        if self.recent_sites[host] > self.custom_settings.get('LRU_MAX_PAGES_PER_SITE'):
+             return True
+        self.recent_sites[host] += 1
+        return False
 
     def queue_followup_links(self, producer, url_list):
         """
