@@ -73,9 +73,15 @@ class KafkaSpiderMixin(object):
 
     def schedule_next_request(self):
         """Schedules a request if available"""
-        req = self.next_request()
-        if req:
-            self.crawler.engine.crawl(req, spider=self)
+        found = 0
+        while found < 128:
+            req = self.next_request()
+            if req:
+                self.crawler.engine.crawl(req, spider=self)
+                found += 1
+            else: # no request?
+                break
+        self.logger.info("Got batch of {} URLs to crawl".format(found))
 
     def spider_idle(self):
         """Schedules a request if available, otherwise waits."""
@@ -120,6 +126,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
        self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering)
        self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
+       self.last_blacklist_query = datetime.utcnow() - timedelta(minutes=20) # force is_blacklisted() to query at startup
        self.ensure_db_constraints()
 
     def ensure_db_constraints(self):
@@ -166,27 +173,25 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         """
            URLs which are on an australian IP are sent to kafka
         """
-        urls = frozenset(url_list) # de-dupe
+        urls = list(frozenset(url_list)) # de-dupe
         self.logger.info("Considering {} url's for followup.".format(len(urls)))
         sent = 0
         rejected = 0
         not_au = 0
-        last_month = datetime.utcnow() - timedelta(weeks=4)
         topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
-        self.logger.info("Looking for URLs not visited since {}".format(str(last_month)))
-        for u in urls:
+        self.logger.info("Looking for URLs to followup (max 100, given {})".format(len(urls)))
+        for u in urls[:100]: # ignore pages with ridiculous number of urls, just consider first 100
            up = urlparse(u)
            priority = as_priority(u, up)
            if priority > 5:
                producer.send('rejected-urls', { 'url': u, 'reason': 'low priority' })
                rejected = rejected + 1
            elif self.au_locator.is_au(up.hostname):
-               up = up._replace(fragment='') # remove all fragments from spidering
-               url = urlunparse(up) # search for fragment-free URL
-               result = self.find_url(url)
-               if (result is None or result.get(u'last_visited') < last_month):
-                   producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to one partition
-                   sent = sent + 1
+               up = up._replace(fragment='')   # remove all fragments from spidering
+               url = urlunparse(up)            # search for fragment-free URL
+               # NB: avoid doing a find_url() as it is just too expensive with pages with large numbers of links
+               producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to one partition
+               sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
@@ -234,7 +239,12 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         return self.save_script(url, inline_script.encode(), inline_script=True, content_type=content_type)
 
     def is_blacklisted(self, domain):
-        return self.db.blacklisted_domains.find_one({ 'domain': domain }) is not None
+        # only run the query every 5 mins to avoid excessive db queries...
+        five_mins_ago = datetime.utcnow() - timedelta(minutes=5)
+        if self.last_blacklist_query < five_mins_ago:
+             self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
+
+        return domain in self.blacklisted_domains
 
     def parse(self, response):
         content_type = response.headers.get('Content-Type', b'').decode('utf-8').lower()
@@ -263,8 +273,9 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            self.logger.info("Saved {} inline scripts from {}".format(len(inline_scripts), url))
  
            # spider over the JS content... 
-           return [self.make_requests_from_url(u) for u in abs_src_urls if not u in self.recent_cache]
-           # FALLTHRU
+           ret = [self.make_requests_from_url(u) for u in abs_src_urls if self.is_suitable(u)] # only follow JS urls if not blacklisted/cached/etc....
+           self.logger.info("Following {} suitable JS URLs (total {})".format(len(ret), len(abs_src_urls)))
+           return ret
         elif 'javascript' in content_type:
            self.save_script(url, response.body, inline_script=False, content_type=content_type)
            self.logger.info("Saved javascript {}".format(url))
