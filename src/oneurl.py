@@ -99,8 +99,11 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
         'ONEURL_KAFKA_URL_TOPIC': 'thug.gen5',
         'LOG_LEVEL': 'INFO',
-        'LRU_MAX_PAGES_PER_SITE': 50  # only 50 pages per recent_sites cache entry ie. 50 pages per at least 100 sites spidered
+        'LRU_MAX_PAGES_PER_SITE': 20  # only 20 pages per recent_sites cache entry ie. 20 pages per at least 500 sites spidered
     }
+
+    def recent_site_eviction(self, key, value):
+       self.logger.info("Evicting site cache entry: {} = {} (cache size {})".format(key, value, len(self.recent_sites)))
 
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
@@ -116,7 +119,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
        self.db = self.mongo[settings.get('ONEURL_MONGO_DB')]
        self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering)
-       self.recent_sites = pylru.lrucache(100) # last 100 sites (value is page count fetched since cache entry created for host)
+       self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
        self.ensure_db_constraints()
 
     def ensure_db_constraints(self):
