@@ -40,14 +40,14 @@ class KafkaSpiderMixin(object):
     def is_recently_crawled(self, url, up):
         return False # overridden in subclass
 
-    def is_suitable(self, url):
+    def is_suitable(self, url, check_priority=True):
         up = urlparse(url)
         if self.is_recently_crawled(url, up):
            return False
         if self.is_blacklisted(up.netloc.lower()):
            return False
         # check priority when crawling as we dont need everything crawled...
-        if as_priority(url, up) > 4:
+        if check_priority and as_priority(url, up) > 4:
            return False
         return True
 
@@ -273,7 +273,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            self.logger.info("Saved {} inline scripts from {}".format(len(inline_scripts), url))
  
            # spider over the JS content... 
-           ret = [self.make_requests_from_url(u) for u in abs_src_urls if self.is_suitable(u)] # only follow JS urls if not blacklisted/cached/etc....
+           ret = [self.make_requests_from_url(u) for u in abs_src_urls if self.is_suitable(u, check_priority=False)] # only follow JS urls if not blacklisted/cached/etc....
            self.logger.info("Following {} suitable JS URLs (total {})".format(len(ret), len(abs_src_urls)))
            return ret
         elif 'javascript' in content_type:
