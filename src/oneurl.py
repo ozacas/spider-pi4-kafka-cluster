@@ -105,6 +105,7 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
         'ONEURL_KAFKA_URL_TOPIC': 'thug.gen5',
         'LOG_LEVEL': 'INFO',
+        'SAVE_SNIPPETS': False,        # save inline javascript in html pages to mongo?
         'LRU_MAX_PAGES_PER_SITE': 20  # only 20 pages per recent_sites cache entry ie. 20 pages per at least 500 sites spidered
     }
 
@@ -247,14 +248,21 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         return domain in self.blacklisted_domains
 
     def parse(self, response):
-        content_type = response.headers.get('Content-Type', b'').decode('utf-8').lower()
+        status = response.status
+        if status >= 400:
+           self.recent_cache[url] = 1
+           up = urlparse(response.url)
+           self.recent_sites[up.netloc] += 1 # we penalise bad responses since its slowing down the crawl
+           return []
+
+        content_type = response.headers.get('Content-Type', b'').decode().lower()
         url = response.url
         # dont visit the response url again for a long time
         if url in self.recent_cache:
              return []
         self.recent_cache[url] = 1 # no repeats from crawler
 
-        self.logger.info("Processing page {} {}".format(content_type, response.url))
+        self.logger.info("Processing page {} {}".format(content_type, url))
         if 'html' in content_type:
            src_urls = response.xpath('//script/@src').extract()
            hrefs = response.xpath('//a/@href').extract()
@@ -267,14 +275,17 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            self.queue_followup_links(self.producer, abs_hrefs)
        
            # extract inline javascript and store in mongo...
-           inline_scripts = response.xpath('//script/text()').getall()
-           for script in inline_scripts:
-                self.save_inline_script(url, script, content_type=content_type)
-           self.logger.info("Saved {} inline scripts from {}".format(len(inline_scripts), url))
+           save_snippets = self.settings.get('SAVE_SNIPPETS', False)
+           if save_snippets:
+              inline_scripts = response.xpath('//script/text()').getall()
+              for script in inline_scripts:
+                  self.save_inline_script(url, script, content_type=content_type)
+              self.logger.info("Saved {} inline scripts from {}".format(len(inline_scripts), url))
  
            # spider over the JS content... 
            ret = [self.make_requests_from_url(u) for u in abs_src_urls if self.is_suitable(u, check_priority=False)] # only follow JS urls if not blacklisted/cached/etc....
            self.logger.info("Following {} suitable JS URLs (total {})".format(len(ret), len(abs_src_urls)))
+           self.logger.info("Crawler has {} URLs pending.".format(len(self.crawler.engine.slot.scheduler)))
            return ret
         elif 'javascript' in content_type:
            self.save_script(url, response.body, inline_script=False, content_type=content_type)
