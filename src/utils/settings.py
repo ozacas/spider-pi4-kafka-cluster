@@ -12,6 +12,7 @@ HTTPERROR_ALLOW_ALL = True
 RANDOMIZE_DOWNLOAD_DELAY = True
 REDIRECT_MAX_TIMES = 5
 REDIRECT_ENABLED = True
+SCHEDULER_PRIORITY_QUEUE = 'scrapy.pqueues.DownloaderAwarePriorityQueue
 SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 TELNETCONSOLE_ENABLED = False
