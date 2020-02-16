@@ -299,7 +299,13 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
            self.logger.info("Received undesired content type: {} for {}".format(content_type, url))
 
         self.recent_cache[url] = 1     # no repeats from crawler
-        self.logger.info("Crawler has {} URLs pending.".format(len(self.crawler.engine.slot.scheduler)))
+        n_remaining = len(self.crawler.engine.slot.scheduler)
+        # keep the scheduler with at least 100 urls at all times to ensure the priority queue has enough to choose from (and avoid delays due to same domains)
+        if n_remaining < 100:
+           self.schedule_next_request()
+           n_remaining = len(self.crawler.engine.slot.scheduler)
+           # FALLTHRU
+        self.logger.info("Crawler has {} URLs pending.".format(n_remaining))
         return ret 
 
 if __name__ == "__main__":
