@@ -157,15 +157,18 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
         self.cache[url] = ret
         return ret
 
+    def penalise(self, host, penalty=1):
+        if not host in self.recent_sites:
+             self.recent_sites[host] = 0
+        self.recent_sites[host] += penalty
+
     def is_recently_crawled(self, url, up):
         # recently fetched the URL?
         if url in self.recent_cache:
              return True
         # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say no to future urls from the same host until it is evicted from the LRU cache
         host = up.netloc
-        if not host in self.recent_sites:
-             self.recent_sites[host] = 0
-        self.recent_sites[host] += 1
+        self.penalise(host)
         if self.recent_sites[host] > self.custom_settings.get('LRU_MAX_PAGES_PER_SITE'):
              return True # only eviction from the LRU cache will permit host again
         return False
@@ -249,20 +252,18 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def parse(self, response):
         status = response.status
-        if status >= 400:
+        url = response.url
+        if status < 200 or status >=400:
            self.recent_cache[url] = 1
-           up = urlparse(response.url)
-           self.recent_sites[up.netloc] += 1 # we penalise bad responses since its slowing down the crawl
+           up = urlparse(url)
+           self.logger.info("Penalising {} due to http status {}".format(up.netloc, status))
+           self.penalise(up.netloc, penalty=2) # penalty for slowing down the crawl is quite severe
            return []
 
         content_type = response.headers.get('Content-Type', b'').decode().lower()
-        url = response.url
-        # dont visit the response url again for a long time
-        if url in self.recent_cache:
-             return []
-        self.recent_cache[url] = 1 # no repeats from crawler
 
         self.logger.info("Processing page {} {}".format(content_type, url))
+        ret = []
         if 'html' in content_type:
            src_urls = response.xpath('//script/@src').extract()
            hrefs = response.xpath('//a/@href').extract()
@@ -283,16 +284,23 @@ class OneurlSpider(KafkaSpiderMixin, scrapy.Spider):
               self.logger.info("Saved {} inline scripts from {}".format(len(inline_scripts), url))
  
            # spider over the JS content... 
-           ret = [self.make_requests_from_url(u) for u in abs_src_urls if self.is_suitable(u, check_priority=False)] # only follow JS urls if not blacklisted/cached/etc....
+           for u in abs_src_urls:
+               if self.is_suitable(u, check_priority=False):
+                   ret.append(self.make_requests_from_url(u))
+                   self.recent_cache[u] = 1 # must mark as recently crawled since IT WILL be crawled in the near future to avoid dupes
+
            self.logger.info("Following {} suitable JS URLs (total {})".format(len(ret), len(abs_src_urls)))
-           self.logger.info("Crawler has {} URLs pending.".format(len(self.crawler.engine.slot.scheduler)))
-           return ret
+           # FALLTHRU
         elif 'javascript' in content_type:
            self.save_script(url, response.body, inline_script=False, content_type=content_type)
            self.logger.info("Saved javascript {}".format(url))
-           return []
+           # FALLTHRU
         else:
-           return []
+           self.logger.info("Received undesired content type: {} for {}".format(content_type, url))
+
+        self.recent_cache[url] = 1     # no repeats from crawler
+        self.logger.info("Crawler has {} URLs pending.".format(len(self.crawler.engine.slot.scheduler)))
+        return ret 
 
 if __name__ == "__main__":
     process = CrawlerProcess()
