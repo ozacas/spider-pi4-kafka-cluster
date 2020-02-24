@@ -1,6 +1,7 @@
+LOG_LEVEL = 'INFO'
 AUTOTHROTTLE_ENABLED = True
 AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
-DEPTH_PRIORITY = 1
+DEPTH_PRIORITY = 2
 DNS_TIMEOUT = 10
 DNSCACHE_ENABLED = True
 DNSCACHE_SIZE = 10000
@@ -12,7 +13,10 @@ HTTPERROR_ALLOW_ALL = True
 RANDOMIZE_DOWNLOAD_DELAY = True
 REDIRECT_MAX_TIMES = 5
 REDIRECT_ENABLED = True
-SCHEDULER_PRIORITY_QUEUE = 'scrapy.pqueues.DownloaderAwarePriorityQueue
+SCHEDULER_PRIORITY_QUEUE = 'scrapy.pqueues.DownloaderAwarePriorityQueue'
 SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 TELNETCONSOLE_ENABLED = False
+
+FILES_STORE = '/data/kafkaspider' # must exist on scrapy host with suitable permissions for the spider-user account
+ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
