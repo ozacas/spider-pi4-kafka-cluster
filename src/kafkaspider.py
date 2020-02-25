@@ -41,7 +41,7 @@ class KafkaSpiderMixin(object):
     def is_recently_crawled(self, url, up):
         return False # overridden in subclass
 
-    def is_suitable(self, url, check_priority=True):
+    def is_suitable(self, url, kafka_message=None, check_priority=True):
         up = urlparse(url)
         if self.is_recently_crawled(url, up):
            return False
@@ -64,7 +64,7 @@ class KafkaSpiderMixin(object):
            if url is None:
                return None
            # we implement the blacklist on the dequeue side so that we can blacklist as the crawl proceeds. Not enough to just blacklist on the enqueue side
-           if self.is_suitable(url):
+           if self.is_suitable(url, kafka_message=message): # pass message so that is_suitable() can look at content_type or whatever from kafka topic chosen by spider
                valid = True  # no more iterations
            else:
                self.logger.info("Skipping undesirable URL: {}".format(url))
@@ -88,6 +88,9 @@ class KafkaSpiderMixin(object):
         """Schedules a request if available, otherwise waits."""
         self.schedule_next_request()
         raise DontCloseSpider
+
+    def spider_closed(self, spider):
+        spider.logger.info("Closed spider") 
 
     def item_scraped(self, *args, **kwargs):
         pass
@@ -139,17 +142,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
         return spider
 
-    def spider_closed(self, spider):
-        spider.logger.info("Closed spider") 
-
-    def find_url(self, url):
-        # cache lookups as excessive mongo calls slow the spider down
-        if url in self.cache:
-            return self.cache[url] 
-        ret = self.db.urls.find_one({ 'url': url })
-        self.cache[url] = ret
-        return ret
-
     def penalise(self, host, penalty=1):
         if not host in self.recent_sites:
              self.recent_sites[host] = 0
@@ -186,7 +178,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
-               # NB: avoid doing a find_url() as it is just too expensive with pages with large numbers of links
                producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to one partition
                sent = sent + 1
            else:
@@ -194,50 +185,12 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                not_au = not_au + 1
         self.logger.info("Sent {} url's to kafka (rejected {}, not au {})".format(sent, rejected, not_au))
 
-    def save_url(self, url, now):
-         # ensure last_visited is kept accurate so that we can ignore url's which we've recently seen
-         result = self.db.urls.find_one_and_update({ 'url': url }, { "$set": { 'url': url, 'last_visited': now } }, upsert=True, return_document=pymongo.ReturnDocument.AFTER)
-         return result.get(u'_id')
-
-    def save_snippet(self, origin_url_id, script, script_len, sha256, md5):
-         j = { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }
-         ret = self.db.snippets.find_one_and_update(j, 
-                     { "$set": { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len, 'code': script }}, 
-                     upsert=True, return_document=pymongo.ReturnDocument.AFTER)
-         id = ret.get(u'_id')
-         self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': id }) 
-
-    def save_script(self, url, script, inline_script=False, content_type=None):
-        # NB: we work hard here to avoid mongo calls which will slow down the spider
-
-        # compute hashes to search for
-        sha256 = hashlib.sha256(script).hexdigest()
-        md5 = hashlib.md5(script).hexdigest()
-
-        # check to see if in mongo already
-        now = datetime.utcnow()
-        url_id = self.save_url(url, now)
-        #self.logger.info("Got oid {} for {}".format(url_id, url))
-
-        script_len = len(script)
-        if inline_script:
-             self.save_snippet(url_id, script, script_len, sha256, md5)
-        else:
-             s = self.db.scripts.find_one_and_update({ 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }, 
-                           { '$set': { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len, 'code': script }}, upsert=True, return_document=pymongo.ReturnDocument.AFTER)
-             self.db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
-
-        # finally update the kafka visited queue
-        self.producer.send('visited', { 'url': url, 'size_bytes': script_len, 'inline': inline_script,
-                                           'content-type': content_type, 'when': str(now), 
-					   'sha256': sha256, 'md5': md5 })
-
-
     def is_blacklisted(self, domain):
         # only run the query every 5 mins to avoid excessive db queries...
         five_mins_ago = datetime.utcnow() - timedelta(minutes=5)
         if self.last_blacklist_query < five_mins_ago:
              self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
+             self.last_blacklist_query = datetime.utcnow()
 
         return domain in self.blacklisted_domains
 
