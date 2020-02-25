@@ -15,4 +15,9 @@ class MyFilesPipeline(FilesPipeline):
           d = t[1] 
           d.update({ 'host': socket.gethostname(), 'when': str(datetime.utcnow()), 'origin': item.get('origin', None) })
           self.producer.send('javascript-artefacts', d)
+      else:
+          # failed to download JS - indicator of malicious-ness???? so we need to send it to kafka
+          d = dict(item)
+          d.update({ 'when': str(datetime.utcnow()) })
+          self.producer.send('javascript-download-failure', d)
       return item
