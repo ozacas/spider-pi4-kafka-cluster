@@ -84,10 +84,11 @@ class KafkaSpiderMixin(object):
         batch = set()
         while found < batch_size:
             req = self.next_request()
-            if req and not req.url in batch:
-                self.crawler.engine.crawl(req, spider=self)
-                batch.add(req.url)
-                found += 1
+            if req: 
+                if not req.url in batch: # else ignore it, since it is a dupe from kafka
+                    self.crawler.engine.crawl(req, spider=self)
+                    batch.add(req.url)
+                    found += 1
             else: # no request?
                 break
         self.logger.info("Got batch of {} URLs to crawl".format(found))
