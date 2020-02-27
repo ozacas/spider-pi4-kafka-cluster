@@ -117,7 +117,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         'ONEURL_KAFKA_URL_TOPIC': 'thug.gen5',
         'LOG_LEVEL': 'INFO',
         'SAVE_SNIPPETS': False,        # save inline javascript in html pages to mongo?
-        'LRU_MAX_PAGES_PER_SITE': 20  # only 20 pages per recent_sites cache entry ie. 20 pages per at least 500 sites spidered
+        'LRU_MAX_PAGES_PER_SITE': 20   # only 20 pages per recent_sites cache entry ie. 20 pages per at least 500 sites spidered
     }
 
     def recent_site_eviction(self, key, value):
@@ -140,8 +140,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
        self.last_blacklist_query = datetime.utcnow() - timedelta(minutes=20) # force is_blacklisted() to query at startup
-       self.file_urls = [] # used by FilesPipeline to persist to local storage
-       self.files = [] # to return results
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -155,6 +153,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         if not host in self.recent_sites:
              self.recent_sites[host] = 0
         self.recent_sites[host] += penalty
+        return self.recent_sites[host]
 
     def is_recently_crawled(self, url, up):
         # recently fetched the URL?
@@ -176,9 +175,10 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         sent = 0
         rejected = 0
         not_au = 0
+        # the more pages are in the LRU cache for the site
         topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
-        self.logger.info("Looking for URLs to followup (max 100, given {})".format(len(urls)))
-        for u in urls[:100]: # ignore pages with ridiculous number of urls, just consider first 100
+        self.logger.info("Looking for URLs to followup (given {})".format(len(urls)))
+        for u in urls:
            up = urlparse(u)
            priority = as_priority(u, up)
            if priority > 5:
@@ -220,8 +220,13 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            self.recent_cache[url] = 1     # no repeats from crawler, RACE-CONDITION: multiple url's maybe fetched in parallel with same url...
            hrefs = response.xpath('//a/@href').extract()
 
-           # but we also want suitable follow-up links for pushing into the url topic
-           abs_hrefs = [urljoin(url, href) for href in hrefs]
+           # but we also want suitable follow-up links for pushing into the url topic 
+           up = urlparse(url)
+           # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
+           n_seen = self.penalise(up.netloc, penalty=0)
+           n_seen = 20 if n_seen > 20
+           max    = 100 - 3 * n_seen i
+           abs_hrefs = [urljoin(url, href) for href in hrefs[:max]]
            self.followup_pages(self.producer, abs_hrefs)
        
            # spider over the JS content... 
