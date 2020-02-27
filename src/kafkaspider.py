@@ -52,6 +52,12 @@ class KafkaSpiderMixin(object):
            return False
         return True
 
+    def errback(self, failure):
+        url = failure.request.url
+        up = urlparse(url)
+        self.penalise(up.netloc, penalty=2) 
+        self.logger.info("Penalise {} due to download failure".format(up.netloc))
+
     def next_request(self):
         """
         Returns a request to be scheduled.
@@ -70,15 +76,17 @@ class KafkaSpiderMixin(object):
                self.logger.info("Skipping undesirable URL: {}".format(url))
 
         self.logger.info("Obtained kafka url: {}".format(url))
-        return self.make_requests_from_url(url)
+        return scrapy.Request(url, callback=self.parse, dont_filter=True, errback=self.errback)
 
     def schedule_next_request(self, batch_size=128):
         """Schedules a request if available"""
         found = 0
+        batch = set()
         while found < batch_size:
             req = self.next_request()
-            if req:
+            if req and not req.url in batch:
                 self.crawler.engine.crawl(req, spider=self)
+                batch.add(req.url)
                 found += 1
             else: # no request?
                 break
@@ -208,8 +216,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         ret = []
         self.logger.info("Processing page {} {}".format(content_type, url))
         if 'html' in content_type:
+           self.recent_cache[url] = 1     # no repeats from crawler, RACE-CONDITION: multiple url's maybe fetched in parallel with same url...
            hrefs = response.xpath('//a/@href').extract()
-           self.recent_cache[url] = 1     # no repeats from crawler
 
            # but we also want suitable follow-up links for pushing into the url topic
            abs_hrefs = [urljoin(url, href) for href in hrefs]
