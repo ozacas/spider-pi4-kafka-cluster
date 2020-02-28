@@ -166,18 +166,18 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
              return True # only eviction from the LRU cache will permit host again
         return False
 
-    def followup_pages(self, producer, url_list):
+    def followup_pages(self, producer, url_list, url_category, max=100):
         """
            URLs which are on an australian IP are sent to kafka
         """
         urls = list(frozenset(url_list)) # de-dupe
-        self.logger.info("Considering {} url's for followup.".format(len(urls)))
+        self.logger.debug("Considering {} url's for followup.".format(len(urls)))
         sent = 0
         rejected = 0
         not_au = 0
         # the more pages are in the LRU cache for the site
         topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
-        self.logger.info("Looking for URLs to followup (given {})".format(len(urls)))
+        self.logger.debug("Looking for URLs to followup (given {})".format(len(urls)))
         for u in urls:
            up = urlparse(u)
            priority = as_priority(u, up)
@@ -187,12 +187,14 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
-               producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to one partition
                sent = sent + 1
+               if sent > max: 
+                   break
+               producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
-        self.logger.info("Sent {} url's to kafka (rejected {}, not au {})".format(sent, rejected, not_au))
+        self.logger.info("Sent {} {} URLs to kafka (rejected {}, not au {})".format(sent, url_category, rejected, not_au))
 
     def is_blacklisted(self, domain):
         # only run the query every 5 mins to avoid excessive db queries...
@@ -224,10 +226,19 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            up = urlparse(url)
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
            n_seen = self.penalise(up.netloc, penalty=0)
-           n_seen = 20 if n_seen > 20
-           max    = 100 - 3 * n_seen i
-           abs_hrefs = [urljoin(url, href) for href in hrefs[:max]]
-           self.followup_pages(self.producer, abs_hrefs)
+           if n_seen > 20:
+               n_seen = 20
+           max    = 100 - 5 * n_seen 
+           abs_hrefs = [urljoin(url, href) for href in hrefs]
+           external_hrefs = []
+           internal_hrefs = []
+           for u in abs_hrefs:
+                if not up.netloc in u:
+                     external_hrefs.append(u)
+                else:
+                     internal_hrefs.append(u)
+           self.followup_pages(self.producer, external_hrefs, 'External', max=max)
+           self.followup_pages(self.producer, internal_hrefs, 'Internal', max=max-len(external_hrefs))
        
            # spider over the JS content... 
            src_urls = response.xpath('//script/@src').extract()
