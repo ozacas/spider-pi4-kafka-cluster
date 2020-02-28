@@ -177,7 +177,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         not_au = 0
         # the more pages are in the LRU cache for the site
         topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
-        self.logger.debug("Looking for URLs to followup (given {})".format(len(urls)))
+        self.logger.info("{} URLs to followup: given {}, max {}".format(url_category, len(urls), max))
         for u in urls:
            up = urlparse(u)
            priority = as_priority(u, up)
@@ -187,10 +187,10 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
+               producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
                sent = sent + 1
                if sent > max: 
                    break
-               producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
@@ -228,9 +228,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            n_seen = self.penalise(up.netloc, penalty=0)
            if n_seen > 20:
                n_seen = 20
-           max    = 100 - 5 * n_seen 
+           max    = 100 - 4 * n_seen 
            abs_hrefs = [urljoin(url, href) for href in hrefs]
-           external_hrefs = []
+           external_hrefs = [] # prioritise external links unless max is large enough to cater to both categories on the page (ie. broad crawl rather than deep)
            internal_hrefs = []
            for u in abs_hrefs:
                 if not up.netloc in u:
@@ -238,7 +238,10 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                 else:
                      internal_hrefs.append(u)
            self.followup_pages(self.producer, external_hrefs, 'External', max=max)
-           self.followup_pages(self.producer, internal_hrefs, 'Internal', max=max-len(external_hrefs))
+           left = max - len(external_hrefs)
+           if left < 0:
+               left = 0
+           self.followup_pages(self.producer, internal_hrefs, 'Internal', max=left)
        
            # spider over the JS content... 
            src_urls = response.xpath('//script/@src').extract()
