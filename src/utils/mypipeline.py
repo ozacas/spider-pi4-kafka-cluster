@@ -19,15 +19,15 @@ class MyFilesPipeline(FilesPipeline):
       # submit completion to kafka queue (only if item successfully saved)
       t = results[0]
       if t[0]:
-          self.success(t[1])
+          self.success(t[1], item)
       else:
           # failed to download JS - indicator of malicious-ness???? so we need to send it to kafka
           self.error(item)
       return item
 
-   def success(self, response):
-      d.update({ 'host': socket.gethostname(), 'when': str(datetime.utcnow()), 'origin': item.get('origin', None) })
-      self.producer.send(self.settings.get('FILES_DOWNLOAD_ARTEFACTS_TOPIC'), d)
+   def success(self, response, item):
+      response.update({ 'host': socket.gethostname(), 'when': str(datetime.utcnow()), 'origin': item.get('origin', None) })
+      self.producer.send(self.settings.get('FILES_DOWNLOAD_ARTEFACTS_TOPIC'), response)
 
    def error(self, failure):
       d = dict(failure)
