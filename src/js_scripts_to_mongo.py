@@ -20,8 +20,7 @@ class SaveToMongo(object):
         self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), auto_offset_reset='earliest', consumer_timeout_ms=10000, bootstrap_servers=bs) # no group
 
     def save_url(self, url, now):
-         # ensure last_visited is kept accurate so that we can ignore url's which we've recently seen
-         result = self.db.urls.find_one_and_update({ 'url': url }, { "$set": { 'url': url, 'last_visited': now } }, upsert=True, return_document=pymongo.ReturnDocument.AFTER)
+         result = self.db.urls.insert_one({ 'url': url, 'last_visited': now })
          return result.get(u'_id')
 
     def save_script(self, url, script, content_type=None, expected_md5=None):
@@ -47,7 +46,7 @@ class SaveToMongo(object):
                                            'content-type': content_type, 'when': str(now), 
 					   'sha256': sha256, 'md5': md5 })
  
-    def run(self, my_hostname=None, root='/data/kafkaspider/'):
+    def run(self, root, my_hostname=None): # eg. root='/data/kafkaspider2'
         cnt = 0
         for msg in self.consumer:
             d = msg.value
@@ -64,5 +63,13 @@ class SaveToMongo(object):
                     print(e)
               
 if __name__ == "__main__":
-    s = SaveToMongo(mongo_host='pi1', mongo_port=27017, mongo_db='au_js', visited_topic='visited')
-    s.run(my_hostname=socket.gethostname())
+    a = argparse.ArgumentParser()
+    a.add_argument("--mongo-host", help="Hostname/IP with mongo instance", type=str, default="pi1")
+    a.add_argument("--mongo-port", help="TCP/IP port for mongo instance", type=int, default=27017)
+    a.add_argument("--db", help="Mongo database to populate with JS data from kafkaspider", type=str, default="au_js")
+    a.add_argument("--topic", help="Kafka topic to get visited JS summary", type=str, default="visited")
+    a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1,kafka2")
+    a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
+    args = a.parse_args() 
+    s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, visited_topic=args.topic, bootstrap_kafka_servers=args.bootstrap)
+    s.run(args.root, my_hostname=socket.gethostname())
