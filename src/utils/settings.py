@@ -18,7 +18,7 @@ SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 TELNETCONSOLE_ENABLED = False
 
-FILES_STORE = '/data/kafkaspider2' # must exist on scrapy host with suitable permissions for the spider-user account
+FILES_STORE = '/data/kafkaspider' # must exist on scrapy host with suitable permissions for the spider-user account
 FILES_DOWNLOAD_FAILURE_TOPIC = 'javascript-download-failure'
 FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts3'
 ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
