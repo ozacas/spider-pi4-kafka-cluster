@@ -58,7 +58,7 @@ class KafkaSpiderMixin(object):
         self.penalise(up.netloc, penalty=2) 
         self.logger.info("Penalise {} due to download failure".format(up.netloc))
 
-    def next_request(self):
+    def kafka_next(self):
         """
         Returns a request to be scheduled.
         :rtype: str or None
@@ -76,18 +76,19 @@ class KafkaSpiderMixin(object):
                self.logger.info("Skipping undesirable URL: {}".format(url))
 
         self.logger.info("Obtained kafka url: {}".format(url))
-        return scrapy.Request(url, callback=self.parse, dont_filter=True, errback=self.errback)
+        return url
 
     def schedule_next_request(self, batch_size=128):
         """Schedules a request if available"""
         found = 0
         batch = set()
         while found < batch_size:
-            req = self.next_request()
-            if req: 
-                if not req.url in batch: # else ignore it, since it is a dupe from kafka
+            url = self.kafka_next()
+            if url: 
+                if not url in batch: # else ignore it, since it is a dupe from kafka
+                    req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
                     self.crawler.engine.crawl(req, spider=self)
-                    batch.add(req.url)
+                    batch.add(url)
                     found += 1
             else: # no request?
                 break
@@ -188,13 +189,14 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
                producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
-               sent = sent + 1
                if sent > max: 
                    break
+               sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
         self.logger.info("Sent {} {} URLs to kafka (rejected {}, not au {})".format(sent, url_category, rejected, not_au))
+        return sent
 
     def is_blacklisted(self, domain):
         # only run the query every 5 mins to avoid excessive db queries...
@@ -237,8 +239,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                      external_hrefs.append(u)
                 else:
                      internal_hrefs.append(u)
-           self.followup_pages(self.producer, external_hrefs, 'External', max=max)
-           left = max - len(external_hrefs)
+           n = self.followup_pages(self.producer, external_hrefs, 'External', max=max)
+           left = max - n
            if left < 0:
                left = 0
            self.followup_pages(self.producer, internal_hrefs, 'Internal', max=left)
