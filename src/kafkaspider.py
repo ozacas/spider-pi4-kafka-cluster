@@ -45,7 +45,7 @@ class KafkaSpiderMixin(object):
         up = urlparse(url)
         if self.is_recently_crawled(url, up):
            return False
-        if self.is_blacklisted(up.hostname.lower()):
+        if up.hostname and self.is_blacklisted(up.hostname.lower()):
            return False
         # check priority when crawling as we dont need everything crawled...
         if check_priority and as_priority(url, up) > 4:
