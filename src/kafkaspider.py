@@ -78,18 +78,28 @@ class KafkaSpiderMixin(object):
         self.logger.info("Obtained kafka url: {}".format(url))
         return url
 
-    def schedule_next_request(self, batch_size=128):
+    def schedule_next_request(self, batch_size=200):
         """Schedules a request if available"""
         found = 0
         batch = set()
+        counts_by_host = { }
         while found < batch_size:
             url = self.kafka_next()
             if url: 
                 if not url in batch: # else ignore it, since it is a dupe from kafka
-                    req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
-                    self.crawler.engine.crawl(req, spider=self)
-                    batch.add(url)
-                    found += 1
+                    up = urlparse(url)
+                    if not up.netloc in counts_by_host:
+                        counts_by_host[up.netloc] = 1
+                    else:
+                        counts_by_host[up.netloc] += 1
+                        if counts_by_host[up.netloc] <= 10: 
+                            req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
+                            self.crawler.engine.crawl(req, spider=self)
+                            batch.add(url)
+                            found += 1
+                        else: 
+                            self.logger.info("Ignoring due to non-random ingest for {}".format(url))
+                            # TODO FIXME... push back onto the queue? nah... we have no shortage of urls!
             else: # no request?
                 break
         self.logger.info("Got batch of {} URLs to crawl".format(found))
