@@ -2,6 +2,7 @@
 import json
 import hashlib
 import pymongo
+from bson.binary import Binary
 import argparse
 import pylru
 import socket
@@ -46,11 +47,11 @@ class SaveToMongo(object):
         self.producer.send(self.visited_topic, { 'url': url, 'size_bytes': script_len, 'inline': False,
                                            'content-type': content_type, 'when': str(now), 
 					   'sha256': sha256, 'md5': md5 })
+
     def process_tuple(self, tuple, root):
         path = "{}/{}".format(root, tuple.path)
         with open(path, 'rb') as fp:
-            script = fp.read()
-            self.save_script(tuple.url, script, content_type="text/javascript", expected_md5=tuple.checksum)
+            self.save_script(tuple.url, Binary(fp.read()), content_type="text/javascript", expected_md5=tuple.checksum)
 
     def run(self, root, my_hostname=None, fail_on_error=False): # eg. root='/data/kafkaspider2'
         cnt = 0
