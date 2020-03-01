@@ -22,7 +22,7 @@ def main(input_topic, output_topic, bootstrap_servers='kafka1:9092', auto_offset
         d.update(up._asdict())
         d.update({ 'priority' : as_priority(url, up) })
         if d.get('priority') <= max_priority:
-            producer.send(output_topic, d, key=up.netloc.encode('utf-8'))
+            producer.send(output_topic, d, key=up.hostname.encode('utf-8'))
             sent = sent + 1
             cache[url] = 1
         else:
@@ -35,7 +35,7 @@ def main(input_topic, output_topic, bootstrap_servers='kafka1:9092', auto_offset
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='Process an input topic (with url field) and put only good urls into another topic. Useful to clean a URL queue')
     args.add_argument('--in', type=str, default='4thug.gen4')
-    args.add_argument('--out', type=str, default='4thug.gen5')
+    args.add_argument('--out', type=str, default='4thug.gen6')
     args.add_argument('--threshold', type=int, default=3) # maximum priority to put into output queue
     args.add_argument('--bootstrap', type=str, default='kafka1:9092')
     args.add_argument('--group', nargs='?', type=str, default=None) # if specified, only output urls at the current group consumer offset, not earliest
