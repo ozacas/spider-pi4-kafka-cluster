@@ -36,7 +36,7 @@ class MyFilesPipeline(FilesPipeline):
       try:
           return super().media_downloaded(response, request, info)
       except FileException as fe:
-          failure = { 'url': response.url, 'origin': referer_str(request), 'reason': str(fe) }
+          failure = { 'url': response.url, 'origin': referer_str(request), 'reason': str(fe), 'http-status': response.status }
           self.error(failure)
           raise fe
 
