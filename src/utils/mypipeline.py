@@ -25,7 +25,7 @@ class MyFilesPipeline(FilesPipeline):
           self.error(item)
       return item
 
-   def media_failure(self, failure, request, info):
+   def media_failed(self, failure, request, info):
       if not isinstance(failure.value, IgnoreRequest):
           d = { 'url': request.url, 'failure': dict(failure), 'when': str(datetime.utcnow()) }
           self.producer.send(self.settings.get('FILES_PIPELINE_FAILURE_TOPIC'), d)
