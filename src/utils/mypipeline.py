@@ -25,6 +25,12 @@ class MyFilesPipeline(FilesPipeline):
           self.error(item)
       return item
 
+   def media_downloaded(self, response, request, info):
+      if response.status != 200:
+          d = { 'url': request.url, 'http-status': response.status, 'when': str(datetime.utcnow()) }
+          self.producer.send(self.settings.get('FILES_PIPELINE_FAILURE_TOPIC'), d)
+      return super().media_downloaded(response, request, info)
+
    def success(self, response, item):
       response.update({ 'host': socket.gethostname(), 'when': str(datetime.utcnow()), 'origin': item.get('origin', None) })
       self.producer.send(self.settings.get('FILES_DOWNLOAD_ARTEFACTS_TOPIC'), response)
