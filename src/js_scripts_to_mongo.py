@@ -17,9 +17,11 @@ class SaveToMongo(object):
         self.db = self.mongo[kwargs.get('mongo_db')]
         self.visited_topic = kwargs.get('visited_topic')
         self.artefact_topic = kwargs.get('artefact_topic')
+        gid = kwargs.get('gid')
         bs = kwargs.get('bootstrap_kafka_servers')
+        self.n = kwargs.get('n')
         self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
-        self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), auto_offset_reset='earliest', consumer_timeout_ms=10000, bootstrap_servers=bs) # no group
+        self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), auto_offset_reset='earliest', consumer_timeout_ms=10000, bootstrap_servers=bs, group_id=gid) 
 
     def save_url(self, url, now):
          result = self.db.urls.insert_one({ 'url': url, 'last_visited': now })
@@ -60,9 +62,12 @@ class SaveToMongo(object):
         print("Loading records from kafka topic: {}".format(self.artefact_topic))
         for msg in self.consumer:
             d = msg.value
-            if d['host'] == my_hostname and not d['origin'] is None:
-                  r = record(**d)
-                  l.append(r) 
+            if d['host'] == my_hostname and not d['origin'] is None: # origin check is due to buggy records put into topic during development
+                 cnt += 1
+                 if cnt > self.n:  # process topic indefinitely or not? Remember kafka group offset will be committed, so it will pick up from where we left off
+                     break
+                 r = record(**d)
+                 l.append(r) 
         print("Loaded {} records.".format(len(l)))
         # sort by checksum and then by sha1 hash to speed mongo access
         record.__lt__ = lambda self, other: self.checksum < other.checksum
@@ -91,8 +96,13 @@ if __name__ == "__main__":
     a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
     a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
+    a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite)", type=int, default=1000000000)
+    a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
     args = a.parse_args() 
     print("Added JS artefact summary to {} topic.".format(args.visited))
-    s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, 
+    gid = args.group
+    if gid and len(gid) > 0: # empty string on command is translated to no group
+        gid = None 
+    s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid,
                     visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap)
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail)
