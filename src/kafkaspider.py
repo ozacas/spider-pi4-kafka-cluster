@@ -45,7 +45,7 @@ class KafkaSpiderMixin(object):
         up = urlparse(url)
         if self.is_recently_crawled(url, up):
            return False
-        if self.is_blacklisted(up.netloc.lower()):
+        if self.is_blacklisted(up.hostname.lower()):
            return False
         # check priority when crawling as we dont need everything crawled...
         if check_priority and as_priority(url, up) > 4:
@@ -55,8 +55,8 @@ class KafkaSpiderMixin(object):
     def errback(self, failure):
         url = failure.request.url
         up = urlparse(url)
-        self.penalise(up.netloc, penalty=2) 
-        self.logger.info("Penalise {} due to download failure".format(up.netloc))
+        self.penalise(up.hostname, penalty=2) 
+        self.logger.info("Penalise {} due to download failure".format(up.hostname))
 
     def kafka_next(self):
         """
@@ -88,11 +88,11 @@ class KafkaSpiderMixin(object):
             if url: 
                 if not url in batch: # else ignore it, since it is a dupe from kafka
                     up = urlparse(url)
-                    if not up.netloc in counts_by_host:
-                        counts_by_host[up.netloc] = 1
+                    if not up.hostname in counts_by_host:
+                        counts_by_host[up.hostname] = 1
                     else:
-                        counts_by_host[up.netloc] += 1
-                        if counts_by_host[up.netloc] <= 10: 
+                        counts_by_host[up.hostname] += 1
+                        if counts_by_host[up.hostname] <= 10: 
                             req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
                             self.crawler.engine.crawl(req, spider=self)
                             batch.add(url)
@@ -171,7 +171,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         if url in self.recent_cache:
              return True
         # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say no to future urls from the same host until it is evicted from the LRU cache
-        host = up.netloc
+        host = up.hostname
         self.penalise(host)
         if self.recent_sites[host] > self.custom_settings.get('LRU_MAX_PAGES_PER_SITE'):
              return True # only eviction from the LRU cache will permit host again
@@ -198,7 +198,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
-               producer.send(topic, { 'url': url }, key=up.netloc.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
+               producer.send(topic, { 'url': url }, key=up.hostname.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
                if sent > max: 
                    break
                sent = sent + 1
@@ -210,10 +210,11 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def is_blacklisted(self, domain):
         # only run the query every 5 mins to avoid excessive db queries...
-        five_mins_ago = datetime.utcnow() - timedelta(minutes=5)
+        now = datetime.utcnow()
+        five_mins_ago = now - timedelta(minutes=5)
         if self.last_blacklist_query < five_mins_ago:
              self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
-             self.last_blacklist_query = datetime.utcnow()
+             self.last_blacklist_query = now
 
         return domain in self.blacklisted_domains
 
@@ -223,8 +224,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         if status < 200 or status >=400:
            self.recent_cache[url] = 1
            up = urlparse(url)
-           self.logger.info("Penalising {} due to http status {}".format(up.netloc, status))
-           self.penalise(up.netloc, penalty=2) # penalty for slowing down the crawl is quite severe
+           self.logger.info("Penalising {} due to http status {}".format(up.hostname, status))
+           self.penalise(up.hostname, penalty=2) # penalty for slowing down the crawl is quite severe, but wont impact current batch already being crawled
            return []
 
         content_type = response.headers.get('Content-Type', b'').decode().lower()
@@ -237,7 +238,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            # but we also want suitable follow-up links for pushing into the url topic 
            up = urlparse(url)
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
-           n_seen = self.penalise(up.netloc, penalty=0)
+           n_seen = self.penalise(up.hostname, penalty=0)
            if n_seen > 20:
                n_seen = 20
            max    = 100 - 4 * n_seen 
@@ -245,7 +246,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            external_hrefs = [] # prioritise external links unless max is large enough to cater to both categories on the page (ie. broad crawl rather than deep)
            internal_hrefs = []
            for u in abs_hrefs:
-                if not up.netloc in u:
+                if not up.hostname in u:
                      external_hrefs.append(u)
                 else:
                      internal_hrefs.append(u)
@@ -271,6 +272,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            # FALLTHRU
         else:
            self.logger.info("Received undesired content type: {} for {}".format(content_type, url))
+           up = urlparse(url)
+           self.penalise(up.hostname, penalty=2) # dont want to slow down the spider on sites with undesirable site design
+          
 
         return ret  # url's come only from kafka, not the parse() invocation
 
