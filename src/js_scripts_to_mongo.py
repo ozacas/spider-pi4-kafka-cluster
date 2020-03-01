@@ -99,10 +99,13 @@ if __name__ == "__main__":
     a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite)", type=int, default=1000000000)
     a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
     args = a.parse_args() 
-    print("Added JS artefact summary to {} topic.".format(args.visited))
     gid = args.group
-    if gid and len(gid) > 0: # empty string on command is translated to no group
+    if gid and len(gid) < 1: # empty string on command is translated to no group
         gid = None 
+    print("Using kafka consumer group ID: {}".format(gid))
+    print("Using kakfa bootstrap servers: {}".format(args.bootstrap))
+    print("Saving artefacts to kafka topic: {}".format(args.visited))
+    print("Reading artefacts from: topic={} root={}".format(args.artefacts, args.root))
     s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid,
                     visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap)
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail)
