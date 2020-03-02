@@ -177,7 +177,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
              return True # only eviction from the LRU cache will permit host again
         return False
 
-    def followup_pages(self, producer, url_iterable, url_category, max=100):
+    def followup_pages(self, producer, url_iterable, max=100):
         """
            URLs which are on an australian IP are sent to kafka
         """
@@ -202,7 +202,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
-        self.logger.info("Rejected {} URLs. {} not AU.".format(rejected, not_au))
+        self.logger.info("Rejected {} low priority URLs. {} not AU.".format(rejected, not_au))
         return sent
 
     def is_blacklisted(self, domain):
@@ -247,12 +247,12 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                      external_hrefs.add(u)
                 else:
                      internal_hrefs.add(u)
-           n = self.followup_pages(self.producer, external_hrefs, 'External', max=max)
+           n = self.followup_pages(self.producer, external_hrefs, max=max) 
            left = max - n
            self.logger.info("Added {} external URLs".format(n))
            if left < 0:
                left = 0
-           n = self.followup_pages(self.producer, internal_hrefs, 'Internal', max=left)
+           n = self.followup_pages(self.producer, internal_hrefs, max=left)
            self.logger.info("Added {} internal URLs".format(n))
        
            # spider over the JS content... 
