@@ -81,6 +81,7 @@ class KafkaSpiderMixin(object):
         :rtype: str or None
         """
         valid = False
+        skipped = 0
         while not valid:
            message = next(self.consumer)
            url = self.process_kafka_message(message)
@@ -90,35 +91,45 @@ class KafkaSpiderMixin(object):
            if self.is_suitable(url, kafka_message=message): # pass message so that is_suitable() can look at content_type or whatever from kafka topic chosen by spider
                valid = True  # no more iterations
            else:
-               self.logger.info("Skipping undesirable URL: {}".format(url))
+               #self.logger.info("Skipping undesirable URL: {}".format(url))
+               skipped += 1
 
-        self.logger.info("Obtained kafka url: {}".format(url))
-        return url
+        #self.logger.info("Obtained kafka url: {}".format(url))
+        return (url, skipped)
 
     def schedule_next_request(self, batch_size=200):
         """Schedules a request if available"""
         found = 0
+        non_random = 0
+        skipped_total = 0
         batch = set()
         counts_by_host = { }
         while found < batch_size:
-            url = self.kafka_next()
+            url, skipped = self.kafka_next()
+            skipped_total += skipped
             if url: 
                 if not url in batch: # else ignore it, since it is a dupe from kafka
                     up = urlparse(url)
-                    if not up.hostname in counts_by_host:
-                        counts_by_host[up.hostname] = 1
+                    host = up.hostname
+                    if not host in counts_by_host:
+                        counts_by_host[host] = 1
                     else:
-                        counts_by_host[up.hostname] += 1
-                        if counts_by_host[up.hostname] <= 10: 
+                        counts_by_host[host] += 1
+                        if counts_by_host[host] <= 10: 
                             req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
                             self.crawler.engine.crawl(req, spider=self)
                             batch.add(url)
                             found += 1
                         else: 
-                            self.logger.info("Ignoring due to non-random ingest for {}".format(url))
+                            #self.logger.info("Ignoring due to non-random ingest for {}".format(url))
                             # TODO FIXME... push back onto the queue? nah... we have no shortage of urls!
+                            #self.producer.send(self.settings.get('ONEURL_KAFKA_URL_TOPIC'), { 'url': url })
+                            non_random += 1
+                            pass
             else: # no request?
                 break
+
+        self.logger.info("Skipped {} URLs as undesirable, {} URLs as too many in a single batch to the same site".format(skipped_total, non_random))
         self.logger.info("Got batch of {} URLs to crawl".format(found))
 
     def spider_idle(self):
@@ -128,9 +139,6 @@ class KafkaSpiderMixin(object):
 
     def spider_closed(self, spider):
         spider.logger.info("Closed spider") 
-
-    def item_scraped(self, *args, **kwargs):
-        pass
 
 class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'kafkaspider'
@@ -161,7 +169,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
     def from_crawler(cls, crawler, *args, **kwargs):
         spider = super(KafkaSpider, cls).from_crawler(crawler, *args, **kwargs)
         crawler.signals.connect(spider.spider_idle, signal=signals.spider_idle)
-        crawler.signals.connect(spider.item_scraped, signal=signals.item_scraped)
         crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
         return spider
 
