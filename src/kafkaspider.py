@@ -177,19 +177,16 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
              return True # only eviction from the LRU cache will permit host again
         return False
 
-    def followup_pages(self, producer, url_list, url_category, max=100):
+    def followup_pages(self, producer, url_iterable, url_category, max=100):
         """
            URLs which are on an australian IP are sent to kafka
         """
-        urls = list(frozenset(url_list)) # de-dupe
-        self.logger.debug("Considering {} url's for followup.".format(len(urls)))
         sent = 0
         rejected = 0
         not_au = 0
         # the more pages are in the LRU cache for the site
         topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
-        self.logger.info("{} URLs to followup: given {}, max {}".format(url_category, len(urls), max))
-        for u in urls:
+        for u in url_iterable:
            up = urlparse(u)
            priority = as_priority(u, up)
            if priority > 5:
@@ -205,7 +202,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
-        self.logger.info("Sent {} {} URLs to kafka (rejected {}, not au {})".format(sent, url_category, rejected, not_au))
+        self.logger.info("Rejected {} URLs. {} not AU.".format(rejected, not_au))
         return sent
 
     def is_blacklisted(self, domain):
@@ -243,18 +240,20 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                n_seen = 20
            max    = 100 - 4 * n_seen 
            abs_hrefs = [urljoin(url, href) for href in hrefs]
-           external_hrefs = [] # prioritise external links unless max is large enough to cater to both categories on the page (ie. broad crawl rather than deep)
-           internal_hrefs = []
+           external_hrefs = set() # prioritise external links unless max is large enough to cater to both categories on the page (ie. broad crawl rather than deep)
+           internal_hrefs = set()
            for u in abs_hrefs:
                 if not up.hostname in u:
-                     external_hrefs.append(u)
+                     external_hrefs.add(u)
                 else:
-                     internal_hrefs.append(u)
+                     internal_hrefs.add(u)
            n = self.followup_pages(self.producer, external_hrefs, 'External', max=max)
            left = max - n
+           self.logger.info("Added {} external URLs".format(n))
            if left < 0:
                left = 0
-           self.followup_pages(self.producer, internal_hrefs, 'Internal', max=left)
+           n = self.followup_pages(self.producer, internal_hrefs, 'Internal', max=left)
+           self.logger.info("Added {} internal URLs".format(n))
        
            # spider over the JS content... 
            src_urls = response.xpath('//script/@src').extract()
@@ -262,7 +261,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            abs_src_urls = [urljoin(url, src) for src in src_urls]
            cnt = 0
            for u in abs_src_urls:
-               if self.is_suitable(u, check_priority=False) and not u in self.js_cache:
+               if not u in self.js_cache and self.is_suitable(u, check_priority=False):
                    item = FileItem(origin=url, file_urls=[u])
                    ret.append(item) # will trigger FilesPipeline to fetch it with priority and persist to local storage
                    self.js_cache[u] = 1 # dont fetch this JS again for at least 500 JS url's....
