@@ -70,6 +70,8 @@ class SaveToMongo(object):
                  r = record(**d)
                  l.append(r) 
         print("Loaded {} records.".format(len(l)))
+        self.consumer.commit()
+
         # sort by checksum and then by sha1 hash to speed mongo queries (maybe)
         record.__lt__ = lambda self, other: self.checksum < other.checksum
         l = sorted(l)
