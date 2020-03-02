@@ -177,8 +177,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
              return True
         # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say no to future urls from the same host until it is evicted from the LRU cache
         host = up.hostname
-        self.penalise(host)
-        if self.recent_sites[host] > self.settings.get('LRU_MAX_PAGES_PER_SITE'):
+        n_pages = self.penalise(host)
+        if n_pages > self.settings.get('LRU_MAX_PAGES_PER_SITE'):
              return True # only eviction from the LRU cache will permit host again
         return False
 
