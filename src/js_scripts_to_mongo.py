@@ -22,7 +22,7 @@ class SaveToMongo(object):
         self.n = kwargs.get('n')
         self.debug = kwargs.get('debug')
         self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
-        self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), auto_offset_reset='earliest', consumer_timeout_ms=10000, bootstrap_servers=bs, group_id=gid) 
+        self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), consumer_timeout_ms=10000, bootstrap_servers=bs, group_id=gid) 
 
     def save_url(self, url, now):
          result = self.db.urls.insert_one({ 'url': url, 'last_visited': now })
