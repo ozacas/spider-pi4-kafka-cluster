@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import scrapy
+from twisted.internet import task, reactor
 from scrapy import signals
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
@@ -170,6 +171,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         spider = super(KafkaSpider, cls).from_crawler(crawler, *args, **kwargs)
         crawler.signals.connect(spider.spider_idle, signal=signals.spider_idle)
         crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
+        t = task.LoopingCall(spider.update_blacklist)
+        t.start(300) # every 5 minutes
+        #reactor.run()  # spider will do this for us, so no need...
         return spider
 
     def penalise(self, host, penalty=1):
@@ -222,6 +226,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
              self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
 
         return domain in self.blacklisted_domains
+
+    def update_blacklist(self):
+        self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
 
     def parse(self, response):
         status = response.status
