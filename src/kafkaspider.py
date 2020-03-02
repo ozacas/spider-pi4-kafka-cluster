@@ -164,7 +164,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
        self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
-       self.blacklisted_domains = None # will issue mongo call to get list of current domains
+       self.update_blacklist() # to get self.blacklist_domains populated
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -222,9 +222,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         return sent
 
     def is_blacklisted(self, domain):
-        if self.blacklisted_domains is None:
-             self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
-
         return domain in self.blacklisted_domains
 
     def update_blacklist(self):
