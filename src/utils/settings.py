@@ -18,8 +18,22 @@ SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 TELNETCONSOLE_ENABLED = False
 
+# we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
 FILES_STORE = '/data/kafkaspider3' # must exist on scrapy host with suitable permissions for the spider-user account
 FILES_DOWNLOAD_FAILURE_TOPIC = 'javascript-download-failure'
 FILES_PIPELINE_FAILURE_TOPIC = 'javascript-pipeline-failure'
 FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-3'
 ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
+
+# other spider related settings
+ONEURL_MONGO_HOST = 'pi1'
+ONEURL_MONGO_PORT = 27017
+ONEURL_MAXMIND_DB = '/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb'
+ONEURL_MONGO_DB = 'au_js'
+ONEURL_KAFKA_BOOTSTRAP = 'kafka1'
+ONEURL_KAFKA_CONSUMER_GROUP = 'scrapy-thug2'
+ONEURL_KAFKA_URL_TOPIC = 'thug.gen5'
+VISITED_TOPIC = 'visited'
+PAGESTATS_TOPIC = 'html-page-stats'
+LRU_MAX_PAGES_PER_SITE = 20   # only 20 pages per recent_sites cache entry ie. 20 pages per at least 500 sites spidered
+

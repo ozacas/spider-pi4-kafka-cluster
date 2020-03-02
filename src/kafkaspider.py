@@ -2,19 +2,35 @@
 import scrapy
 from scrapy import signals
 from scrapy.crawler import CrawlerProcess
+from scrapy.utils.project import get_project_settings
+from scrapy.exceptions import DontCloseSpider
+
+from dataclasses import dataclass, asdict
 import json
 import hashlib
 import pymongo
 import argparse
 import pylru
+from collections import namedtuple
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta
 from kafka import KafkaConsumer, KafkaProducer
 from urllib.parse import urljoin, urlparse, urlunparse
-from scrapy.exceptions import DontCloseSpider
 from utils.fileitem import FileItem
 from utils.AustraliaGeoLocator import AustraliaGeoLocator
 from utils.url import as_priority
+
+@dataclass
+class PageStats:
+   url: str
+   when: str
+   n_hrefs: int = 0
+   n_external: int = 0
+   n_external_accepted: int = 0
+   n_internal: int = 0
+   n_internal_accepted: int = 0
+   n_scripts: int = 0
+   n_scripts_accepted: int = 0
 
 class KafkaSpiderMixin(object):
 
@@ -118,25 +134,13 @@ class KafkaSpiderMixin(object):
 class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'kafkaspider'
     allowed_domains = ['*']  # permitted to crawl anywhere (except unless blacklisted)
-    custom_settings = {
-        'ONEURL_MONGO_HOST': 'pi1', 
-        'ONEURL_MONGO_PORT': 27017,
-        'ONEURL_MAXMIND_DB': '/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb',
-        'ONEURL_MONGO_DB': 'au_js',
-        'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
-        'ONEURL_KAFKA_CONSUMER_GROUP': 'scrapy-thug2',
-        'ONEURL_KAFKA_URL_TOPIC': 'thug.gen5',
-        'LOG_LEVEL': 'INFO',
-        'SAVE_SNIPPETS': False,        # save inline javascript in html pages to mongo?
-        'LRU_MAX_PAGES_PER_SITE': 20   # only 20 pages per recent_sites cache entry ie. 20 pages per at least 500 sites spidered
-    }
 
     def recent_site_eviction(self, key, value):
        self.logger.info("Evicting site cache entry: {} = {} (cache size {})".format(key, value, len(self.recent_sites)))
 
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
-       settings = self.custom_settings
+       settings = get_project_settings()
        topic = settings.get('ONEURL_KAFKA_URL_TOPIC')
        bs = settings.get('ONEURL_KAFKA_BOOTSTRAP')
        grp_id = settings.get('ONEURL_KAFKA_CONSUMER_GROUP')
@@ -150,7 +154,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
        self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
-       self.last_blacklist_query = datetime.utcnow() - timedelta(minutes=20) # force is_blacklisted() to query at startup
+       self.blacklisted_domains = None # will issue mongo call to get list of current domains
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -173,7 +177,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say no to future urls from the same host until it is evicted from the LRU cache
         host = up.hostname
         self.penalise(host)
-        if self.recent_sites[host] > self.custom_settings.get('LRU_MAX_PAGES_PER_SITE'):
+        if self.recent_sites[host] > self.settings.get('LRU_MAX_PAGES_PER_SITE'):
              return True # only eviction from the LRU cache will permit host again
         return False
 
@@ -185,7 +189,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         rejected = 0
         not_au = 0
         # the more pages are in the LRU cache for the site
-        topic = self.custom_settings.get('ONEURL_KAFKA_URL_TOPIC')
+        topic = self.settings.get('ONEURL_KAFKA_URL_TOPIC')
         for u in url_iterable:
            up = urlparse(u)
            priority = as_priority(u, up)
@@ -206,12 +210,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         return sent
 
     def is_blacklisted(self, domain):
-        # only run the query every 5 mins to avoid excessive db queries...
-        now = datetime.utcnow()
-        five_mins_ago = now - timedelta(minutes=5)
-        if self.last_blacklist_query < five_mins_ago:
+        if self.blacklisted_domains is None:
              self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
-             self.last_blacklist_query = now
 
         return domain in self.blacklisted_domains
 
@@ -231,6 +231,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         if 'html' in content_type:
            self.recent_cache[url] = 1     # no repeats from crawler, RACE-CONDITION: multiple url's maybe fetched in parallel with same url...
            hrefs = response.xpath('//a/@href').extract()
+           ps = PageStats(url, str(datetime.utcnow()))
 
            # but we also want suitable follow-up links for pushing into the url topic 
            up = urlparse(url)
@@ -238,8 +239,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            n_seen = self.penalise(up.hostname, penalty=0)
            if n_seen > 20:
                n_seen = 20
-           max    = 100 - 4 * n_seen 
+           max = 100 - 4 * n_seen 
            abs_hrefs = [urljoin(url, href) for href in hrefs]
+           ps.n_hrefs = len(abs_hrefs)
            external_hrefs = set() # prioritise external links unless max is large enough to cater to both categories on the page (ie. broad crawl rather than deep)
            internal_hrefs = set()
            for u in abs_hrefs:
@@ -247,27 +249,30 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                      external_hrefs.add(u)
                 else:
                      internal_hrefs.add(u)
+           ps.n_external = len(external_hrefs)
            n = self.followup_pages(self.producer, external_hrefs, max=max) 
+           ps.n_external_accepted = n
            left = max - n
-           self.logger.info("Added {} external URLs".format(n))
            if left < 0:
                left = 0
+           ps.n_internal = len(internal_hrefs)
            n = self.followup_pages(self.producer, internal_hrefs, max=left)
-           self.logger.info("Added {} internal URLs".format(n))
+           ps.n_internal_accepted = n
        
            # spider over the JS content... 
            src_urls = response.xpath('//script/@src').extract()
            # ensure relative script src's are absolute... for the spider to follow now
            abs_src_urls = [urljoin(url, src) for src in src_urls]
-           cnt = 0
+           n = 0
            for u in abs_src_urls:
                if not u in self.js_cache and self.is_suitable(u, check_priority=False):
                    item = FileItem(origin=url, file_urls=[u])
                    ret.append(item) # will trigger FilesPipeline to fetch it with priority and persist to local storage
                    self.js_cache[u] = 1 # dont fetch this JS again for at least 500 JS url's....
-                   cnt += 1
-
-           self.logger.info("Following {} suitable JS URLs (total {})".format(cnt, len(abs_src_urls)))
+                   n += 1
+           ps.n_scripts = len(abs_src_urls)
+           ps.n_scripts_accepted = n
+           self.producer.send(self.settings.get('PAGESTATS_TOPIC'), asdict(ps), key=up.hostname.encode()) # specifying the key has the same site in one partition of the topic
            # FALLTHRU
         else:
            self.logger.info("Received undesired content type: {} for {}".format(content_type, url))
