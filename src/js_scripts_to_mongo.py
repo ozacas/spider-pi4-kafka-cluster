@@ -20,6 +20,7 @@ class SaveToMongo(object):
         gid = kwargs.get('gid')
         bs = kwargs.get('bootstrap_kafka_servers')
         self.n = kwargs.get('n')
+        self.debug = kwargs.get('debug')
         self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
         self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), auto_offset_reset='earliest', consumer_timeout_ms=10000, bootstrap_servers=bs, group_id=gid) 
 
@@ -69,7 +70,7 @@ class SaveToMongo(object):
                  r = record(**d)
                  l.append(r) 
         print("Loaded {} records.".format(len(l)))
-        # sort by checksum and then by sha1 hash to speed mongo access
+        # sort by checksum and then by sha1 hash to speed mongo queries (maybe)
         record.__lt__ = lambda self, other: self.checksum < other.checksum
         l = sorted(l)
         print("Sorted {} records.".format(len(l)))
@@ -77,6 +78,8 @@ class SaveToMongo(object):
         cnt = 0
         for tuple in l:
             try:
+                if self.debug:
+                    print(tuple)
                 self.process_tuple(tuple, root)
                 cnt += 1
                 if (cnt % 10000 == 0):
@@ -98,6 +101,7 @@ if __name__ == "__main__":
     a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
     a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite)", type=int, default=1000000000)
     a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
+    a.add_argument("--v", help="Debug verbosely", action="store_true")
     args = a.parse_args() 
     gid = args.group
     if gid and len(gid) < 1: # empty string on command is translated to no group
@@ -106,6 +110,9 @@ if __name__ == "__main__":
     print("Using kakfa bootstrap servers: {}".format(args.bootstrap))
     print("Saving artefacts to kafka topic: {}".format(args.visited))
     print("Reading artefacts from: topic={} root={}".format(args.artefacts, args.root))
-    s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid,
+    print("Accessing mongo DB at {}:{}".format(args.mongo_host, args.mongo_port))
+    if args.fail:
+        print("Terminating on first error.")
+    s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid, debug=args.v,
                     visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap)
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail)
