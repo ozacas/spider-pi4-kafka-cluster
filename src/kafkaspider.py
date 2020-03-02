@@ -25,6 +25,7 @@ class PageStats:
    url: str
    when: str
    n_hrefs: int = 0
+   n_hrefs_max_permitted: int = 0
    n_external: int = 0
    n_external_accepted: int = 0
    n_internal: int = 0
@@ -242,6 +243,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            max = 100 - 4 * n_seen 
            abs_hrefs = [urljoin(url, href) for href in hrefs]
            ps.n_hrefs = len(abs_hrefs)
+           ps.n_hrefs_max_permitted = max
            external_hrefs = set() # prioritise external links unless max is large enough to cater to both categories on the page (ie. broad crawl rather than deep)
            internal_hrefs = set()
            for u in abs_hrefs:
