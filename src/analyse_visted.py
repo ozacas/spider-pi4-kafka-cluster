@@ -3,15 +3,29 @@ from kafka import KafkaConsumer, KafkaProducer
 import json
 from datetime import datetime
 import os
+import argparse
 import subprocess
 import pymongo
 import logging
 from tempfile import NamedTemporaryFile
-consumer = KafkaConsumer('visited', bootstrap_servers='kafka1', group_id='javascript-analysis', auto_offset_reset='earliest',
+
+a = argparse.ArgumentParser("Extract features from each javascript in visited topic and dump into analysis-results topic")
+a.add_argument("--mongo-host", help="Hostname/IP with mongo instance", type=str, default="pi1")
+a.add_argument("--mongo-port", help="TCP/IP port for mongo instance", type=int, default=27017)
+a.add_argument("--db", help="Mongo database to populate with JS data from kafkaspider", type=str, default="au_js")
+a.add_argument("--visited", help="Kafka topic to get visited JS summary", type=str, default="visited")
+a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
+a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
+a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite)", type=int, default=1000000000)
+a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off", type=str, default='javascript-analysis')
+a.add_argument("--v", help="Debug verbosely", action="store_true")
+args = a.parse_args()
+
+consumer = KafkaConsumer(args.visited, bootstrap_servers=args.bootstrap, group_id=args.group, auto_offset_reset='earliest',
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers='kafka1')
-mongo = pymongo.MongoClient('pi1', 27017)
-db = mongo.au_js
+producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+mongo = pymongo.MongoClient(args.mongo_host, args.mongo_port)
+db = mongo[args.db]
 logger = logging.getLogger(__name__)
 
 def get_script(url, sha256, md5, inline_script):
