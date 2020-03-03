@@ -1,53 +1,44 @@
 # -*- coding: utf-8 -*-
 import scrapy
+from twisted.internet import task
 from scrapy import signals
 from scrapy.crawler import CrawlerProcess
 import json
 import hashlib
 import pymongo
-import argparse
 import pylru
-from bson.objectid import ObjectId
-from datetime import datetime, timedelta
+from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
-from urllib.parse import urljoin, urlparse, urlunparse
-from scrapy.exceptions import DontCloseSpider
-from utils.fileitem import FileItem
-from utils.url import as_priority
 from kafkaspider import KafkaSpiderMixin
 
 class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'snippetspider'
     allowed_domains = ['*']  # permitted to crawl anywhere (except unless blacklisted)
-    custom_settings = {
-        'ONEURL_MONGO_HOST': 'pi1', 
-        'ONEURL_MONGO_PORT': 27017,
-        'ONEURL_MONGO_DB': 'au_js',
-        'ONEURL_KAFKA_BOOTSTRAP': 'kafka1',
-        'ONEURL_KAFKA_CONSUMER_GROUP': 'snippetspider',
-        'ONEURL_KAFKA_URL_TOPIC': 'visited',
-        'LOG_LEVEL': 'INFO',
-    }
 
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
-       settings = self.custom_settings
-       topic = settings.get('ONEURL_KAFKA_URL_TOPIC')
+       topic = settings.get('SNIPPETSPIDER_URL_TOPIC')
        bs = settings.get('ONEURL_KAFKA_BOOTSTRAP')
-       grp_id = settings.get('ONEURL_KAFKA_CONSUMER_GROUP')
-       self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
+       grp_id = settings.get('SNIPPETSPIDER_CONSUMER_GROUP')
+       self.logger.info("Reading URLs from {}".format(topic))
+       self.logger.info("Consumer group for URLs {}".format(grp_id))
+       self.logger.info("Bootstrapping via {}".format(bs))
+       self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, 
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout 
-       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=settings.get('ONEURL_KAFKA_BOOTSTRAP'))
-       self.mongo = pymongo.MongoClient(settings.get('ONEURL_MONGO_HOST', settings.get('ONEURL_MONGO_PORT')))
-       self.db = self.mongo[settings.get('ONEURL_MONGO_DB')]
-       self.last_blacklist_query = datetime.utcnow() - timedelta(minutes=20) # force is_blacklisted() to query at startup
+       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
+       self.mongo = pymongo.MongoClient(settings.get('MONGO_HOST', settings.get('MONGO_PORT')))
+       self.db = self.mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(10 * 1024)
+       self.update_blacklist()
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         spider = super(SnippetSpider, cls).from_crawler(crawler, *args, **kwargs)
         crawler.signals.connect(spider.spider_idle, signal=signals.spider_idle)
         crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
+        t = task.LoopingCall(spider.update_blacklist)
+        t.start(300) # update blacklist every 5 minutes to avoid hitting mongo too much
+        #reactor.run()  # spider will do this for us, so no need...
         return spider
 
     def is_suitable(self, url, kafka_message=None, check_priority=True):
@@ -57,6 +48,10 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
         if kafka_message:  # check to see if kafka message has content type and we only want to visit html pages
             content_type = kafka_message.value.get('content-type', '')
             ret = 'html' in content_type
+            # FALLTHRU
+        else:
+            # no content type, so assume not html and therefore...
+            ret = False
             # FALLTHRU
         self.recent_cache[url] = 1 
         return ret
@@ -82,7 +77,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
          id = ret.get(u'_id')
          self.db.snippet_url.insert_one({ 'url_id': origin_url_id, 'snippet': id }) 
 
-    def save_script(self, url, script, inline_script=False, content_type=None):
+    def save_inline_script(self, url, script, content_type=None):
         # NB: we work hard here to avoid mongo calls which will slow down the spider
 
         # compute hashes to search for
@@ -95,17 +90,13 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
         #self.logger.info("Got oid {} for {}".format(url_id, url))
 
         script_len = len(script)
-        if inline_script:
-             self.save_snippet(url_id, script, script_len, sha256, md5)
+        self.save_snippet(url_id, script, script_len, sha256, md5)
 
     def is_blacklisted(self, domain):
-        # only run the query every 5 mins to avoid excessive db queries...
-        five_mins_ago = datetime.utcnow() - timedelta(minutes=5)
-        if self.last_blacklist_query < five_mins_ago:
-             self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
-             self.last_blacklist_query = datetime.utcnow()
-
         return domain in self.blacklisted_domains
+    
+    def update_blacklist(self):
+         self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
 
     def parse(self, response):
         status = response.status
@@ -120,7 +111,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
         if 'html' in content_type:
            inline_scripts = response.xpath('//script/text()').getall() 
            for script in inline_scripts:
-               self.save_script(url, script.encode('utf-8'), inline_script=True, content_type=content_type)
+               self.save_inline_script(url, script.encode('utf-8'), content_type=content_type)
         else:
            self.logger.info("Received undesired content type: {} for {}".format(content_type, url))
 
