@@ -43,13 +43,16 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
         #reactor.run()  # spider will do this for us, so no need...
         return spider
 
+    def is_suitable_host(self, host, count_by_hosts): # NB: OVERRIDE
+        return True # this spider considers all hosts suitable, since it has already been fetched by kafkaspider, so we dont reject any here
+
     def is_suitable(self, url, kafka_message=None, check_priority=True):
         if url in self.recent_cache:
             return False
         ret = True
         if kafka_message:  # check to see if kafka message has content type and we only want to visit html pages
             content_type = kafka_message.value.get('content-type', '')
-            ret = 'html' in content_type
+            ret = 'html' in content_type.lower()
             # FALLTHRU
         else:
             # no content type, so assume not html and therefore...
