@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import scrapy
-from twisted.internet import task, reactor
+from twisted.internet import task
 from scrapy import signals
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 from scrapy.exceptions import DontCloseSpider
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import json
 import hashlib
 import pymongo
@@ -25,6 +25,7 @@ from utils.url import as_priority
 class PageStats:
    url: str
    when: str
+   scripts: str = '' # whitespace separated list of <script src=X> URLs
    n_hrefs: int = 0
    n_hrefs_max_permitted: int = 0
    n_external: int = 0
@@ -164,7 +165,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
        self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
-       self.update_blacklist() # to get self.blacklist_domains populated
+       self.update_blacklist() # to ensure self.blacklist_domains is populated
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -176,6 +177,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         #reactor.run()  # spider will do this for us, so no need...
         return spider
 
+    # NB: any call to this function will ensure that host is no longer least recently used, regardless of penalty, which is the desired behaviour?
     def penalise(self, host, penalty=1):
         if not host in self.recent_sites:
              self.recent_sites[host] = 0
@@ -277,15 +279,18 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            # ensure relative script src's are absolute... for the spider to follow now
            abs_src_urls = [urljoin(url, src) for src in src_urls]
            n = 0
+           concat = ''
            for u in abs_src_urls:
                if not u in self.js_cache and self.is_suitable(u, check_priority=False):
                    item = FileItem(origin=url, file_urls=[u])
                    ret.append(item) # will trigger FilesPipeline to fetch it with priority and persist to local storage
                    self.js_cache[u] = 1 # dont fetch this JS again for at least 500 JS url's....
                    n += 1
+               concat += '{} '.format(u) # all script urls are put into kafka, not just acceptable ones (for evidentiary purposes)
            ps.n_scripts = len(abs_src_urls)
            ps.n_scripts_accepted = n
-           self.producer.send(self.settings.get('PAGESTATS_TOPIC'), asdict(ps), key=up.hostname.encode()) # specifying the key has the same site in one partition of the topic
+           ps.scripts = concat
+           self.producer.send(self.settings.get('PAGESTATS_TOPIC'), asdict(ps), key=up.hostname.encode()) # specifying the key means the same site in one partition of the topic
            # FALLTHRU
         else:
            self.logger.info("Received undesired content type: {} for {}".format(content_type, url))
