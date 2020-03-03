@@ -29,8 +29,9 @@ LRU_MAX_PAGES_PER_SITE = 20   # only 20 pages per recent_sites cache entry ie. 2
 ONEURL_KAFKA_BOOTSTRAP = 'kafka1'
 ONEURL_KAFKA_CONSUMER_GROUP = 'scrapy-thug2'
 ONEURL_KAFKA_URL_TOPIC = 'thug.gen5'
-VISITED_TOPIC = 'visited'
-PAGESTATS_TOPIC = 'html-page-stats'
+VISITED_TOPIC = 'visited'   # where to save details of each page spidered by kafkaspider
+PAGESTATS_TOPIC = 'html-page-stats' # where to save details of each html page (link stats)
+
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
 FILES_STORE = '/data/kafkaspider3' # must exist on scrapy host with suitable permissions for the spider-user account
 FILES_DOWNLOAD_FAILURE_TOPIC = 'javascript-download-failure'
@@ -39,5 +40,5 @@ FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-3'
 ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
 
 # snippetspider: for persisting html-embedded javascript snippets into mongo
-SNIPPETSPIDER_CONSUMER_GROUP = 'snippetspider'
-SNIPPETSPIDER_URL_TOPIC = 'visited'
+SNIPPETSPIDER_CONSUMER_GROUP = 'snippetspider' # where to keep track of current position in SNIPPET_SPIDER_URL_TOPIC
+SNIPPETSPIDER_URL_TOPIC = 'visited' # where to read HTML pages visited from (kafka topic)
