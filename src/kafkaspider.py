@@ -99,6 +99,18 @@ class KafkaSpiderMixin(object):
         #self.logger.info("Obtained kafka url: {}".format(url))
         return (url, skipped)
 
+    def is_suitable_host(self, host, counts_by_host):
+        # we must provide this as a method so that the snippetspider can override to ignore this logic, which is not relevant to it
+        if not host in counts_by_host:
+             counts_by_host[host] = 1
+        else:
+             counts_by_host[host] += 1
+             if counts_by_host[host] <= 10: 
+                  pass # FALLTHRU
+             else:
+                  return False
+        return True
+
     def schedule_next_request(self, batch_size=200):
         """Schedules a request if available"""
         found = 0
@@ -113,21 +125,17 @@ class KafkaSpiderMixin(object):
                 if not url in batch: # else ignore it, since it is a dupe from kafka
                     up = urlparse(url)
                     host = up.hostname
-                    if not host in counts_by_host:
-                        counts_by_host[host] = 1
-                    else:
-                        counts_by_host[host] += 1
-                        if counts_by_host[host] <= 10: 
-                            req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
-                            self.crawler.engine.crawl(req, spider=self)
-                            batch.add(url)
-                            found += 1
-                        else: 
-                            #self.logger.info("Ignoring due to non-random ingest for {}".format(url))
-                            # TODO FIXME... push back onto the queue? nah... we have no shortage of urls!
-                            #self.producer.send(self.settings.get('ONEURL_KAFKA_URL_TOPIC'), { 'url': url })
-                            non_random += 1
-                            pass
+                    if self.is_suitable_host(host, counts_by_host):
+                        req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
+                        self.crawler.engine.crawl(req, spider=self)
+                        batch.add(url)
+                        found += 1
+                    else: 
+                        #self.logger.info("Ignoring due to non-random ingest for {}".format(url))
+                        # TODO FIXME... push back onto the queue? nah... we have no shortage of urls!
+                        #self.producer.send(self.settings.get('ONEURL_KAFKA_URL_TOPIC'), { 'url': url })
+                        non_random += 1
+                        pass
             else: # no request?
                 break
 
@@ -157,10 +165,10 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        grp_id = settings.get('ONEURL_KAFKA_CONSUMER_GROUP')
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout 
-       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=settings.get('ONEURL_KAFKA_BOOTSTRAP'))
+       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
        self.au_locator = AustraliaGeoLocator(db_location=settings.get('ONEURL_MAXMIND_DB'))
-       self.mongo = pymongo.MongoClient(settings.get('ONEURL_MONGO_HOST', settings.get('ONEURL_MONGO_PORT')))
-       self.db = self.mongo[settings.get('ONEURL_MONGO_DB')]
+       self.mongo = pymongo.MongoClient(settings.get('MONGO_HOST', settings.get('MONGO_PORT')))
+       self.db = self.mongo[settings.get('MONGO_DB')]
        self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
        self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
