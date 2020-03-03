@@ -41,20 +41,25 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.mongo = pymongo.MongoClient(settings.get('ONEURL_MONGO_HOST', settings.get('ONEURL_MONGO_PORT')))
        self.db = self.mongo[settings.get('ONEURL_MONGO_DB')]
        self.last_blacklist_query = datetime.utcnow() - timedelta(minutes=20) # force is_blacklisted() to query at startup
+       self.recent_cache = pylru.lrucache(10 * 1024)
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
         spider = super(SnippetSpider, cls).from_crawler(crawler, *args, **kwargs)
         crawler.signals.connect(spider.spider_idle, signal=signals.spider_idle)
-        crawler.signals.connect(spider.item_scraped, signal=signals.item_scraped)
         crawler.signals.connect(spider.spider_closed, signal=signals.spider_closed)
         return spider
 
     def is_suitable(self, url, kafka_message=None, check_priority=True):
+        if url in self.recent_cache:
+            return False
+        ret = True
         if kafka_message:  # check to see if kafka message has content type and we only want to visit html pages
             content_type = kafka_message.value.get('content-type', '')
-            return 'html' in content_type
-        return True
+            ret = 'html' in content_type
+            # FALLTHRU
+        self.recent_cache[url] = 1 
+        return ret
 
     def find_url(self, url):
         # cache lookups as excessive mongo calls slow the spider down
