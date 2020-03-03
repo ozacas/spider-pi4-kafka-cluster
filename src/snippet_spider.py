@@ -3,6 +3,7 @@ import scrapy
 from twisted.internet import task
 from scrapy import signals
 from scrapy.crawler import CrawlerProcess
+from scrapy.utils.project import get_project_settings
 import json
 import hashlib
 import pymongo
@@ -17,6 +18,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
+       settings = get_project_settings()
        topic = settings.get('SNIPPETSPIDER_URL_TOPIC')
        bs = settings.get('ONEURL_KAFKA_BOOTSTRAP')
        grp_id = settings.get('SNIPPETSPIDER_CONSUMER_GROUP')
