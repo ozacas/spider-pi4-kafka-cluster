@@ -246,7 +246,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            # but we also want suitable follow-up links for pushing into the url topic 
            up = urlparse(url)
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
-           n_seen = self.penalise(up.hostname, penalty=0)
+           n_seen = self.penalise(up.hostname)
            follow_internals = n_seen < 100
            if n_seen > 20:
                n_seen = 20
