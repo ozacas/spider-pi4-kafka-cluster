@@ -246,7 +246,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            up = urlparse(url)
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
            n_seen = self.penalise(up.hostname, penalty=0)
-           follow_internals = n_seen > 100
+           follow_internals = n_seen < 100
            if n_seen > 20:
                n_seen = 20
            max = 100 - 4 * n_seen 
