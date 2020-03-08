@@ -31,6 +31,7 @@ ONEURL_KAFKA_CONSUMER_GROUP = 'scrapy-thug2'
 ONEURL_KAFKA_URL_TOPIC = 'thug.gen5'
 VISITED_TOPIC = 'visited'   # where to save details of each page spidered by kafkaspider
 PAGESTATS_TOPIC = 'html-page-stats' # where to save details of each html page (link stats)
+SITE_INTERNAL_LINK_LIMIT = 20 # if we visit more than twenty pages according to the LRU cache: we stop adding internal links to the kafka queue
 
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
 FILES_STORE = '/data/kafkaspider6' # must exist on scrapy host with suitable permissions for the spider-user account
