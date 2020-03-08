@@ -33,10 +33,10 @@ VISITED_TOPIC = 'visited'   # where to save details of each page spidered by kaf
 PAGESTATS_TOPIC = 'html-page-stats' # where to save details of each html page (link stats)
 
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
-FILES_STORE = '/data/kafkaspider3' # must exist on scrapy host with suitable permissions for the spider-user account
+FILES_STORE = '/data/kafkaspider6' # must exist on scrapy host with suitable permissions for the spider-user account
 FILES_DOWNLOAD_FAILURE_TOPIC = 'javascript-download-failure'
 FILES_PIPELINE_FAILURE_TOPIC = 'javascript-pipeline-failure'
-FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-3'
+FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-6'
 ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
 
 # snippetspider: for persisting html-embedded javascript snippets into mongo
