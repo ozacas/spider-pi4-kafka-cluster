@@ -6,7 +6,7 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 from scrapy.exceptions import DontCloseSpider
 
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict
 import json
 import hashlib
 import pymongo
@@ -20,20 +20,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 from utils.fileitem import FileItem
 from utils.AustraliaGeoLocator import AustraliaGeoLocator
 from utils.url import as_priority
-
-@dataclass
-class PageStats:
-   url: str
-   when: str
-   scripts: str = '' # whitespace separated list of <script src=X> URLs
-   n_hrefs: int = 0
-   n_hrefs_max_permitted: int = 0
-   n_external: int = 0
-   n_external_accepted: int = 0
-   n_internal: int = 0
-   n_internal_accepted: int = 0
-   n_scripts: int = 0
-   n_scripts_accepted: int = 0
+from utils.models import PageStats
 
 class KafkaSpiderMixin(object):
 
@@ -259,6 +246,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            up = urlparse(url)
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
            n_seen = self.penalise(up.hostname, penalty=0)
+           follow_internals = n_seen > 100
            if n_seen > 20:
                n_seen = 20
            max = 100 - 4 * n_seen 
@@ -275,12 +263,18 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            ps.n_external = len(external_hrefs)
            n = self.followup_pages(self.producer, external_hrefs, max=max) 
            ps.n_external_accepted = n
+           else:
            left = max - n
            if left < 0:
                left = 0
            ps.n_internal = len(internal_hrefs)
-           n = self.followup_pages(self.producer, internal_hrefs, max=left)
-           ps.n_internal_accepted = n
+           # dont follow internal links if we've seen a lot of pages in the LRU cache....
+           if follow_internals:
+               n = self.followup_pages(self.producer, internal_hrefs, max=left)
+               ps.n_internal_accepted = n
+           else:
+               self.logger.info("Not following internal links for {} as spidered lots already".format(up.hostname))
+               ps.n_internal_accepted = 0
        
            # spider over the JS content... 
            src_urls = response.xpath('//script/@src').extract()
