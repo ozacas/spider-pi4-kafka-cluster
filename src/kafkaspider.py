@@ -61,8 +61,9 @@ class KafkaSpiderMixin(object):
     def errback(self, failure):
         url = failure.request.url
         up = urlparse(url)
-        self.penalise(up.hostname, penalty=2) 
-        self.logger.info("Penalise {} due to download failure".format(up.hostname))
+        if up.hostname:
+            self.penalise(up.hostname, penalty=2) 
+            self.logger.info("Penalise {} due to download failure".format(up.hostname))
 
     def kafka_next(self):
         """
