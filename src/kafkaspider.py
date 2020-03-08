@@ -173,13 +173,17 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         #reactor.run()  # spider will do this for us, so no need...
         return spider
 
-    # NB: any call to this function will ensure that host is no longer least recently used, regardless of penalty, which is the desired behaviour?
     def penalise(self, host, penalty=1):
-        if not host in self.recent_sites:
-            self.recent_sites[host] = 0
-        if penalty != 0:     # NB: dont reset the LRU timestamp for the host unless penalty has actually been specified....
+        if penalty != 0: # do not side-effect self.recent_sites if penalty is 0 to avoid premature eviction during highly duplicated kafka ingest
+            if not host in self.recent_sites:
+                 self.recent_sites[host] = 0
             self.recent_sites[host] += penalty
-        return self.recent_sites[host]
+            return self.recent_sites[host]
+        else:
+            if host in self.recent_sites:
+                return self.recent_sites[host]
+            else:
+                return 0
 
     def is_recently_crawled(self, url, up):
         # recently fetched the URL?
@@ -248,6 +252,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            up = urlparse(url)
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
            n_seen = self.penalise(up.hostname)
+           self.logger.info("Visited {} pages for {}".format(n_seen, up.hostname))
            follow_internals = n_seen < self.settings.get('SITE_INTERNAL_LINK_LIMIT')
            if n_seen > 20:
                n_seen = 20
