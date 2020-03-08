@@ -176,8 +176,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
     # NB: any call to this function will ensure that host is no longer least recently used, regardless of penalty, which is the desired behaviour?
     def penalise(self, host, penalty=1):
         if not host in self.recent_sites:
-             self.recent_sites[host] = 0
-        self.recent_sites[host] += penalty
+            self.recent_sites[host] = 0
+        if penalty != 0:     # NB: dont reset the LRU timestamp for the host unless penalty has actually been specified....
+            self.recent_sites[host] += penalty
         return self.recent_sites[host]
 
     def is_recently_crawled(self, url, up):
