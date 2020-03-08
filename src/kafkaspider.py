@@ -263,7 +263,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            ps.n_external = len(external_hrefs)
            n = self.followup_pages(self.producer, external_hrefs, max=max) 
            ps.n_external_accepted = n
-           else:
            left = max - n
            if left < 0:
                left = 0
