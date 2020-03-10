@@ -53,8 +53,11 @@ class SaveToMongo(object):
 
     def process_tuple(self, tuple, root):
         path = "{}/{}".format(root, tuple.path)
-        with open(path, 'rb') as fp:
-            self.save_script(tuple.url, Binary(fp.read()), content_type="text/javascript", expected_md5=tuple.checksum)
+        try: 
+            with open(path, 'rb') as fp:
+                self.save_script(tuple.url, Binary(fp.read()), content_type="text/javascript", expected_md5=tuple.checksum)
+        except Exception as e:
+            print(e+' '+str(tuple))
 
     def run(self, root, my_hostname=None, fail_on_error=False): # eg. root='/data/kafkaspider2'
         cnt = 0
