@@ -22,7 +22,7 @@ class SaveToMongo(object):
         self.n = kwargs.get('n')
         self.debug = kwargs.get('debug')
         self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
-        self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), consumer_timeout_ms=10000, bootstrap_servers=bs, group_id=gid) 
+        self.consumer = KafkaConsumer(self.artefact_topic, value_deserializer=lambda m: json.loads(m.decode('utf-8')), consumer_timeout_ms=10000, bootstrap_servers=bs, group_id=gid, auto_offset_reset=kwargs.get('consume_from', 'latest')) 
 
     def save_url(self, url, now):
          result = self.db.urls.insert_one({ 'url': url, 'last_visited': now })
@@ -53,11 +53,8 @@ class SaveToMongo(object):
 
     def process_tuple(self, tuple, root):
         path = "{}/{}".format(root, tuple.path)
-        try: 
-            with open(path, 'rb') as fp:
-                self.save_script(tuple.url, Binary(fp.read()), content_type="text/javascript", expected_md5=tuple.checksum)
-        except Exception as e:
-            print(e+' '+str(tuple))
+        with open(path, 'rb') as fp:
+             self.save_script(tuple.url, Binary(fp.read()), content_type="text/javascript", expected_md5=tuple.checksum)
 
     def run(self, root, my_hostname=None, fail_on_error=False): # eg. root='/data/kafkaspider2'
         cnt = 0
@@ -107,6 +104,7 @@ if __name__ == "__main__":
     a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite)", type=int, default=1000000000)
     a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
     a.add_argument("--v", help="Debug verbosely", action="store_true")
+    a.add_argument("--from", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
     args = a.parse_args() 
     gid = args.group
     if gid and len(gid) < 1: # empty string on command is translated to no group
@@ -119,5 +117,5 @@ if __name__ == "__main__":
     if args.fail:
         print("Terminating on first error.")
     s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid, debug=args.v,
-                    visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap)
+                    visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap, consume_from=args.from)
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail)
