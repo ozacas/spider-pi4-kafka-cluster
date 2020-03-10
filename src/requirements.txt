@@ -4,3 +4,4 @@ certifi
 wheel
 pylru
 scrapy
+dns.python
