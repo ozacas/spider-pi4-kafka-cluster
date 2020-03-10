@@ -104,7 +104,7 @@ if __name__ == "__main__":
     a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite)", type=int, default=1000000000)
     a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
     a.add_argument("--v", help="Debug verbosely", action="store_true")
-    a.add_argument("--from", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
+    a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
     args = a.parse_args() 
     gid = args.group
     if gid and len(gid) < 1: # empty string on command is translated to no group
@@ -117,5 +117,5 @@ if __name__ == "__main__":
     if args.fail:
         print("Terminating on first error.")
     s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid, debug=args.v,
-                    visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap, consume_from=args.from)
+                    visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap, consume_from=args.start)
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail)
