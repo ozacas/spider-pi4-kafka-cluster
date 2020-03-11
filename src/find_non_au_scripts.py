@@ -11,7 +11,7 @@ from utils.models import PageStats, JavascriptLocation
 from urllib.parse import urlparse
 from dataclasses import asdict
 
-a = argparse.ArgumentParser(description="Process JS artefact topic records and filesystem JS into specified mongo host")
+a = argparse.ArgumentParser(description="Report scripts from html-page-stats which are not US/AU geolocated based on any IP associated with the URL hostname")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
 a.add_argument("--n", help="Read no more than N records from kafka [Inf]", type=int, default=1000000000)
 a.add_argument("--topic", help="Read scripts from specified topic [html-page-stats]", type=str, default="html-page-stats") # NB: can only be this topic
@@ -40,12 +40,17 @@ for message in consumer:
                result_ips = []
            result_countries = set([geo.country_code(ipaddress.ip_address(r)) for r in result_ips])
            reportable = False
+           first_country = '?'
            for country in result_countries:
                if country not in ['AU', '', 'US', None]:
                    reportable = True
                    first_country = country
-           if reportable:
+           
+           if len(result_ips) > 0:
                js = JavascriptLocation(country=first_country, script=script, origin=ps.url, ip=str(result_ips[0]), when=str(datetime.utcnow()))
-               print(js)
-               producer.send('javascript-geolocation', asdict(js))
-               cache[host] = js
+               cache[host] = js # ensure LRU cache is populated even if the js record is not to appear in kafka/stdout
+               if reportable:
+                   print(js)
+                   producer.send('javascript-geolocation', asdict(js))
+           else:
+               cache[host] = None # NB: no ip, we still cache that...
