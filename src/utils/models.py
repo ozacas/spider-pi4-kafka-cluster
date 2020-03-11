@@ -39,3 +39,10 @@ class JavascriptArtefact: # definition corresponds to visited kafka topic record
     sha256: str
     md5: str
     size_bytes: int
+
+@dataclass
+class CallsByCountVector:
+    # we dont represent all functions here, just the main ones likely to indicate something worth investigating
+    dollar: int # $.ajax(...)
+    createElement: int
+    ajax: int
