@@ -32,6 +32,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.db = self.mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(10 * 1024)
        self.update_blacklist()
+       print("completed init")
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -51,8 +52,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
             return False
         ret = True
         if kafka_message:  # check to see if kafka message has content type and we only want to visit html pages
-            content_type = kafka_message.value.get('content-type', '')
-            ret = 'html' in content_type.lower()
+            pass # NB: we already know since the html-page-stats only contains HTML so no need to check content type anymore
             # FALLTHRU
         else:
             # no content type, so assume not html and therefore...
@@ -104,6 +104,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
          self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
 
     def parse(self, response):
+        print("entering parse()")
         status = response.status
         url = response.url
         if status < 200 or status >=400:
