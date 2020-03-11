@@ -50,3 +50,12 @@ class AustraliaGeoLocator(object):
           return ret
       except:
           return False # if something goes wrong we say no to AU...
+
+   def country_code(self, ip): # NB: MUST be ip, no cache on this query
+      try:
+          # NB: no DNS cache, resolver or other smarts here...
+          response = self.reader.city(ip)
+          return response.country.iso_code if response else ''
+      except Exception as e:
+          print(str(e)) 
+          return ''
