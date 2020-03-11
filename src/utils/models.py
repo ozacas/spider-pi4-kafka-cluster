@@ -21,3 +21,11 @@ class DownloadFailure:
    origin: str # valid URL
    http_status: int # eg. 404 
    when: str # UTC timestamp
+
+@dataclass
+class JavascriptLocation:
+   country: str # NB: first non AU/US/na country reported only
+   origin: str
+   script: str
+   when: str
+   ip: str # NB: first IP associated with the script host only
