@@ -29,3 +29,13 @@ class JavascriptLocation:
    script: str
    when: str
    ip: str # NB: first IP associated with the script host only
+
+@dataclass
+class JavascriptArtefact: # definition corresponds to visited kafka topic record schema
+    url: str
+    inline: bool
+    content_type: str
+    when: str
+    sha256: str
+    md5: str
+    size_bytes: int

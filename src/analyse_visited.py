@@ -5,21 +5,12 @@ import json
 from datetime import datetime
 import os
 import argparse
+from utils.models import JavascriptArtefact
 import subprocess
 import pymongo
 import logging
 from tempfile import NamedTemporaryFile
 
-@dataclass
-class JavaScriptArtefact: # definition corresponds to visited kafka topic record schema
-    url: str
-    inline: bool
-    content_type: str
-    when: str
-    sha256: str
-    md5: str
-    size_bytes: int
-     
 a = argparse.ArgumentParser(description="Extract features from each javascript in visited topic and dump into analysis-results topic")
 a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
 a.add_argument("--mongo-port", help="TCP/IP port for mongo instance [27017]", type=int, default=27017)
@@ -78,7 +69,7 @@ for message in consumer:
     d = message.value
     d['content_type'] = d['content-type']
     del d['content-type']
-    jsr = JavaScriptArtefact(**d)
+    jsr = JavascriptArtefact(**d)
 
     # eg.  {'url': 'https://alga.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 'md5': '4714b9a46307758a7272ecc666bc88a7'}
     if 'javascript' in jsr.content_type:
