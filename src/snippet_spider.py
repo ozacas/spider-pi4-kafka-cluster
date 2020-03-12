@@ -104,7 +104,6 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
          self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
 
     def parse(self, response):
-        print("entering parse()")
         status = response.status
         url = response.url
         if status < 200 or status >=400:
