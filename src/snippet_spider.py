@@ -32,7 +32,6 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.db = self.mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(10 * 1024)
        self.update_blacklist()
-       print("completed init")
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
@@ -43,6 +42,10 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
         t.start(300) # update blacklist every 5 minutes to avoid hitting mongo too much
         #reactor.run()  # spider will do this for us, so no need...
         return spider
+
+    def penalise(self, *args, **kwargs):
+        # MUST implement this, but it does nothing for this spider
+        pass
 
     def is_suitable_host(self, host, count_by_hosts): # NB: OVERRIDE
         return True # this spider considers all hosts suitable, since it has already been fetched by kafkaspider, so we dont reject any here
