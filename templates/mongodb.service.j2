@@ -1,6 +1,7 @@
 [Unit]
 Description=MongoDB document server which all thug instances dump results into
-After=network.target 
+Wants=network-online.target
+After=network.target network-online.target 
 ConditionPathExists=
 
 [Service]
