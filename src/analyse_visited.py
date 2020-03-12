@@ -14,7 +14,7 @@ from tempfile import NamedTemporaryFile
 a = argparse.ArgumentParser(description="Extract features from each javascript in visited topic and dump into analysis-results topic")
 a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
 a.add_argument("--mongo-port", help="TCP/IP port for mongo instance [27017]", type=int, default=27017)
-a.add_argument("--db", help="Mongo database to populate with JS data from kafkaspider [au_js]", type=str, default="au_js")
+a.add_argument("--db", help="Mongo database to populate with JS data [au_js]", type=str, default="au_js")
 a.add_argument("--visited", help="Kafka topic to get visited JS summary [visited]", type=str, default="visited")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
 a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=int, default=1000000000)
