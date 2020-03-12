@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 import dns.resolver
+from dns.exception import DNSException
 import json
 import argparse
 import pylru
+import time
 import ipaddress
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
@@ -28,6 +30,7 @@ resolver = dns.resolver.Resolver()
 resolver.nameservers = ['8.8.8.8', '8.8.4.4'] # use public resolvers only
 geo = AustraliaGeoLocator()
 
+done = 0
 for message in consumer:
    ps = PageStats(**message.value)
    for script in ps.scripts.split():
@@ -36,7 +39,9 @@ for message in consumer:
        if host and len(host) and not host in cache:
            try:
                result_ips = [a for a in resolver.query(host, 'a')]
-           except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+           except DNSException as e:
+               print(str(e)+" "+host)
+               time.sleep(10)  # be nice if dns server overloaded
                result_ips = []
            result_countries = set([geo.country_code(ipaddress.ip_address(r)) for r in result_ips])
            reportable = False
@@ -54,3 +59,9 @@ for message in consumer:
                    producer.send('javascript-geolocation', asdict(js))
            else:
                cache[host] = None # NB: no ip, we still cache that...
+   done += 1
+   if done >= args.n:
+      print("Processed {} records. Terminating per request.".format(done)) 
+      break
+
+exit(0)
