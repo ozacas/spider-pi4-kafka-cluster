@@ -1,11 +1,17 @@
 
-- name: setup app data dir for geolocation and other data files
+- name: setup data directories for crawl data, geolocation and other data files
   hosts: thug-hosts
   tasks:
      - file:
          path: /home/acas/data
          state: directory
          mode: '0750'
+     - file: 
+         path: /data/kafkaspider
+         state: directory
+         owner: acas  # must be same user as will run the spider
+         mode: '0750'
+       become: yes
 
 - name: ensure software is on thug hosts
   hosts: thug-hosts
