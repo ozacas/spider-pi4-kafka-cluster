@@ -50,11 +50,19 @@ producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'
 host = os.uname()[1]
 au_locator = AustraliaGeoLocator(db_location=args.geo)
 mongo = pymongo.MongoClient(args.host, args.port)
+cache = pylru.lrucache(10 * 1000)
 
 for message in consumer:
         jsloc = JavascriptLocation(**message.value)
+
+        # dont redo analyses of stuff we've just seen
+        if jsloc.origin in cache: 
+           continue
+        cache[jsloc.origin] = 1
+
         # thug will produce 1) mongodb output 2) log file
         now = str(datetime.utcnow())
+
         # We process the log here... and push worthy stuff into the relevant queues
         if args.v:
             print(jsloc) 
