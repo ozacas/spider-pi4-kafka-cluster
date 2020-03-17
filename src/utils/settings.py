@@ -34,10 +34,10 @@ PAGESTATS_TOPIC = 'html-page-stats' # where to save details of each html page (l
 SITE_INTERNAL_LINK_LIMIT = 20 # if we visit more than twenty pages according to the LRU cache: we stop adding internal links to the kafka queue
 
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
-FILES_STORE = '/data/kafkaspider10' # must exist on scrapy host with suitable permissions for the spider-user account
+FILES_STORE = '/data/kafkaspider12' # must exist on scrapy host with suitable permissions for the spider-user account
 FILES_DOWNLOAD_FAILURE_TOPIC = 'javascript-download-failure'
 FILES_PIPELINE_FAILURE_TOPIC = 'javascript-pipeline-failure'
-FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-10'
+FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-12'
 ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
 
 # snippetspider: for persisting html-embedded javascript snippets into mongo
