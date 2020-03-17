@@ -44,6 +44,7 @@ class ThugLogParser(object):
  
       concat_scripts = ''
       countries = set()
+      scripts = set()
       for line in content.splitlines():
           m = script_src_regex.match(line)
           if m:  
@@ -54,13 +55,13 @@ class ThugLogParser(object):
               if country is None:
                   country = ''
               countries.add(country)
-              concat_scripts += u + " "
+              scripts.add(u) # de-dupe
           else:
               m = analysis_regex.match(line)
               if m:
                   id = m.group(2)
 
-      rec = ThugLog(origin=self.origin, user_agent=self.user_agent, scripts=concat_scripts, 
+      rec = ThugLog(origin=self.origin, user_agent=self.user_agent, scripts=' '.join(scripts), 
                     script_countries=' '.join(countries), log=content, when=str(datetime.utcnow()),
                     thug_analysis_id=id)
       # place into mongo for long-term storage
