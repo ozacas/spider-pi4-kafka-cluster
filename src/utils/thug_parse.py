@@ -44,7 +44,7 @@ class ThugLogParser(object):
  
       concat_scripts = ''
       countries = set()
-      for line in content:
+      for line in content.splitlines():
           m = script_src_regex.match(line)
           if m:  
               u  = urljoin(self.origin, m.group(3))
@@ -54,9 +54,16 @@ class ThugLogParser(object):
               if country is None:
                   country = ''
               countries.add(country)
-              concat_scripts.append(u+' ')
+              concat_scripts += u + " "
+          else:
+              m = analysis_regex.match(line)
+              if m:
+                  id = m.group(2)
 
       rec = ThugLog(origin=self.origin, user_agent=self.user_agent, scripts=concat_scripts, 
-                    script_countries=' '.join(countries), log=content, when=str(datetime.utcnow()))
+                    script_countries=' '.join(countries), log=content, when=str(datetime.utcnow()),
+                    thug_analysis_id=id)
+      # place into mongo for long-term storage
       self.db.thug_log.insert_one(asdict(rec)) 
+      # but also return to caller for insertion of the record into kafka
       return rec

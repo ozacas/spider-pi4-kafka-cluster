@@ -55,3 +55,4 @@ class ThugLog:
     scripts: str # whitespace separated list of JS URLs found 
     script_countries: str # whitespace separated set of countries JS is sourced from
     when: str # UTC timestamp
+    thug_analysis_id: str # objectId (ie. foreign key) into thug mongoDB with JSON and other logging

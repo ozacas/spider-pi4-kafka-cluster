@@ -82,8 +82,13 @@ for message in consumer:
                status = proc.returncode
                if status == 0 or status == 1: # thug succeed?
                    # will send messages based on log
-                   ret = ThugLogParser(db=mongo[args.db], au_locator=au_locator, url=jsloc.origin, user_agent=user_agent).parse(fp.name) 
-                   producer.send('thug-completed-analyses', asdict(ret))
+                   ret = ThugLogParser(db=mongo[args.db], au_locator=au_locator, origin=jsloc.origin, user_agent=user_agent).parse(fp.name) 
+                   d = asdict(ret)
+                   # NB: since the log can be very long (with deobfuscated JS) we remove it to keep messages short in kafka topic
+                   d.pop('log', None)
+                   if args.v:
+                       print(d)
+                   producer.send('thug-completed-analyses', d)
                else:
                    producer.send('thug_failure', { 'url_scanned': jsloc.origin, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )
