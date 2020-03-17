@@ -12,13 +12,14 @@ import hashlib
 import pymongo
 import argparse
 import pylru
+import socket
 from collections import namedtuple
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta
 from kafka import KafkaConsumer, KafkaProducer
 from urllib.parse import urljoin, urlparse, urlunparse
 from utils.fileitem import FileItem
-from utils.AustraliaGeoLocator import AustraliaGeoLocator
+from utils.geo import AustraliaGeoLocator
 from utils.url import as_priority
 from utils.models import PageStats
 
@@ -136,6 +137,7 @@ class KafkaSpiderMixin(object):
         raise DontCloseSpider
 
     def spider_closed(self, spider):
+        # NB: to be overridden by subclass eg. to persist state
         spider.logger.info("Closed spider") 
 
 class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
@@ -159,9 +161,43 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.db = self.mongo[settings.get('MONGO_DB')]
        self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
        self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
-       self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last 100 sites (value is page count fetched since cache entry created for host)
+       self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last X sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
        self.update_blacklist() # to ensure self.blacklist_domains is populated
+       # populate recent_sites from previous run on this host
+       self.init_recent_sites(self.recent_sites, bs)
+
+    def spider_closed(self, spider):
+       # persist recent_sites to kafka topic so that we have long-term memory of caching
+       d = { }
+       d['host'] = socket.gethostname()
+       for k,v in spider.recent_sites.items():
+           d[k] = v
+       spider.producer.send('recent-sites-cache', d)
+       self.logger.info("Saved recent sites to cache")
+       # ensure main kafka consumer is cleaned up cleanly so that other spiders can re-balance as cleanly as possible
+       spider.consumer.close()
+       pass
+
+    def init_recent_sites(self, cache, bootstrap_servers):
+       # populate recent_sites from most-recent message in kafka topic
+       # BUG: we dont know which partitions (ie. hostnames) the spider will be assigned to. So we read every message and populate the LRU
+       #      cache in the hope that at least 1/2 of the cache is accurate ie. assigned to this spider (for the two spider operational case)
+       consumer = KafkaConsumer('recent-sites-cache', bootstrap_servers=bootstrap_servers, group_id=None, auto_offset_reset='earliest',
+                                value_deserializer=lambda m: json.loads(m.decode('utf-8')), consumer_timeout_ms=1000)
+       # load only the most recent state message from this host, although this will be inaccurate if we change spider hosts, since consumption partitions will change
+       for message in consumer:
+           d = message.value
+           for k,v in d.items():
+              if k != 'host':
+                 if k in cache:
+                     cache[k] += v  # frequently visited sites will be MRU relative to rarely seen sites 
+                 else:
+                     cache[k] = v
+
+       self.logger.info("Populated recent sites with {} cache entries".format(len(cache)))
+       consumer.close() # wont need this consumer anymore
+       pass
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
