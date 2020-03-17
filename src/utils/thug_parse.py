@@ -59,3 +59,4 @@ class ThugLogParser(object):
       rec = ThugLog(origin=self.origin, user_agent=self.user_agent, scripts=concat_scripts, 
                     script_countries=' '.join(countries), log=content, when=str(datetime.utcnow()))
       self.db.thug_log.insert_one(asdict(rec)) 
+      return rec

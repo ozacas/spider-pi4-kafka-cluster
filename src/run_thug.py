@@ -81,7 +81,8 @@ for message in consumer:
                status = proc.returncode
                if status == 0 or status == 1: # thug succeed?
                    # will send messages based on log
-                   ThugLogParser(db=mongo[args.db], au_locator=au_locator, url=jsloc.origin, user_agent=user_agent).parse(fp.name) 
+                   ret = ThugLogParser(db=mongo[args.db], au_locator=au_locator, url=jsloc.origin, user_agent=user_agent).parse(fp.name) 
+                   producer.send('thug-completed-analyses', asdict(ret))
                else:
                    producer.send('thug_failure', { 'url_scanned': jsloc.origin, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )
