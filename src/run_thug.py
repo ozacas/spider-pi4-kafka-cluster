@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 from kafka import KafkaConsumer, KafkaProducer
 from subprocess import run
-from utils.ThugLogParser import ThugLogParser
+from utils.thug_parse import ThugLogParser
+from utils.models import JavascriptLocation
+from utils.geo import AustraliaGeoLocator
 from urllib.parse import urlparse
 from datetime import datetime
 import os
@@ -9,11 +11,7 @@ import tempfile
 import json
 import random
 import pymongo
-
-consumer = KafkaConsumer('4thug', bootstrap_servers='kafka1', auto_offset_reset='earliest',
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers='kafka1')
-host = os.uname()[1]
+import argparse
 
 ua = [ "winxpie60", "winxpie61", "winxpie70", "winxpie80", "winxpchrome20",
         "winxpfirefox12", "winxpsafari5", "win2kie60", "win2kie80",
@@ -26,19 +24,43 @@ ua = [ "winxpie60", "winxpie61", "winxpie70", "winxpie80", "winxpchrome20",
         "ipadchrome38", "ipadchrome39", "ipadchrome45", "ipadchrome46",
         "ipadchrome47", "ipadsafari7", "ipadsafari8", "ipadsafari9" ]
 
-max_objects = 100 # does not include other links
+a = argparse.ArgumentParser(description="Run thug on origin pages which contain JS not in AU")
+a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
+a.add_argument("--topic", help="Read scripts from specified topic [javascript-geolocation]", type=str, default="javascript-geolocation") # NB: can only be this topic
+a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty is no group) [run-thug]", type=str, default='run-thug')
+a.add_argument("--v", help="Debug verbosely", action="store_true")
+a.add_argument("--start", help="Start from earliest or latest available message [latest]", type=str, choices=['earliest', 'latest'], default='latest')
+a.add_argument("--max", help="Maximum number of objects thug can fetch [100]", type=int, default=100)
+a.add_argument("--agent", help="Use a fixed instead of randomly chosen user-agent per message [None]", type=str, default=None, choices=ua)
+a.add_argument("--host", help="Mongo IP/hostname to store thug results in [pi1]", type=str, default='pi1')
+a.add_argument("--port", help="Mongo DB TCP port to use [27017]", type=int, default=27017)
+a.add_argument("--db", help="Database to store thug results in [au_js]", type=str, default="au_js")
+a.add_argument("--geo", help="Maxmind DB to use [/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb]", type=str, default="/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb")
+a.add_argument("--thug", help="Path to thug executable [/usr/bin/thug]", type=str, default="/usr/bin/thug")
+args = a.parse_args()
+
+group = args.group
+if len(group) < 1:
+    group = None
+consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=group, auto_offset_reset=args.start,
+                         value_deserializer=lambda m: json.loads(m.decode('utf-8')))
+producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+host = os.uname()[1]
+au_locator = AustraliaGeoLocator(db_location=args.geo)
+mongo = pymongo.MongoClient(args.host, args.port)
+
 for message in consumer:
-        url = message.value.get('url') 
+        jsloc = JavascriptLocation(**message.value)
         # thug will produce 1) mongodb output 2) log file
         now = str(datetime.utcnow())
         # We process the log here... and push worthy stuff into the relevant queues
         with tempfile.NamedTemporaryFile() as fp:
-           user_agent = random.choice(ua)     # use a random UA for each url fetched to try to maximise return of suspicious objects over time
+           user_agent = random.choice(ua) if args.agent is None else args.agent     
            try:
                # after sampling over 4000 urls (with random user agents) if a thug run takes longer than 600 seconds, it is likely to take an hour or more.
-               # we cant afford that runtime with available resources, so we limit to 600 seconds and marginally increase the failure rate. In this way, we
+               # we cant afford that runtime with available resources, so we limit to 1200 seconds and marginally increase the failure rate. In this way, we
                # get through more pages with available resources
-               proc = run(["/usr/bin/thug",
+               proc = run([args.thug,
                        "--json-logging",      # elasticsearch logging????
                        "--delay=5000",        # be polite
                        "--useragent={}".format(user_agent), # choose random user agent from supported list to maximise coverage
@@ -48,19 +70,15 @@ for message in consumer:
                        "--no-adobepdf",
                        "--no-silverlight",
                        "--no-honeyagent",
-                       "-t{}".format(max_objects),           # max 100 requests per url from kafka
+                       "-t{}".format(args.max),           # max 100 requests per url from kafka
                        "--verbose",           # log level == INFO so we can get sub-resources to fetch
-                       url
-                ], stderr=fp, timeout=600)
+                       jsloc.origin
+                ], stderr=fp, timeout=20 * 60)
 
                status = proc.returncode
                if status == 0 or status == 1: # thug succeed?
                    # will send messages based on log
-                   ThugLogParser(producer, context={ 'thug_pid': os.getpid(), 'thug_host': host, 
-                                                 'when': now, 'thug_exit_status': status, 'ended': str(datetime.utcnow()),
-                                                 'url_scanned': url, 'user_agent_used': user_agent},
-                          geo2_db_location="/home/acas/data/GeoLite2-City_20200114/GeoLite2-City.mmdb",
-                          mongo=pymongo.MongoClient('192.168.1.80')).parse(fp.name) 
+                   ThugLogParser(db=mongo[args.db], au_locator=au_locator, url=jsloc.origin, user_agent=user_agent).parse(fp.name) 
                else:
                    producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )

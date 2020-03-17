@@ -1,8 +1,8 @@
 
 import re
 from urllib.parse import urlparse, urljoin
-from .AustraliaGeoLocator import AustraliaGeoLocator
 from datetime import datetime
+from dataclasses import asdict
 
 #[2020-01-22 13:39:45] [MongoDB] Analysis ID: 5e27b5f1c2da48806667697e
 analysis_regex = re.compile("^\[(.*?)\]\s+\[MongoDB\]\s+Analysis\s+ID:\s+([a-z0-9]+)$")
@@ -14,9 +14,11 @@ url_regex = re.compile("^\[(.*?)\]\s+\[HTTP\]\s+URL\:\s+(\S+)\s*\(Content\-type\
 anchor_regex = re.compile('^\[(.*?)\]\s+<a\s+href="([^"]+?)"\s*>.*$')
 
 class ThugLogParser(object):
-   def __init__(self, context={}, au_locator=None, db=None):
-      self.au_locator = au_locator
-      self.db = db
+   def __init__(self, **kwargs):
+      self.au_locator = kwargs.get('au_locator')
+      self.db = kwargs.get('db')
+      self.user_agent = kwargs.get('user_agent')
+      self.origin = kwargs.get('origin')
    
    def is_au(self, src_url):
       if src_url is None or len(src_url) < 1 or src_url == '#':
@@ -35,9 +37,14 @@ class ThugLogParser(object):
       return False
  
    def parse(self, filename):
-      when = ''
       content = ''
       with open(filename, 'r') as fp:
           content = fp.read()
 
-      rec = ThugLog(origin=
+      for line in content:
+          m = script_src_regex.match(line)
+          if m:
+              concat_scripts.append(urljoin(self.origin, m.group(3))+' ')
+
+      rec = ThugLog(origin=self.origin, user_agent=self.user_agent, scripts=concat_scripts, log=content, when=str(datetime.utcnow()))
+      self.db.thug_log.insert_one(asdict(rec)) 
