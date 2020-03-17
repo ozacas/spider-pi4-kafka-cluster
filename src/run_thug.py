@@ -6,6 +6,7 @@ from utils.models import JavascriptLocation
 from utils.geo import AustraliaGeoLocator
 from urllib.parse import urlparse
 from datetime import datetime
+from dataclasses import asdict
 import os
 import tempfile
 import json
