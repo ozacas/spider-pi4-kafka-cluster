@@ -153,6 +153,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        topic = settings.get('ONEURL_KAFKA_URL_TOPIC')
        bs = settings.get('ONEURL_KAFKA_BOOTSTRAP')
        grp_id = settings.get('ONEURL_KAFKA_CONSUMER_GROUP')
+       site_cache_max = settings.get('KAFKASPIDER_MAX_SITE_CACHE', 1000)
+       recent_cache_max = settings.get('KAFKASPIDER_MAX_RECENT_CACHE', 5000)
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout 
        self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=bs)
@@ -160,8 +162,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.mongo = pymongo.MongoClient(settings.get('MONGO_HOST', settings.get('MONGO_PORT')))
        self.db = self.mongo[settings.get('MONGO_DB')]
        self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
-       self.recent_cache = pylru.lrucache(10 * 1024) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
-       self.recent_sites = pylru.lrucache(500, self.recent_site_eviction) # last X sites (value is page count fetched since cache entry created for host)
+       self.recent_cache = pylru.lrucache(recent_cache_max) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
+       self.recent_sites = pylru.lrucache(site_cache_max, self.recent_site_eviction) # last X sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
        self.update_blacklist() # to ensure self.blacklist_domains is populated
        # populate recent_sites from previous run on this host

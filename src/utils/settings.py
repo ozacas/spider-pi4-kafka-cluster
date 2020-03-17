@@ -32,6 +32,8 @@ ONEURL_KAFKA_URL_TOPIC = 'thug.gen5'
 VISITED_TOPIC = 'visited'   # where to save details of each page spidered by kafkaspider
 PAGESTATS_TOPIC = 'html-page-stats' # where to save details of each html page (link stats)
 SITE_INTERNAL_LINK_LIMIT = 20 # if we visit more than twenty pages according to the LRU cache: we stop adding internal links to the kafka queue
+KAFKASPIDER_MAX_SITE_CACHE = 1000 # dont go crazy with this number, doing so may exceed the max kafka message size which will fail persisting site cache state
+KAFKASPIDER_MAX_RECENT_CACHE = 5000 # handle navbar related links quickly without refetching. Cache is not persisted
 
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
 FILES_STORE = '/data/kafkaspider12' # must exist on scrapy host with suitable permissions for the spider-user account
