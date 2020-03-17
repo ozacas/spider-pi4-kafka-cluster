@@ -65,7 +65,7 @@ class SaveToMongo(object):
             d = msg.value
             if d['host'] == my_hostname and not d['origin'] is None: # origin check is due to buggy records put into topic during development
                  cnt += 1
-                 if cnt > self.n:  # process topic indefinitely or not? Remember kafka group offset will be committed, so it will pick up from where we left off
+                 if self.n > 0 and cnt > self.n:  # process topic indefinitely or not? Remember kafka group offset will be committed, so it will pick up from where we left off
                      break
                  r = record(**d)
                  l.append(r) 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
     a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
-    a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite)", type=int, default=1000000000)
+    a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite) [0]", type=int, default=0)
     a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
     a.add_argument("--v", help="Debug verbosely", action="store_true")
     a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
@@ -119,3 +119,4 @@ if __name__ == "__main__":
     s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid, debug=args.v,
                     visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap, consume_from=args.start)
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail)
+
