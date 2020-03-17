@@ -3,6 +3,7 @@ import re
 from urllib.parse import urlparse, urljoin
 from datetime import datetime
 from dataclasses import asdict
+from utils.models import ThugLog
 
 #[2020-01-22 13:39:45] [MongoDB] Analysis ID: 5e27b5f1c2da48806667697e
 analysis_regex = re.compile("^\[(.*?)\]\s+\[MongoDB\]\s+Analysis\s+ID:\s+([a-z0-9]+)$")
@@ -40,7 +41,8 @@ class ThugLogParser(object):
       content = ''
       with open(filename, 'r') as fp:
           content = fp.read()
-
+ 
+      concat_scripts = ''
       for line in content:
           m = script_src_regex.match(line)
           if m:
