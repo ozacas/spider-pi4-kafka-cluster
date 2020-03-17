@@ -53,3 +53,4 @@ class ThugLog:
     log: str # text based (maybe quite big depending on the page)
     user_agent: str # randomly chosen UA from thug builtins by default
     scripts: str # whitespace separated list of JS URLs found 
+    when: str # UTC timestamp
