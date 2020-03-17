@@ -15,14 +15,17 @@ a = argparse.ArgumentParser(description="Extract features from each javascript i
 a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
 a.add_argument("--mongo-port", help="TCP/IP port for mongo instance [27017]", type=int, default=27017)
 a.add_argument("--db", help="Mongo database to populate with JS data [au_js]", type=str, default="au_js")
-a.add_argument("--visited", help="Kafka topic to get visited JS summary [visited]", type=str, default="visited")
+a.add_argument("--topic", help="Kafka topic to get visited JS summary [visited]", type=str, default='visited')
 a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
 a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=int, default=1000000000)
-a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [javascript-analysis]", type=str, default='javascript-analysis')
+a.add_argument("--group", help="Use specified kafka consumer group to find correct topic position [javascript-analysis]", type=str, default='javascript-analysis')
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 args = a.parse_args()
 
-consumer = KafkaConsumer(args.visited, bootstrap_servers=args.bootstrap, group_id=args.group, #auto_offset_reset='earliest',
+start = 'latest'
+if len(args.group) < 1:
+    start = 'earliest'
+consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=args.group, auto_offset_reset=start,
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 mongo = pymongo.MongoClient(args.mongo_host, args.mongo_port)
