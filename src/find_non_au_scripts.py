@@ -8,7 +8,7 @@ import time
 import ipaddress
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
-from utils.AustraliaGeoLocator import AustraliaGeoLocator
+from utils.geo import AustraliaGeoLocator
 from utils.models import PageStats, JavascriptLocation
 from urllib.parse import urlparse
 from dataclasses import asdict
@@ -20,6 +20,7 @@ a.add_argument("--topic", help="Read scripts from specified topic [html-page-sta
 a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [None]", type=str, default=None)
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
+a.add_argument("--geo", help="Maxmind DB to use (must include country code) [...]", type=str, default="/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb")
 args = a.parse_args()
 
 consumer = KafkaConsumer('html-page-stats', group_id=args.group, auto_offset_reset=args.start, 
@@ -28,7 +29,7 @@ producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'
 cache = pylru.lrucache(1000)
 resolver = dns.resolver.Resolver()
 resolver.nameservers = ['8.8.8.8', '8.8.4.4'] # use public resolvers only
-geo = AustraliaGeoLocator()
+geo = AustraliaGeoLocator(db_location=args.geo)
 
 done = 0
 for message in consumer:
@@ -47,8 +48,9 @@ for message in consumer:
            reportable = False
            first_country = '?'
            for country in result_countries:
-               if country not in ['AU', '', 'US', None]:
-                   reportable = True
+               if country not in ['AU', '', None]:
+                   up2 = urlparse(ps.url) # origin URL
+                   reportable = (up.hostname != up2.hostname) # NB: only report to geolocation queue when different to origin hostname 
                    first_country = country
            
            if len(result_ips) > 0:

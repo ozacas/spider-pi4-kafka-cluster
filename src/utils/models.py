@@ -46,3 +46,10 @@ class CallsByCountVector:
     dollar: int # $.ajax(...)
     createElement: int
     ajax: int
+
+@dataclass
+class ThugLog:
+    origin: str # URL for HTML page which contains the non-AU hosted JS that caused thug to be run
+    log: str # text based (maybe quite big depending on the page)
+    user_agent: str # randomly chosen UA from thug builtins by default
+    scripts: str # whitespace separated list of JS URLs found 
