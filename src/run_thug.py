@@ -54,6 +54,8 @@ for message in consumer:
         # thug will produce 1) mongodb output 2) log file
         now = str(datetime.utcnow())
         # We process the log here... and push worthy stuff into the relevant queues
+        if args.v:
+            print(jsloc) 
         with tempfile.NamedTemporaryFile() as fp:
            user_agent = random.choice(ua) if args.agent is None else args.agent     
            try:
@@ -80,8 +82,10 @@ for message in consumer:
                    # will send messages based on log
                    ThugLogParser(db=mongo[args.db], au_locator=au_locator, url=jsloc.origin, user_agent=user_agent).parse(fp.name) 
                else:
-                   producer.send('thug_failure', { 'url_scanned': url, 'exit_status': status, 
+                   producer.send('thug_failure', { 'url_scanned': jsloc.origin, 'exit_status': status, 
                                                    'when': now, 'user_agent_used': user_agent } )
            except Exception as e:
-               producer.send('thug_failure', { 'url_scanned': url, 'exit_status': -1, # -1 == exception eg. timeout
+               if args.v:
+                   print(str(e))
+               producer.send('thug_failure', { 'url_scanned': jsloc.origin, 'exit_status': -1, # -1 == exception eg. timeout
                                                    'when': now, 'user_agent_used': user_agent, 'msg': str(e) })
