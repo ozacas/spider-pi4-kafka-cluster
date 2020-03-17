@@ -11,6 +11,7 @@ import tempfile
 import json
 import random
 import pymongo
+import pylru
 import argparse
 
 ua = [ "winxpie60", "winxpie61", "winxpie70", "winxpie80", "winxpchrome20",
@@ -34,7 +35,7 @@ a.add_argument("--max", help="Maximum number of objects thug can fetch [100]", t
 a.add_argument("--agent", help="Use a fixed instead of randomly chosen user-agent per message [None]", type=str, default=None, choices=ua)
 a.add_argument("--host", help="Mongo IP/hostname to store thug results in [pi1]", type=str, default='pi1')
 a.add_argument("--port", help="Mongo DB TCP port to use [27017]", type=int, default=27017)
-a.add_argument("--db", help="Database to store thug results in [au_js]", type=str, default="au_js")
+a.add_argument("--db", help="Database to store run_thug.py results (thug results stored separately via /etc/thug/thug.conf) [au_js]", type=str, default="au_js")
 a.add_argument("--geo", help="Maxmind DB to use [/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb]", type=str, default="/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb")
 a.add_argument("--thug", help="Path to thug executable [/usr/bin/thug]", type=str, default="/usr/bin/thug")
 args = a.parse_args()
