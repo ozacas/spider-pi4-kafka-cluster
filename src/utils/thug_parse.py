@@ -43,10 +43,19 @@ class ThugLogParser(object):
           content = fp.read()
  
       concat_scripts = ''
+      countries = set()
       for line in content:
           m = script_src_regex.match(line)
-          if m:
-              concat_scripts.append(urljoin(self.origin, m.group(3))+' ')
+          if m:  
+              u  = urljoin(self.origin, m.group(3))
+              up = urlparse(u)
+              ip = self.au_locator.as_ip(up.hostname)
+              country = self.au_locator.country_code(ip)
+              if country is None:
+                  country = ''
+              countries.add(country)
+              concat_scripts.append(u+' ')
 
-      rec = ThugLog(origin=self.origin, user_agent=self.user_agent, scripts=concat_scripts, log=content, when=str(datetime.utcnow()))
+      rec = ThugLog(origin=self.origin, user_agent=self.user_agent, scripts=concat_scripts, 
+                    script_countries=' '.join(countries), log=content, when=str(datetime.utcnow()))
       self.db.thug_log.insert_one(asdict(rec)) 
