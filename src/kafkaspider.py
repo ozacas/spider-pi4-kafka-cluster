@@ -324,7 +324,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            # dont follow internal links if we've seen a lot of pages in the LRU cache....
            if follow_internals:
                # since we are sampling, try to make sure its a random sample to avoid navigation bias
-               n = self.followup_pages(self.producer, filter(lambda u: not u in self.recent_cache and self.is_suitable(u), random.shuffle(internal_hrefs)), max=left)
+               irefs = list(internal_hrefs)
+               random.shuffle(irefs) 
+               n = self.followup_pages(self.producer, filter(lambda u: not u in self.recent_cache and self.is_suitable(u), irefs), max=left)
                ps.n_internal_accepted = n
            else:
                ps.n_internal_accepted = 0
