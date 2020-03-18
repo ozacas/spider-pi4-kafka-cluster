@@ -98,6 +98,11 @@ class KafkaSpiderMixin(object):
                   pass # FALLTHRU
              else:
                   return False
+
+        # do not crawl if LRU says we've got more than twenty already...
+        if host in self.recent_sites and self.recent_sites[host] > 20:
+             return False
+
         return True
 
     def schedule_next_request(self, batch_size=200):
