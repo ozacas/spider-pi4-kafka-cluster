@@ -311,7 +311,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                 else:
                      internal_hrefs.add(u)
            ps.n_external = len(external_hrefs)
-           n = self.followup_pages(self.producer, external_hrefs, max=max) 
+           n = self.followup_pages(self.producer, filter(lambda u: self.is_suitable(u), external_hrefs), max=max) 
            ps.n_external_accepted = n
            left = max - n
            if left < 0:
@@ -319,12 +319,13 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            ps.n_internal = len(internal_hrefs)
            # dont follow internal links if we've seen a lot of pages in the LRU cache....
            if follow_internals:
-               n = self.followup_pages(self.producer, internal_hrefs, max=left)
+               n = self.followup_pages(self.producer, filter(lambda u: not u in self.recent_cache and self.is_suitable(u), internal_hrefs), max=left)
                ps.n_internal_accepted = n
            else:
-               self.logger.info("Not following internal links for {} as spidered lots already".format(up.hostname))
                ps.n_internal_accepted = 0
-       
+      
+           self.logger.info("Followed {} external and {} internal links on {}".format(ps.n_external_accepted, ps.n_internal_accepted, url))
+
            # spider over the JS content... 
            src_urls = response.xpath('//script/@src').extract()
            # ensure relative script src's are absolute... for the spider to follow now
