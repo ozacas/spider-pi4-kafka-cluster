@@ -316,6 +316,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            left = max - n
            if left < 0:
                left = 0
+           elif left > 20: # dont download more than 20 internal links per page, just polluting kafka queue with far too many links and preventing spider from crawling broadly
+               left = 20
            ps.n_internal = len(internal_hrefs)
            # dont follow internal links if we've seen a lot of pages in the LRU cache....
            if follow_internals:
