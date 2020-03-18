@@ -12,6 +12,7 @@ import hashlib
 import pymongo
 import argparse
 import pylru
+import random
 import socket
 from collections import namedtuple
 from bson.objectid import ObjectId
@@ -296,7 +297,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
            n_seen = self.penalise(up.hostname)
            self.logger.debug("Visited {} pages for {}".format(n_seen, up.hostname))
-           follow_internals = n_seen < self.settings.get('SITE_INTERNAL_LINK_LIMIT')
+           internals_limit = self.settings.get('SITE_INTERNAL_LINK_LIMIT')
+           follow_internals = n_seen < internals_limit
            if n_seen > 20:
                n_seen = 20
            max = 100 - 4 * n_seen 
@@ -316,12 +318,13 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            left = max - n
            if left < 0:
                left = 0
-           elif left > 20: # dont download more than 20 internal links per page, just polluting kafka queue with far too many links and preventing spider from crawling broadly
-               left = 20
+           elif left > internals_limit: # NB: dont pollute url topic with far too many links and preventing spider from crawling broadly
+               left = internals_limit
            ps.n_internal = len(internal_hrefs)
            # dont follow internal links if we've seen a lot of pages in the LRU cache....
            if follow_internals:
-               n = self.followup_pages(self.producer, filter(lambda u: not u in self.recent_cache and self.is_suitable(u), internal_hrefs), max=left)
+               # since we are sampling, try to make sure its a random sample to avoid navigation bias
+               n = self.followup_pages(self.producer, filter(lambda u: not u in self.recent_cache and self.is_suitable(u), random.shuffle(internal_hrefs)), max=left)
                ps.n_internal_accepted = n
            else:
                ps.n_internal_accepted = 0
