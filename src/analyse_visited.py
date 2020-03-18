@@ -1,14 +1,15 @@
 #!/usr/bin/python3
 from kafka import KafkaConsumer, KafkaProducer
 from dataclasses import dataclass
-import json
-from datetime import datetime
 import os
-import argparse
-from utils.models import JavascriptArtefact
+import json
 import subprocess
 import pymongo
 import logging
+import argparse
+import pylru
+from datetime import datetime
+from utils.models import JavascriptArtefact
 from tempfile import NamedTemporaryFile
 
 a = argparse.ArgumentParser(description="Extract features from each javascript in visited topic and dump into analysis-results topic")
@@ -68,11 +69,16 @@ def analyse_script(js, url):
    return ret
 
 cnt = 0    
+cache = pylru.lrucache(1000)
 for message in consumer:
     d = message.value
     d['content_type'] = d['content-type']
     del d['content-type']
     jsr = JavascriptArtefact(**d)
+
+    if jsr.url in cache:
+        continue
+    cache[jsr.url] = 1
 
     # eg.  {'url': 'https://alga.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 'md5': '4714b9a46307758a7272ecc666bc88a7'}
     if 'javascript' in jsr.content_type:
