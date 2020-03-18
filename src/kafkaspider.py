@@ -264,7 +264,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
-        self.logger.info("Rejected {} low priority URLs. {} not AU.".format(rejected, not_au))
+        self.logger.debug("Sent {} URLs to kafka. Rejected {} low priority URLs. {} not AU.".format(sent, rejected, not_au))
         return sent
 
     def is_blacklisted(self, domain):
@@ -295,7 +295,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            up = urlparse(url)
            # NB: by not considering every link on a page we reduce the maxmind cost and other spider slowdowns at limited loss of data 
            n_seen = self.penalise(up.hostname)
-           self.logger.info("Visited {} pages for {}".format(n_seen, up.hostname))
+           self.logger.debug("Visited {} pages for {}".format(n_seen, up.hostname))
            follow_internals = n_seen < self.settings.get('SITE_INTERNAL_LINK_LIMIT')
            if n_seen > 20:
                n_seen = 20
