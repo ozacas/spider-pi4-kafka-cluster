@@ -31,6 +31,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.mongo = pymongo.MongoClient(settings.get('MONGO_HOST', settings.get('MONGO_PORT')))
        self.db = self.mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(10 * 1024)
+       self.cache = pylru.lrucache(500)
        self.update_blacklist()
 
     @classmethod
