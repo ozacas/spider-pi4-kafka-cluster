@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 from kafka import KafkaConsumer, KafkaProducer
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import os
 import json
 import subprocess
@@ -21,6 +21,8 @@ a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str,
 a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=int, default=1000000000)
 a.add_argument("--group", help="Use specified kafka consumer group to find correct topic position [javascript-analysis]", type=str, default='javascript-analysis')
 a.add_argument("--v", help="Debug verbosely", action="store_true")
+a.add_argument("--java", help="Java client used to run the program", type=str, default="/usr/bin/java")
+a.add_argument("--extractor", help="JAR file to perform the feature calculation for each JS artefact", type=str, default="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar")
 args = a.parse_args()
 
 start = 'latest'
@@ -48,22 +50,26 @@ def get_script(artefact):
    logger.warning("Failed to find JS in database for {}".format(artefact))
    return None 
 
-def analyse_script(js, url):
+def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar"):
    # save code to a file
    tmpfile = NamedTemporaryFile(delete=False) 
    tmpfile.write(js)   
    tmpfile.close()
 
+   url = jsr.url
    # save to file and run extract-features.jar to identify the javascript features
-   process = subprocess.run(["/usr/bin/java", "-jar", "/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar", tmpfile.name, url], capture_output=True)
+   process = subprocess.run([java, "-jar", feature_extractor, tmpfile.name, url], capture_output=True)
 
    # turn process stdout into something we can save
    ret = None
+   d = asdict(jsr)
    if process.returncode == 0:
        ret = json.loads(process.stdout)
+       ret.update(d)       # will contain url key
+       ret.pop('id', None) # remove duplicate url entry silently
    else:
        logger.warning("Failed to extract features for {}".format(url))
-       producer.send("feature-extraction-failures", { 'url': url , 'when': str(datetime.utcnow()) })
+       producer.send("feature-extraction-failures", d)
    # cleanup
    os.unlink(tmpfile.name)
    return ret
@@ -89,9 +95,13 @@ for message in consumer:
         # obtain the JS from MongoDB
         js = get_script(jsr)
         if js:
-             results = analyse_script(js, jsr.url)
+             results = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
              if results:
                  producer.send('analysis-results', results)
+        else:
+             d = asdict(jsr)
+             d['reason'] = 'Could not locate in MongoDB'
+             producer.send('feature-extraction-failures', d)
     cnt += 1
     if cnt > args.n:
         break
