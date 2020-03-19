@@ -52,6 +52,10 @@ au_locator = AustraliaGeoLocator(db_location=args.geo)
 mongo = pymongo.MongoClient(args.host, args.port)
 cache = pylru.lrucache(10 * 1000)
 
+# check that executable for thug exists...
+if not os.path.exists(args.thug):
+   raise Exception("No such executable {}".format(args.thug))
+
 for message in consumer:
         jsloc = JavascriptLocation(**message.value)
 
