@@ -167,10 +167,10 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.au_locator = AustraliaGeoLocator(db_location=settings.get('ONEURL_MAXMIND_DB'))
        self.mongo = pymongo.MongoClient(settings.get('MONGO_HOST', settings.get('MONGO_PORT')))
        self.db = self.mongo[settings.get('MONGO_DB')]
-       self.cache = pylru.lrucache(10 * 1024) # dont insert into kafka url topic if url seen recently
        self.recent_cache = pylru.lrucache(recent_cache_max) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
        self.recent_sites = pylru.lrucache(site_cache_max, self.recent_site_eviction) # last X sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
+       self.internal_cache = pylru.lrucache(1000) # only for internal hrefs, stop continually adding the same link
        self.update_blacklist() # to ensure self.blacklist_domains is populated
        # populate recent_sites from previous run on this host
        self.init_recent_sites(self.recent_sites, bs)
@@ -259,9 +259,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
                producer.send(topic, { 'url': url }, key=up.hostname.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
+               sent += 1
                if sent > max: 
                    break
-               sent = sent + 1
            else:
                producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
                not_au = not_au + 1
@@ -326,8 +326,10 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                # since we are sampling, try to make sure its a random sample to avoid navigation bias
                irefs = list(internal_hrefs)
                random.shuffle(irefs) 
-               n = self.followup_pages(self.producer, filter(lambda u: not u in self.recent_cache and self.is_suitable(u), irefs), max=left)
+               n = self.followup_pages(self.producer, filter(lambda u: not u in self.internal_cache and self.is_suitable(u), irefs), max=left)
                ps.n_internal_accepted = n
+               for i in range(n):
+                   self.internal_cache[irefs[i]] = 1 # dont follow this internal link again in the short-term
            else:
                ps.n_internal_accepted = 0
       
