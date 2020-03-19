@@ -5,7 +5,7 @@ from kafka import KafkaConsumer
 import pymongo 
 import argparse
 
-a = argparse.ArgumentParser(description="Report scripts from html-page-stats which are not US/AU geolocated based on any IP associated with the URL hostname")
+a = argparse.ArgumentParser(description="Read analysis results feature vector topic and store permanently into specified MongoDB")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
 a.add_argument("--n", help="Read no more than N records from kafka [Inf]", type=int, default=1000000000)
 a.add_argument("--topic", help="Read analysis results from specified topic [analysis-results]", type=str, default="analysis-results") # NB: can only be this topic
