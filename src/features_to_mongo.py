@@ -41,5 +41,5 @@ for message in consumer:
      cnt += 1
      if cnt % 1000 == 0:
          print("Processed {} records.".format(cnt))
-
+consumer.close()
 exit(0)
