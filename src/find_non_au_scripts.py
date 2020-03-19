@@ -65,5 +65,5 @@ for message in consumer:
    if done >= args.n:
       print("Processed {} records. Terminating per request.".format(done)) 
       break
-
+consumer.close()
 exit(0)
