@@ -15,7 +15,7 @@ a.add_argument("--start", help="Consume from earliest|latest message available i
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
-a.add_argument("--to", help="Save results to named topic [vet-results]", type=str, default="javascript-artefact-control-results")
+a.add_argument("--to", help="Save results to named topic [javascript-artefact-control-results]", type=str, default="javascript-artefact-control-results")
 args = a.parse_args()
 
 group = args.group

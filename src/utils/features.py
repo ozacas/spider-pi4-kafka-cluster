@@ -60,15 +60,35 @@ def normalise_vector(ast_features):
 
    return ret
 
+def find_script(db, url):
+   if db:
+       # first lookup url
+       url_id = db.urls.find_one({ 'url': url })
+       #print(url_id)
+       if url_id:
+            # next lookup script_url to find the script_id
+            ret = db.script_url.find_one({ 'url_id': url_id.get('_id') })
+            #print(ret)
+            if ret:
+               script = db.scripts.find_one({ '_id': ret.get('script') }) 
+               if script: 
+                  return (script.get('sha256'), url_id)
+            # FALLTHRU
+   return (None, None)
+
 def find_hash_match(db, input_features, control_url):
    if db:
        rec = db.javascript_controls.find_one({ 'origin': control_url })
        if rec is None:
-           print("Could not find control {}".format(control_url))
            return False
        expected_sha256 = rec.get('sha256', None)    
-       actual_sha256 = input_features.get('sha256')
-       # lookup db if sha256 is not in kafka message? nah, not for now... TODO FIXME
+       actual_sha256 = input_features.get('sha256', None)
+       if actual_sha256 is None:
+           # lookup db if sha256 is not in kafka message? nah, not for now... TODO FIXME
+           url = input_features.get('id', input_features.get('url')) # url field was named 'id' field in legacy records
+           actual_sha256, url_id = find_script(db, url)
+           #print(actual_sha256)
+           # FALLTHRU 
        return expected_sha256 != actual_sha256
    return False
  
