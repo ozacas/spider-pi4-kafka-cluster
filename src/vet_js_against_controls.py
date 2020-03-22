@@ -40,7 +40,7 @@ for message in consumer:
     if args.v:
         print(vetted)
     n += 1
-    producer.send(args.to, { 'best_control': best_control, 'best_distance': best_dist, 'artefact': message.value })
+    producer.send(args.to, { 'best_control': best_control, 'best_distance': best_dist, 'artefact': message.value, "sha256_matched": sha256_matched })
     db.vet_against_control.find_one_and_update({ 'origin': origin_url }, { "$set": vetted }, upsert=True)
 
     if n >= args.n:
