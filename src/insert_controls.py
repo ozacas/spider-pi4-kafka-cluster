@@ -21,6 +21,7 @@ a.add_argument("--variant", help="Only save artefacts which match variant design
 a.add_argument("--java", help="Path to JVM executable [/usr/bin/java]", type=str, default="/usr/bin/java")
 a.add_argument("--extractor", help="Path to feature extractor JAR", type=str, default="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar")
 a.add_argument("--list", help="List available assets, but do not save to DB", action="store_true")
+a.add_argument("--i18n", help="Save internationalised versions [False]", action="store_true", default=False)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port)
@@ -42,7 +43,7 @@ def save_control(url, family, version, variant):
        print(resp) 
 
 cdnjs = CDNJS()
-for url, family, variant, version in cdnjs.fetch(args.family, args.variant, args.release):
+for url, family, variant, version in cdnjs.fetch(args.family, args.variant, args.release, ignore_i18n=not args.i18n):
     if args.v or args.list:
        print("Found control artefact: {}".format(url))
     if not args.list:
