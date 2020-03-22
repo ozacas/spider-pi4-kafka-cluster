@@ -16,9 +16,10 @@ def as_priority(url, up):
       penalty = penalty + 1
    elif qlen > 0:
       penalty = penalty + 2
-   if len(url) > 200:
+   ulen = len(url)
+   if ulen > 150: # silly state-carrying URLs eg. SAML sign-on are not a priority right now
       penalty = penalty + 2
-   elif len(url) > 100:
+   elif ulen > 80:
       penalty = penalty + 1
    return priority + penalty
 
