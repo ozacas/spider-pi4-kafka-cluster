@@ -36,10 +36,10 @@ KAFKASPIDER_MAX_SITE_CACHE = 1000 # dont go crazy with this number, doing so may
 KAFKASPIDER_MAX_RECENT_CACHE = 5000 # handle navbar related links quickly without refetching. Cache is not persisted
 
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
-FILES_STORE = '/data/kafkaspider13' # must exist on scrapy host with suitable permissions for the spider-user account
+FILES_STORE = '/data/kafkaspider16' # must exist on scrapy host with suitable permissions for the spider-user account
 FILES_DOWNLOAD_FAILURE_TOPIC = 'javascript-download-failure'
 FILES_PIPELINE_FAILURE_TOPIC = 'javascript-pipeline-failure'
-FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-13'
+FILES_DOWNLOAD_ARTEFACTS_TOPIC = 'javascript-artefacts-16'
 ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
 
 # snippetspider: for persisting html-embedded javascript snippets into mongo
