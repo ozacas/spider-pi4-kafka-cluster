@@ -36,13 +36,15 @@ def save_control(url, family, version, variant):
    ret = analyse_script(content, jsr, producer=None, java=args.java, feature_extractor=args.extractor)
    ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url })
    #print(ret)
-   db.javascript_controls.insert_one(ret)
+   # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
+   resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family }, { "$set": ret }, upsert=True)
+   if args.v:
+       print(resp) 
 
 cdnjs = CDNJS()
 for url, family, variant, version in cdnjs.fetch(args.family, args.variant, args.release):
     if args.v or args.list:
-       print("Obtained {} (variant={}, version={})".format(family, variant, version))
-       print("Artefact available from {}".format(url))
+       print("Found control artefact: {}".format(url))
     if not args.list:
        save_control(url, family, variant, version)
     
