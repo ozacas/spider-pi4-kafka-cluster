@@ -29,10 +29,11 @@ db = mongo[args.dbname]
 
 cnt = 0
 for message in consumer:
-     d = { 'url': message.value.get('id') }
+     u = message.value.get('id')
+     d = { 'url': u }
      d.update(**message.value.get('statements_by_count')) 
      db.statements_by_count.insert_one(d)
-     d = { 'url': message.value.get('id') }
+     d = { 'url': u }
      calls = message.value.get('calls_by_count')
      for key in set(calls.keys()):  # since $ is not valid for mongo, we just remove it since it is not useful anyway
          if not key.startswith('$') and not key == '_id':
