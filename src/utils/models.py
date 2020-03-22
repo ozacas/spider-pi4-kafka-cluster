@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 @dataclass
 class PageStats:
@@ -33,12 +34,12 @@ class JavascriptLocation:
 @dataclass
 class JavascriptArtefact: # definition corresponds to visited kafka topic record schema
     url: str
-    inline: bool
-    content_type: str
-    when: str
     sha256: str
     md5: str
-    size_bytes: int
+    inline: bool = False
+    content_type: str = 'text/javascript'
+    when: str = str(datetime.utcnow())
+    size_bytes: int = 0
 
 @dataclass
 class CallsByCountVector:
@@ -56,3 +57,55 @@ class ThugLog:
     script_countries: str # whitespace separated set of countries JS is sourced from
     when: str # UTC timestamp
     thug_analysis_id: str # objectId (ie. foreign key) into thug mongoDB with JSON and other logging
+
+@dataclass
+class FeatureVector:
+    sha256: str
+    md5: str
+    size_bytes: int
+    first_url: str
+    n: int   # count of URLs with given hash (not necessarily de-duped URLs)
+    ArrayLiteral: int = 0
+    CatchClause: int = 0
+    ContinueStatement: int = 0
+    SwitchStatement: int = 0
+    InfixExpression: int = 0
+    TryStatement: int = 0
+    XmlString: int = 0
+    WithStatement: int = 0
+    EmptyExpression: int = 0
+    PropertyGet: int = 0
+    FunctionNode: int = 0
+    ForInLoop: int = 0
+    Block: int = 0
+    NewExpression: int = 0
+    RegExpLiteral: int = 0
+    XmlLiteral: int = 0
+    Scope: int = 0
+    FunctionCall: int = 0
+    WhileLoop: int = 0
+    AstRoot: int = 0
+    BreakStatement: int = 0
+    ForLoop: int = 0
+    ConditionalExpression: int = 0
+    ThrowStatement: int = 0
+    LabeledStatement: int = 0
+    Assignment: int = 0
+    EmptyStatement: int = 0
+    ReturnStatement: int = 0
+    VariableDeclaration: int = 0
+    KeywordLiteral: int = 0
+    NumberLiteral: int = 0
+    ObjectLiteral: int = 0
+    VariableInitializer: int = 0
+    IfStatement: int = 0
+    StringLiteral: int = 0
+    ParenthesizedExpression: int = 0
+    ExpressionStatement: int = 0
+    UnaryExpression: int = 0
+    ObjectProperty: int = 0
+    DoLoop: int = 0
+    SwitchCase: int = 0 
+    Label: int = 0
+    ElementGet: int = 0
+    Name: int = 0
