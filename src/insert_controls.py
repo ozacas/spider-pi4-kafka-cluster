@@ -35,6 +35,8 @@ def save_control(url, family, version, variant):
                              md5 = hashlib.md5(content).hexdigest(), url=url,
                              inline=False, content_type='text/javascript', size_bytes=len(content))
    ret = analyse_script(content, jsr, producer=None, java=args.java, feature_extractor=args.extractor)
+   if ret is None:
+       raise ValueError('Could not analyse script {}'.format(jsr.url))
    ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url })
    #print(ret)
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
@@ -47,5 +49,8 @@ for url, family, variant, version in cdnjs.fetch(args.family, args.variant, args
     if args.v or args.list:
        print("Found control artefact: {}".format(url))
     if not args.list:
-       save_control(url, family, variant, version)
+       try: 
+           save_control(url, family, variant, version)
+       except Exception as e:
+           print(str(e))
     
