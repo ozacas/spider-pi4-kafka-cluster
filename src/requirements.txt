@@ -6,5 +6,4 @@ pylru
 scrapy
 dnspython
 argparse
-signal
 json
