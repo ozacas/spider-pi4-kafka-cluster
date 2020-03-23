@@ -7,7 +7,9 @@ import pymongo
 import logging
 import argparse
 import pylru
-from utils.features import analyse_script
+import sys
+import signal
+from utils.features import analyse_script, get_script
 from datetime import datetime
 from utils.models import JavascriptArtefact
 
@@ -34,23 +36,18 @@ mongo = pymongo.MongoClient(args.mongo_host, args.mongo_port)
 db = mongo[args.db]
 logger = logging.getLogger(__name__)
 
-def get_script(artefact):
-   # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
-   d = { 'sha256': artefact.sha256.strip(), 'md5': artefact.md5.strip(), 'size_bytes': artefact.size_bytes } 
-   if artefact.inline:
-       js = db.snippets.find_one(d)
-       if js:
-           return js.get(u'code')
-   else:
-       js = db.scripts.find_one(d)
-       if js:
-           return js.get(u'code')
-   # oops... something failed so we log it and keep going with the next message
-   logger.warning("Failed to find JS in database for {}".format(artefact))
-   return None 
+def cleanup(*args):
+    global consumer
+    global mongo
+    if len(args):
+        print("Ctrl-C pressed. Cleaning up...")
+    consumer.close()
+    mongo.close()
+    sys.exit(0)
 
 cnt = 0    
 cache = pylru.lrucache(1000)
+signal.signal(signal.SIGINT, cleanup)
 for message in consumer:
     d = message.value
     d['content_type'] = d['content-type']
@@ -68,7 +65,7 @@ for message in consumer:
             print(jsr)
 
         # obtain the JS from MongoDB
-        js = get_script(jsr)
+        js = get_script(jsr, logger)
         if js:
              results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
              if results:

@@ -25,6 +25,22 @@ def safe_for_mongo(function_vector):
        d[k] = v
    return d
 
+def get_script(artefact, logger):
+   # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
+   d = { 'sha256': artefact.sha256.strip(), 'md5': artefact.md5.strip(), 'size_bytes': artefact.size_bytes }
+   if artefact.inline:
+       js = db.snippets.find_one(d)
+       if js:
+           return js.get(u'code')
+   else:
+       js = db.scripts.find_one(d)
+       if js:
+           return js.get(u'code')
+   # oops... something failed so we log it and keep going with the next message
+   if logger:
+       logger.warning("Failed to find JS in database for {}".format(artefact))
+   return None
+
 def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extractor="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar"):
    # save code to a file
    tmpfile = NamedTemporaryFile(delete=False)
