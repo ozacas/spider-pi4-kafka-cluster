@@ -2,6 +2,8 @@
 import pymongo
 import json
 import argparse
+import signal
+import sys
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control
 
@@ -11,7 +13,7 @@ a.add_argument("--n", help="Read no more than N records from kafka [Inf]", type=
 a.add_argument("--topic", help="Read analysis results from specified topic [analysis-results]", type=str, default="analysis-results") # NB: can only be this topic
 a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [vet-features]", type=str, default='vet-features')
 a.add_argument("--v", help="Debug verbosely", action="store_true")
-a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
+a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [earliest]", type=str, default='earliest')
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
@@ -27,6 +29,16 @@ producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'
 mongo = pymongo.MongoClient(args.db, args.port)
 db = mongo[args.dbname]
 
+def cleanup(*args):
+    global consumer
+    global mongo
+    if len(args):
+        print("Ctrl-C pressed. Cleaning up...")
+    consumer.close()
+    mongo.close()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, cleanup)
 # 0. read controls once only
 controls = list(db.javascript_controls.find())
 
@@ -45,4 +57,5 @@ for message in consumer:
        if args.v:
            print("Processed {} records.".format(n))
        break
-consumer.close()
+
+cleanup()
