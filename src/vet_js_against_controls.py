@@ -19,11 +19,9 @@ a.add_argument("--to", help="Save results to named topic [javascript-artefact-co
 args = a.parse_args()
 
 group = args.group
-start = 'latest'
 if len(group) < 1:
     group = None
-    start = 'earliest'
-consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=start, consumer_timeout_ms=10000,
+consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=args.start, consumer_timeout_ms=10000,
                          bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 mongo = pymongo.MongoClient(args.db, args.port)
