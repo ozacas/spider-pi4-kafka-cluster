@@ -6,6 +6,7 @@ import signal
 import sys
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control
+from dataclasses import asdict
 
 a = argparse.ArgumentParser(description="Read analysis results feature vector topic and closely related control vector (if any)")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
@@ -44,14 +45,13 @@ controls = list(db.javascript_controls.find())
 
 n = 0
 for message in consumer:
-    best_control, best_dist, sha256_matched = find_best_control(message.value, controls, db=db)
-    origin_url = message.value.get('url', message.value.get('id'))
-    vetted = { "control_url": best_control, "control_dist": best_dist, "origin": origin_url, "sha256_matched": sha256_matched }
+    best_control = find_best_control(message.value, controls, db=db)
     if args.v:
-        print(vetted)
+        print(best_control)
     n += 1
-    producer.send(args.to, { 'best_control': best_control, 'best_distance': best_dist, 'artefact': message.value, "sha256_matched": sha256_matched })
-    db.vet_against_control.find_one_and_update({ 'origin': origin_url }, { "$set": vetted }, upsert=True)
+    d = asdict(best_control)
+    producer.send(args.to, d)
+    db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
 
     if n >= args.n:
        if args.v:

@@ -4,6 +4,7 @@ import os
 import math 
 import hashlib
 from dataclasses import asdict
+from utils.models import BestControl
 from tempfile import NamedTemporaryFile
 
 # comes from MongoDB (db.statements_by_count_keys collection) but for performance is listed here
@@ -108,24 +109,60 @@ def find_hash_match(db, input_features, control_url):
        ret = expected_sha256 == actual_sha256
        return ret
    return False
- 
+
+def calc_function_dist(origin_calls, control_calls):
+   # function distance is a little different: all function calls are used for distance, even if only present in one vector 
+   fns = set(origin_calls.keys())
+   fns.update(control_calls.keys())
+   vec1 = []
+   vec2 = []
+   #print("*** origin_calls {}".format(origin_calls))
+   #print("*** control_calls {}".format(control_calls))
+   diff_functions = []
+   common = 0
+   for key in fns:
+       if key == 'N/A':  # ignore this for calculation for distance
+          continue
+       a = origin_calls.get(key, 0)
+       b = control_calls.get(key, 0)
+       vec1.append(a)
+       vec2.append(b) 
+       if a != b:
+           diff_functions.append(key)
+       else:
+           common += 1 
+   commonality_factor = 1 / common if common > 0 else 10 
+   return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
+
 def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None): 
    best_control = None
    best_distance = float('Inf')
    hash_match = False
    input_vector = normalise_vector(input_features['statements_by_count'])
-   #print(input_vector)
    for control in controls:
-       if ignore_i18n and '/i18n/' in control['origin']:
+       control_url = control.get('origin')
+       if ignore_i18n and '/i18n/' in control_url:
            continue
 
        control_vector = normalise_vector(control['statements_by_count'])
        
        dist = math.dist(input_vector, control_vector)
        if dist < best_distance and dist <= max_distance:
-            best_control = control['origin']
+            best_control = control_url
             best_distance = dist
+            control_function_calls = control['calls_by_count']
             if dist < 0.01:     # try for a hash match against a control?
                 hash_match = find_hash_match(db, input_features, best_control)
+             
 
-   return (best_control, best_distance, hash_match)
+   diff_functions = []
+   function_dist = float('Inf') # NB: only computed if best_distance < max_distance as it can be quite expensive
+   if best_distance < max_distance:
+       function_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control_function_calls)
+
+   return BestControl(control_url=best_control, 
+                      origin_url=input_features.get('url', input_features.get('id')), # LEGACY: url field used to be name id field
+                      sha256_matched=hash_match, 
+                      ast_dist=best_distance, 
+                      function_dist=function_dist, 
+                      diff_functions=' '.join(diff_functions)) # functions for which there is a difference in call counts between control and input JS

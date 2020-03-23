@@ -59,6 +59,15 @@ class ThugLog:
     thug_analysis_id: str # objectId (ie. foreign key) into thug mongoDB with JSON and other logging
 
 @dataclass
+class BestControl:
+    control_url: str        # chosen control URL with best ast_dist (from CDNJS typically)
+    origin_url: str         # javascript artefact URL found by kafkaspider
+    sha256_matched: bool    # hash match (only computed if distance is low since thats the only way it can be matched)
+    ast_dist: float         # AST syntax tree feature distance between origin and control? (0 means same features in JS code)
+    function_dist: float    # function call feature distance between origin and control (lower means fewer differences, not comparable across JS families)
+    diff_functions: str     # functions which do not have the same count between control and origin
+    
+@dataclass
 class FeatureVector:
     sha256: str
     md5: str
