@@ -89,7 +89,8 @@ def find_hash_match(db, input_features, control_url):
            actual_sha256, url_id = find_script(db, url)
            #print(actual_sha256)
            # FALLTHRU 
-       return expected_sha256 != actual_sha256
+       ret = expected_sha256 == actual_sha256
+       return ret
    return False
  
 def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None): 
