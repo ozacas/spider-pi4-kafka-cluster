@@ -24,7 +24,7 @@ args = a.parse_args()
 group = args.group
 if len(group) < 1:
     group = None
-consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=args.start, consumer_timeout_ms=10000,
+consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=args.start, 
                          bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 mongo = pymongo.MongoClient(args.db, args.port)
@@ -40,9 +40,10 @@ def cleanup(*args):
     sys.exit(0)
 
 signal.signal(signal.SIGINT, cleanup)
-# 0. read controls once only
+# 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
 controls = list(db.javascript_controls.find())
 
+# 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) analyse_visited
 n = 0
 for message in consumer:
     best_control = find_best_control(message.value, controls, db=db)
@@ -50,7 +51,9 @@ for message in consumer:
         print(best_control)
     n += 1
     d = asdict(best_control)
-    producer.send(args.to, d)
+    # 2a. send results to kafka topic for streaming applications
+    producer.send(args.to, d) 
+    # 2b. send results to MongoDB for batch-oriented applications and for long-term storage
     db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
 
     if n >= args.n:
