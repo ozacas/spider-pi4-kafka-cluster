@@ -65,7 +65,7 @@ for message in consumer:
             print(jsr)
 
         # obtain the JS from MongoDB
-        js = get_script(jsr, logger)
+        js = get_script(db, jsr, logger)
         if js:
              results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
              if results:

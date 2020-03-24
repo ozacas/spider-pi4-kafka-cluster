@@ -26,7 +26,7 @@ def safe_for_mongo(function_vector):
        d[k] = v
    return d
 
-def get_script(artefact, logger):
+def get_script(db, artefact, logger):
    # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
    d = { 'sha256': artefact.sha256.strip(), 'md5': artefact.md5.strip(), 'size_bytes': artefact.size_bytes }
    if artefact.inline:
