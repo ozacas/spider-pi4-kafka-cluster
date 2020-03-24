@@ -4,6 +4,8 @@ import json
 from kafka import KafkaConsumer
 import pymongo 
 import argparse
+import signal
+import sys
 
 a = argparse.ArgumentParser(description="Read analysis results feature vector topic and store permanently into specified MongoDB")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
@@ -26,21 +28,31 @@ consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=start, co
                          bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 mongo = pymongo.MongoClient(args.db, args.port)
 db = mongo[args.dbname]
-
 cnt = 0
+
+def cleanup(*args):
+    global consumer
+    global mongo
+    if len(args):
+        print("Ctrl-C pressed. Terminating...")
+    mongo.close()
+    consumer.close()
+    sys.exit(0)
+ 
+signal.signal(signal.SIGINT, cleanup)
 for message in consumer:
-     u = message.value.get('id')
-     d = { 'url': u }
-     d.update(**message.value.get('statements_by_count')) 
-     db.statements_by_count.insert_one(d)
-     d = { 'url': u }
-     calls = message.value.get('calls_by_count')
-     for key in set(calls.keys()):  # since $ is not valid for mongo, we just remove it since it is not useful anyway
-         if not key.startswith('$') and not key == '_id':
-             d[key] = calls[key]
-     db.count_by_function.insert_one(d)
-     cnt += 1
-     if cnt % 1000 == 0:
-         print("Processed {} records.".format(cnt))
-consumer.close()
+    u = message.value.get('id')
+    d = { 'url': u }
+    d.update(**message.value.get('statements_by_count')) 
+    db.statements_by_count.insert_one(d)
+    d = { 'url': u }
+    calls = message.value.get('calls_by_count')
+    for key in set(calls.keys()):  # since $ is not valid for mongo, we just remove it since it is not useful anyway
+        if not key.startswith('$') and not key == '_id':
+            d[key] = calls[key]
+    db.count_by_function.insert_one(d)
+    cnt += 1
+    if cnt % 1000 == 0:
+        print("Processed {} records.".format(cnt))
+cleanup()
 exit(0)
