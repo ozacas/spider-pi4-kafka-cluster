@@ -14,6 +14,7 @@ import argparse
 import pylru
 import random
 import socket
+import getpass
 from collections import namedtuple
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta
@@ -165,8 +166,12 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=60000000) # crank max poll to ensure no kafkapython timeout, consumer wont die as the code is perfect ;-)
        self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=bs)
        self.au_locator = AustraliaGeoLocator(db_location=settings.get('ONEURL_MAXMIND_DB'))
-       self.mongo = pymongo.MongoClient(settings.get('MONGO_HOST', settings.get('MONGO_PORT')))
-       self.db = self.mongo[settings.get('MONGO_DB')]
+       host = settings.get('MONGO_HOST')
+       port = settings.get('MONGO_PORT')
+       user = settings.get('KAFKASPIDER_MONGO_USER')    # to access blacklist
+       password = getpass.getpass('Password for {}@{}: '.format(user, host))
+       mongo = pymongo.MongoClient(host, port, username=user, password=password)
+       self.db = mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(recent_cache_max) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
        self.recent_sites = pylru.lrucache(site_cache_max, self.recent_site_eviction) # last X sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
