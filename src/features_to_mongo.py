@@ -6,6 +6,7 @@ import pymongo
 import argparse
 import signal
 import sys
+from utils.models import Password
 
 a = argparse.ArgumentParser(description="Read analysis results feature vector topic and store permanently into specified MongoDB")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
@@ -17,6 +18,8 @@ a.add_argument("--start", help="Consume from earliest|latest message available i
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
+a.add_argument("--user", help="MongoDB RBAC username to use (readWrite access required)", type=str, required=True)
+a.add_argument("--password", help="MongoDB password for user", type=Password, default=Password.DEFAULT)
 args = a.parse_args()
 
 group = args.group
@@ -26,7 +29,7 @@ if len(group) < 1:
     start = 'earliest'
 consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=start, consumer_timeout_ms=10000, 
                          bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-mongo = pymongo.MongoClient(args.db, args.port)
+mongo = pymongo.MongoClient(args.db, args.port, username=args.user, password=str(args.password))
 db = mongo[args.dbname]
 cnt = 0
 
