@@ -18,7 +18,7 @@ SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 TELNETCONSOLE_ENABLED = False
 
-# other spider related settings
+# COMMON spider settings
 MONGO_HOST = 'pi1'
 MONGO_PORT = 27017
 MONGO_DB   = 'au_js'
@@ -46,3 +46,4 @@ ITEM_PIPELINES = {'utils.mypipeline.MyFilesPipeline': 1}
 # snippetspider: for persisting html-embedded javascript snippets into mongo
 SNIPPETSPIDER_CONSUMER_GROUP = 'snippetspider' # where to keep track of current position in SNIPPET_SPIDER_URL_TOPIC
 SNIPPETSPIDER_URL_TOPIC = 'html-page-stats' # where to read HTML pages visited from (kafka topic)
+SNIPPETSPIDER_MONGO_USER = 'rw' # must have read-write access to be able to save JS snippets

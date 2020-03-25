@@ -8,6 +8,7 @@ import json
 import hashlib
 import pymongo
 import pylru
+import getpass
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafkaspider import KafkaSpiderMixin
@@ -28,8 +29,12 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, 
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout 
        self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
-       self.mongo = pymongo.MongoClient(settings.get('MONGO_HOST', settings.get('MONGO_PORT')))
-       self.db = self.mongo[settings.get('MONGO_DB')]
+       host = settings.get('MONGO_HOST') 
+       port = settings.get('MONGO_PORT')
+       user = settings.get('SNIPPETSPIDER_MONGO_USER')
+       password = getpass.getpass("Password for {}@{}: ".format(user, host))
+       mongo = pymongo.MongoClient(host, port, username=user, password=password)
+       self.db = mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(10 * 1024)
        self.cache = pylru.lrucache(500)
        self.update_blacklist()
