@@ -51,7 +51,7 @@ def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extract
    url = jsr.url
    # save to file and run extract-features.jar to identify the javascript features
    process = subprocess.run([java, "-jar", feature_extractor, tmpfile.name, url], capture_output=True)
-
+   
    # turn process stdout into something we can save
    ret = None
    d = asdict(jsr)
@@ -72,10 +72,13 @@ def normalise_vector(ast_features):
    # ensure return vector is standardised in name order with all values filled in
    global normalised_ast_features_list
    ret = []
+   sum = 0
    for f in normalised_ast_features_list:
-       ret.append(ast_features.get(f, 0))  # vector must always have the same length with the keys in a consistent order for comparison
+       v = ast_features.get(f, 0)
+       sum += v
+       ret.append(v)  # vector must always have the same length with the keys in a consistent order for comparison
 
-   return ret
+   return (ret, sum)
 
 def find_script(db, url):
    if db:
@@ -134,34 +137,39 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = 1 / common if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None): 
+def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None, debug=False): 
    best_control = None
    best_distance = float('Inf')
    hash_match = False
-   input_vector = normalise_vector(input_features['statements_by_count'])
-   for control in controls:
-       control_url = control.get('origin')
-       if ignore_i18n and '/i18n/' in control_url:
-           continue
+   input_vector, total_sum = normalise_vector(input_features['statements_by_count'])
+   if total_sum > 50:  # ignore really small vectors which dont have enough features to enable meaningful comparison
+       for control in controls:
+           control_url = control.get('origin')
+           if ignore_i18n and '/i18n/' in control_url:
+               continue
 
-       control_vector = normalise_vector(control['statements_by_count'])
+           control_vector, _ = normalise_vector(control['statements_by_count'])
        
-       dist = math.dist(input_vector, control_vector)
-       if dist < best_distance and dist <= max_distance:
-            best_control = control_url
-            best_distance = dist
-            control_function_calls = control['calls_by_count']
-            if dist < 0.01:     # try for a hash match against a control?
-                hash_match = find_hash_match(db, input_features, best_control)
-             
-
+           dist = math.dist(input_vector, control_vector)
+           if dist < best_distance and dist <= max_distance:
+               if debug:
+                   print("Got good distance {} for {}".format(dist, control_url)) 
+               best_control = control_url
+               best_distance = dist
+               control_function_calls = control['calls_by_count']
+               if dist < 0.00001:     # try for a hash match against a control?
+                   hash_match = find_hash_match(db, input_features, best_control)
+                   break    # save time since we've likely found the best control
+   else:
+       print("WARNING: too small vector for meaningful control matching: {}".format(input_features))
+ 
    diff_functions = []
    function_dist = float('Inf') # NB: only computed if best_distance < max_distance as it can be quite expensive
    if best_distance < max_distance:
        function_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control_function_calls)
 
    return BestControl(control_url=best_control, 
-                      origin_url=input_features.get('url', input_features.get('id')), # LEGACY: url field used to be name id field
+                      origin_url=input_features.get('url', input_features.get('id')), # LEGACY: url field used to be named id field
                       sha256_matched=hash_match, 
                       ast_dist=best_distance, 
                       function_dist=function_dist, 
