@@ -9,12 +9,12 @@ import socket
 from collections import namedtuple
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
+from utils.models import Password
 
 class SaveToMongo(object):
 
     def __init__(self, *args, **kwargs):
-        self.mongo =  pymongo.MongoClient(kwargs.get('mongo_host', kwargs.get('mongo_port')))
-        self.db = self.mongo[kwargs.get('mongo_db')]
+        self.db = kwargs.get('db')
         self.visited_topic = kwargs.get('visited_topic')
         self.artefact_topic = kwargs.get('artefact_topic')
         gid = kwargs.get('gid')
@@ -93,12 +93,14 @@ class SaveToMongo(object):
             
 if __name__ == "__main__":
     a = argparse.ArgumentParser(description="Process JS artefact topic records and filesystem JS into specified mongo host")
-    a.add_argument("--mongo-host", help="Hostname/IP with mongo instance", type=str, default="pi1")
-    a.add_argument("--mongo-port", help="TCP/IP port for mongo instance", type=int, default=27017)
-    a.add_argument("--db", help="Mongo database to populate with JS data from kafkaspider", type=str, default="au_js")
+    a.add_argument("--host", help="Hostname/IP with Mongo instance [pi1]", type=str, default="pi1")
+    a.add_argument("--port", help="TCP/IP port for Mongo instance [27017]", type=int, default=27017)
+    a.add_argument("--db", help="Mongo database to populate with JS data from kafkaspider [au_js]", type=str, default="au_js")
+    a.add_argument("--user", help="MongoDB user to connect as (readWrite access required)", type=str, required=True)
+    a.add_argument("--password", help="MongoDB password (if not specified, will be prompted)", type=Password, default=Password.DEFAULT)
     a.add_argument("--fail", help="Fail on first error", action='store_true')
-    a.add_argument("--visited", help="Kafka topic to get visited JS summary", type=str, default="visited")
-    a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
+    a.add_argument("--visited", help="Kafka topic to get visited JS summary [visited]", type=str, default="visited")
+    a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
     a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
     a.add_argument("--n", help="Read no more than N records from kafka (0 means infinite) [0]", type=int, default=0)
@@ -109,14 +111,16 @@ if __name__ == "__main__":
     gid = args.group
     if gid and len(gid) < 1: # empty string on command is translated to no group
         gid = None 
-    print("Using kafka consumer group ID: {}".format(gid))
-    print("Using kakfa bootstrap servers: {}".format(args.bootstrap))
-    print("Saving artefacts to kafka topic: {}".format(args.visited))
-    print("Reading artefacts from: topic={} root={}".format(args.artefacts, args.root))
-    print("Accessing mongo DB at {}:{}".format(args.mongo_host, args.mongo_port))
-    if args.fail:
-        print("Terminating on first error.")
-    s = SaveToMongo(mongo_host=args.mongo_host, mongo_port=args.mongo_port, mongo_db=args.db, n=args.n, gid=gid, debug=args.v,
+    if args.v:
+        print("Using kafka consumer group ID: {}".format(gid))
+        print("Using kakfa bootstrap servers: {}".format(args.bootstrap))
+        print("Saving artefacts to kafka topic: {}".format(args.visited))
+        print("Reading artefacts from: topic={} root={}".format(args.artefacts, args.root))
+        print("Accessing mongo DB at {}:{}".format(args.mongo_host, args.mongo_port))
+        if args.fail:
+            print("Terminating on first error.")
+    mongo = pymongo.MongoClient(args.host, args.port, username=args.user, password=str(args.password))
+    s = SaveToMongo(db=mongo[args.db], n=args.n, gid=gid, debug=args.v,
                     visited_topic=args.visited, artefact_topic=args.artefacts, bootstrap_kafka_servers=args.bootstrap, consume_from=args.start)
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail)
 
