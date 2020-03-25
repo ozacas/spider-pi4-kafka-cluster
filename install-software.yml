@@ -16,6 +16,9 @@
 - name: ensure software is on thug hosts
   hosts: thug-hosts
   tasks:
+     - file: # purge existing contents since we want a clean slate (ie. not cumulative)
+         path: /home/acas/src
+         state: absent
      - copy:
          src: src
          dest: /home/acas
@@ -120,7 +123,20 @@
       register: template_installed
     - command: /sbin/ldconfig
       when: template_installed.changed 
- 
+
+#  sudo ln -s /usr/lib/libboost_python38.so.1.72.0 /usr/lib/libboost_python38.so.1.71.0
+- name: boost symlink is much easier than v8 deps rebuild....
+  hosts: thug-hosts
+  become: yes
+  tasks:
+    - file:
+        state: link
+        owner: root
+        group: root
+        force: yes
+        src: /usr/lib/libboost_python38.so.1.72.0
+        dest: /usr/lib/libboost_python38.so.1.71.0
+
 - name: ensure /etc/thug files are installed
   hosts: thug-hosts
   become: yes

@@ -203,6 +203,43 @@
     - command: /usr/bin/useradd --user-group --shell /sbin/nologin --comment "Run mongodb only" mongo
       ignore_errors: yes
 
+- name: ensure pymongo is installed on MongoDB hosts and setup RBAC
+  hosts: mongodb-host
+  become: yes
+  tasks:
+    - pip: name=pymongo executable=pip3
+    - mongodb_user: # create superuser
+        user: root
+        password: "{{ lookup('file', 'group_vars/passwd.mongo.root') }}"
+        update_password: on_create  # dont update the passwd if the user already exists
+        roles: root
+        state: present
+        database: admin
+        login_user: root
+        login_host: 'pi1'
+        login_password: "{{ lookup('file', 'group_vars/passwd.mongo.root') }}"
+        login_database: admin
+    - mongodb_user: # but also read only (ro) and read-write roles for au_js database
+        user: ro
+        password: "{{ lookup('file', 'group_vars/passwd.mongo.ro') }}"
+        roles: readAnyDatabase
+        state: present
+        database: admin
+        login_user: root
+        login_host: 'pi1'
+        login_password: "{{ lookup('file', 'group_vars/passwd.mongo.root') }}"
+        login_database: admin
+    - mongodb_user: # and now for rw role (NB: we always set the password)
+        user: rw
+        password: "{{ lookup('file', 'group_vars/passwd.mongo.rw') }}"
+        roles: readWriteAnyDatabase
+        state: present
+        database: admin
+        login_user: root
+        login_host: 'pi1'
+        login_password: "{{ lookup('file', 'group_vars/passwd.mongo.root') }}"
+        login_database: admin
+        
 - name: setup mongo on database host for thug to store into
   hosts: mongodb-host
   become: yes
