@@ -25,7 +25,7 @@ a.add_argument("--n", help="Read no more than N records from kafka [infinite]", 
 a.add_argument("--group", help="Use specified kafka consumer group to find correct topic position [javascript-analysis]", type=str, default='javascript-analysis')
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--java", help="Java client used to run the program", type=str, default="/usr/bin/java")
-a.add_argument("--extractor", help="JAR file to perform the feature calculation for each JS artefact", type=str, default="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar")
+a.add_argument("--extractor", help="JAR file to perform the feature calculation for each JS artefact", type=str, default="/home/acas/src/extract-features.jar")
 args = a.parse_args()
 
 start = 'latest'
@@ -50,6 +50,12 @@ def cleanup(*args):
 cnt = 0    
 cache = pylru.lrucache(1000)
 signal.signal(signal.SIGINT, cleanup)
+
+if not os.path.exists(args.java):
+    raise ValueError("Java executable does not exist: {}".format(args.java))
+if not os.path.exists(args.extractor):
+    raise ValueError("JAR file to extract features does not exist: {}".format(args.extractor))
+
 for message in consumer:
     d = message.value
     d['content_type'] = d['content-type']

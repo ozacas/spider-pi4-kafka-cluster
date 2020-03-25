@@ -26,23 +26,34 @@ def safe_for_mongo(function_vector):
        d[k] = v
    return d
 
+def find_sha256_hash(db, url):
+   if db:
+       # 1 lookup url
+       url_id = db.urls.find_one({ 'url': url })
+       if url_id:
+            # 2. lookup script_url to find the script_id
+            ret = db.script_url.find_one({ 'url_id': url_id.get('_id') })
+            if ret:
+               # 3. ok, now we can get the script document to return the hash
+               script = db.scripts.find_one({ '_id': ret.get('script') }) 
+               if script: 
+                  return (script.get('sha256'), url_id)
+            # else FALLTHRU
+   return (None, None)
+
 def get_script(db, artefact, logger):
    # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
    d = { 'sha256': artefact.sha256.strip(), 'md5': artefact.md5.strip(), 'size_bytes': artefact.size_bytes }
-   if artefact.inline:
-       js = db.snippets.find_one(d)
-       if js:
-           return js.get(u'code')
-   else:
-       js = db.scripts.find_one(d)
-       if js:
-           return js.get(u'code')
+   collection = db.snippets if artefact.inline else db.scripts
+   js = collection.find_one(d)
+   if js:
+       return js.get(u'code')
    # oops... something failed so we log it and keep going with the next message
    if logger:
        logger.warning("Failed to find JS in database for {}".format(artefact))
    return None
 
-def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extractor="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar"):
+def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
    # save code to a file
    tmpfile = NamedTemporaryFile(delete=False)
    tmpfile.write(js)
@@ -80,22 +91,6 @@ def normalise_vector(ast_features):
 
    return (ret, sum)
 
-def find_script(db, url):
-   if db:
-       # first lookup url
-       url_id = db.urls.find_one({ 'url': url })
-       #print(url_id)
-       if url_id:
-            # next lookup script_url to find the script_id
-            ret = db.script_url.find_one({ 'url_id': url_id.get('_id') })
-            #print(ret)
-            if ret:
-               script = db.scripts.find_one({ '_id': ret.get('script') }) 
-               if script: 
-                  return (script.get('sha256'), url_id)
-            # FALLTHRU
-   return (None, None)
-
 def find_hash_match(db, input_features, control_url):
    if db:
        rec = db.javascript_controls.find_one({ 'origin': control_url })
@@ -106,7 +101,7 @@ def find_hash_match(db, input_features, control_url):
        if actual_sha256 is None:
            # lookup db if sha256 is not in kafka message? nah, not for now... TODO FIXME
            url = input_features.get('id', input_features.get('url')) # url field was named 'id' field in legacy records
-           actual_sha256, url_id = find_script(db, url)
+           actual_sha256, url_id = find_sha256_hash(db, url)
            #print(actual_sha256)
            # FALLTHRU 
        ret = expected_sha256 == actual_sha256
