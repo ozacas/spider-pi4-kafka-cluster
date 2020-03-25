@@ -2,7 +2,7 @@
 from kafka import KafkaConsumer, KafkaProducer
 from subprocess import run
 from utils.thug_parse import ThugLogParser
-from utils.models import JavascriptLocation
+from utils.models import JavascriptLocation, Password
 from utils.geo import AustraliaGeoLocator
 from urllib.parse import urlparse
 from datetime import datetime
@@ -37,6 +37,8 @@ a.add_argument("--agent", help="Use a fixed instead of randomly chosen user-agen
 a.add_argument("--host", help="Mongo IP/hostname to store thug results in [pi1]", type=str, default='pi1')
 a.add_argument("--port", help="Mongo DB TCP port to use [27017]", type=int, default=27017)
 a.add_argument("--db", help="Database to store run_thug.py results (thug results stored separately via /etc/thug/thug.conf) [au_js]", type=str, default="au_js")
+a.add_argument("--user", help="MongoDB user to connect as (readWrite role required)", type=str, required=True)
+a.add_argument("--password", help="MongoDB password (prompted if not supplied)", type=Password, default=Password.DEFAULT)
 a.add_argument("--geo", help="Maxmind DB to use [/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb]", type=str, default="/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb")
 a.add_argument("--thug", help="Path to thug executable [/usr/bin/thug]", type=str, default="/usr/bin/thug")
 args = a.parse_args()
@@ -49,7 +51,7 @@ consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 host = os.uname()[1]
 au_locator = AustraliaGeoLocator(db_location=args.geo)
-mongo = pymongo.MongoClient(args.host, args.port)
+mongo = pymongo.MongoClient(args.host, args.port, username=args.user, password=str(args.password))
 cache = pylru.lrucache(10 * 1000)
 
 # check that executable for thug exists...
