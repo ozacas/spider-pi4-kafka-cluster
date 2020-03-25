@@ -5,5 +5,3 @@ wheel
 pylru
 scrapy
 dnspython
-argparse
-json
