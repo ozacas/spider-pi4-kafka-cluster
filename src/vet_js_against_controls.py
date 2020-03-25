@@ -7,7 +7,7 @@ import sys
 import hashlib
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control, analyse_script
-from utils.models import JavascriptArtefact
+from utils.models import JavascriptArtefact, Password
 from dataclasses import asdict
 
 a = argparse.ArgumentParser(description="Read analysis results feature vector topic and closely related control vector (if any)")
@@ -19,6 +19,8 @@ a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [earliest]", type=str, default='earliest')
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--file", help="Debug specified file and exit []", type=str, default=None)
+a.add_argument("--user", help="Specify MongoDB user with read/write access to dbname", type=str, required=True)
+a.add_argument("--password", help="Specify password for user (prompted if required)", type=Password, default=Password.DEFAULT)
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
 a.add_argument("--to", help="Save results to named topic [javascript-artefact-control-results]", type=str, default="javascript-artefact-control-results")
@@ -30,7 +32,7 @@ if len(group) < 1:
 consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=args.start, 
                          bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
-mongo = pymongo.MongoClient(args.db, args.port)
+mongo = pymongo.MongoClient(args.db, args.port, username=args.user, password=str(args.password))
 db = mongo[args.dbname]
 
 def cleanup(*args):

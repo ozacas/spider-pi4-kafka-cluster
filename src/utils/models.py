@@ -1,5 +1,17 @@
 from dataclasses import dataclass
 from datetime import datetime
+import getpass
+
+class Password:
+    DEFAULT = 'Prompt if not specified'
+
+    def __init__(self, value, prompt='Password: '):
+        if value == self.DEFAULT:
+            value = getpass.getpass(prompt)
+        self.value = value
+
+    def __str__(self):
+        return self.value
 
 @dataclass
 class PageStats:
