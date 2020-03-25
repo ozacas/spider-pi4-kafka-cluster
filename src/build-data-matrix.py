@@ -21,7 +21,7 @@ a.add_argument("--start", help="Consume from earliest|latest message available i
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
-a.add_argument("--user", help="Username to authenticate to MongoDB", type=str, required=True)
+a.add_argument("--user", help="Username to authenticate to MongoDB (read only access required)", type=str, required=True)
 a.add_argument("--password", help="Password to authenticate to MongoDB", type=Password, default=Password.DEFAULT) 
 args = a.parse_args()
 
