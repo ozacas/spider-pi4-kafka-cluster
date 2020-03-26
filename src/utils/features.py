@@ -138,11 +138,9 @@ def find_best_control(input_features, controls, ignore_i18n=True, max_distance=1
    hash_match = False
    input_vector, total_sum = normalise_vector(input_features['statements_by_count'])
    if total_sum > 50:  # ignore really small vectors which dont have enough features to enable meaningful comparison
-       for control in controls:
+       suitable_controls = filter(lambda c: not (ignore_i18n and '/i18n/' in c), controls)
+       for control in suitable_controls:
            control_url = control.get('origin')
-           if ignore_i18n and '/i18n/' in control_url:
-               continue
-
            control_vector, _ = normalise_vector(control['statements_by_count'])
        
            dist = math.dist(input_vector, control_vector)
