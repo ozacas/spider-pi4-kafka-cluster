@@ -18,6 +18,10 @@ class CDNJS:
           return list(filter(lambda f: variant in f, asset['files']))
       return filter(lambda f: f.endswith('.js'), asset['files'])
 
+   def is_i18n(self, ret):
+      url = ret[0].lower()
+      return '/i8n/' in url or '/lang/' in url
+
    def fetch(self, family, variant, version, ignore_i18n=True):
       url = "{}/{}".format(self.base, family)
       resp = requests.get(url, headers={ 'Content-Type': 'application/json' }) 
@@ -34,7 +38,7 @@ class CDNJS:
                  ret = ("{}{}/{}/{}".format(self.cdn, family, version, file), family, variant, version)
              else:
                  ret = ("{}{}/{}/{}".format(self.cdn, family, asset['version'], file), family, variant, asset['version'])
-             if ignore_i18n and '/i18n/' in ret[0]:
+             if ignore_i18n and self.is_i18n(ret):
                  pass
              else:
                  yield ret
