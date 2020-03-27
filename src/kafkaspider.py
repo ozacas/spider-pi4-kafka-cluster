@@ -107,7 +107,7 @@ class KafkaSpiderMixin(object):
 
         return True
 
-    def schedule_next_request(self, batch_size=200):
+    def schedule_next_request(self, batch_size=100):
         """Schedules a request if available"""
         found = 0
         non_random = 0
