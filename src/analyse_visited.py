@@ -17,7 +17,7 @@ a = argparse.ArgumentParser(description="Extract features from each javascript i
 a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
 a.add_argument("--mongo-port", help="TCP/IP port for mongo instance [27017]", type=int, default=27017)
 a.add_argument("--db", help="Mongo database to populate with JS data [au_js]", type=str, default="au_js")
-a.add_argument("--user", help="Database user to authenticate to (readWrite access required)", type=str, required=True)
+a.add_argument("--user", help="Database user to read artefacts from (read-only access required)", type=str, required=True)
 a.add_argument("--password", help="Password (prompted if not specified)", type=Password, default=Password.DEFAULT)
 a.add_argument("--topic", help="Kafka topic to get visited JS summary [visited]", type=str, default='visited')
 a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
@@ -85,5 +85,5 @@ for message in consumer:
     cnt += 1
     if cnt > args.n:
         break
-consumer.close()
+cleanup()
 exit(0)
