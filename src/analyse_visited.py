@@ -56,32 +56,34 @@ if not os.path.exists(args.java):
 if not os.path.exists(args.extractor):
     raise ValueError("JAR file to extract features does not exist: {}".format(args.extractor))
 
-for message in consumer:
-    d = message.value
-    d['content_type'] = d['content-type']
-    del d['content-type']
-    jsr = JavascriptArtefact(**d)
+def next_artefact(consumer):
+    for msg in consumer:
+        d = msg.value
+        d['content_type'] = d['content-type']
+        del d['content-type']
+        yield JavascriptArtefact(**d)
 
-    if jsr.url in cache:
-        continue
+uncached_artefacts = filter(lambda a: a.url not in cache, next_artefact(consumer))
+for jsr in filter(lambda a: 'javascript' in a.content_type, uncached_artefacts): # javascript only artefacts
+    # eg.  {'url': 'https://alga.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 'md5': '4714b9a46307758a7272ecc666bc88a7'}
     cache[jsr.url] = 1
 
-    # eg.  {'url': 'https://alga.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 'md5': '4714b9a46307758a7272ecc666bc88a7'}
-    if 'javascript' in jsr.content_type:
-        # verbose?
-        if args.v:
-            print(jsr)
+    # 1. verbose?
+    if args.v:
+        print(jsr)
 
-        # obtain the JS from MongoDB
-        js = get_script(db, jsr, logger)
-        if js:
-             results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
-             if results:
-                 producer.send('analysis-results', results)
-        else:
-             d = asdict(jsr)
-             d['reason'] = 'Could not locate in MongoDB'
-             producer.send('feature-extraction-failures', d)
+    # 2. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
+    js = get_script(db, jsr, logger)
+    if js:
+         results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
+         if results:
+             producer.send('analysis-results', results)
+    else:
+         d = asdict(jsr)
+         d['reason'] = 'Could not locate in MongoDB'
+         producer.send('feature-extraction-failures', d)
+
+    # 3. done enough per user request?
     cnt += 1
     if cnt > args.n:
         break
