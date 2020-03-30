@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import getpass
 
@@ -78,7 +78,7 @@ class BestControl:
     ast_dist: float         # AST syntax tree feature distance between origin and control? (0 means same features in JS code)
     function_dist: float    # function call feature distance between origin and control (lower means fewer differences, not comparable across JS families)
     diff_functions: str     # functions which do not have the same count between control and origin
-    
+
 @dataclass
 class FeatureVector:
     sha256: str
