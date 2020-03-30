@@ -70,9 +70,13 @@ def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extract
        ret = json.loads(process.stdout)
        ret.update(d)       # will contain url key
        ret.pop('id', None) # remove duplicate url entry silently
-       ret['calls_by_count'] = safe_for_mongo(ret.pop('calls_by_count'))
+       call_vector = safe_for_mongo(ret.pop('calls_by_count')) # NB: for correct analysis both the AU JS and control vectors must both be safe-for-mongo'ed consistently
+       #print(call_vector)
+       ret['calls_by_count'] = call_vector
+       # FALLTHRU
    elif producer:
        producer.send("feature-extraction-failures", d)
+       # FALLTHRU
 
    # cleanup
    os.unlink(tmpfile.name)
