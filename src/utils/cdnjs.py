@@ -20,7 +20,7 @@ class CDNJS:
 
    def is_i18n(self, ret):
       url = ret[0].lower()
-      return '/i8n/' in url or '/lang/' in url
+      return '/i18n/' in url or '/lang/' in url
 
    def fetch(self, family, variant, version, ignore_i18n=True):
       url = "{}/{}".format(self.base, family)
