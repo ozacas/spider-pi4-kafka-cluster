@@ -7,6 +7,7 @@ import argparse
 import signal
 import sys
 from utils.models import Password
+from utils.features import safe_for_mongo
 
 a = argparse.ArgumentParser(description="Read analysis results kafka topic and ETL into MongoDB")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
@@ -49,10 +50,9 @@ for message in consumer:
     d.update(**message.value.get('statements_by_count')) 
     db.statements_by_count.insert_one(d)
     d = { 'url': u }
-    calls = message.value.get('calls_by_count')
-    for key in set(calls.keys()):  # since $ is not valid for mongo, we just remove it since it is not useful anyway
-        if not key.startswith('$') and not key == '_id':
-            d[key] = calls[key]
+    calls = safe_for_mongo(message.value.get('calls_by_count'))
+    calls.pop('_id', None)           # not wanted since already in d
+    d.update(calls)
     db.count_by_function.insert_one(d)
     cnt += 1
     if cnt % 1000 == 0:
