@@ -10,7 +10,7 @@ from utils.models import JavascriptArtefact, Password
 from utils.cdnjs import CDNJS
 from tempfile import NamedTemporaryFile
 
-a = argparse.ArgumentParser(description="Insert AST vectors and relate it to the JS release family into the specified MongoDB for later matching")
+a = argparse.ArgumentParser(description="Insert feature vectors from artefacts into MongoDB")
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
