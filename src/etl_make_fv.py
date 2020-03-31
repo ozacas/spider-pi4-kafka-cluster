@@ -70,6 +70,11 @@ def next_artefact(consumer, max):
         if cnt >= max:
             break
 
+def report_failure(producer, artefact, reason):
+    d = asdict(artefact)
+    d['reason'] = reason
+    producer.send('feature-extraction-failures', d)
+
 # we want only artefacts which are not cached and are JS (subject to maximum record limits)
 uncached_js_artefacts = filter(lambda a: not a.url in cache, next_artefact(consumer, args.n))
 for jsr in uncached_js_artefacts:
@@ -87,8 +92,7 @@ for jsr in uncached_js_artefacts:
     if js:
          results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
          if results:
-             producer.send(args.to, results)
-             # and push to mongo...
+             # push to mongo...
              d = { 'url': jsr.url, 'origin': jsr.origin }
              d.update(**results.get('statements_by_count'))
              db.statements_by_count.insert_one(d)
@@ -97,13 +101,13 @@ for jsr in uncached_js_artefacts:
              calls.pop('_id', None)           # not wanted since already in d
              d.update(calls)
              db.count_by_function.insert_one(d)
+
+             # and now kafka now that the DB has been populated
+             producer.send('analysis-results', results)
          else:
-             if args.v:
-                 print("Unable to analyse script: {}".format(jsr.url))
+             report_failure(producer, jsr, "Unable to analyse script")
     else:
-         d = asdict(jsr)
-         d['reason'] = 'Could not locate in MongoDB'
-         producer.send('feature-extraction-failures', d)
+         report_failure(producer, jsr, 'Could not locate in MongoDB')
 
 cleanup()
 exit(0)
