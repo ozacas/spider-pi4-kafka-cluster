@@ -9,7 +9,7 @@ import argparse
 import pylru
 import sys
 import signal
-from utils.features import analyse_script, get_script
+from utils.features import analyse_script, get_script, safe_for_mongo
 from datetime import datetime
 from utils.models import JavascriptArtefact, Password
 
@@ -17,7 +17,7 @@ a = argparse.ArgumentParser(description="Extract features from each javascript i
 a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
 a.add_argument("--mongo-port", help="TCP/IP port for mongo instance [27017]", type=int, default=27017)
 a.add_argument("--db", help="Mongo database to populate with JS data [au_js]", type=str, default="au_js")
-a.add_argument("--user", help="Database user to read artefacts from (read-only access required)", type=str, required=True)
+a.add_argument("--user", help="Database user to read artefacts from (read-write access required)", type=str, required=True)
 a.add_argument("--password", help="Password (prompted if not specified)", type=Password, default=Password.DEFAULT)
 a.add_argument("--topic", help="Kafka topic to get visited JS summary [visited]", type=str, default='visited')
 a.add_argument("--to", help="Send output to specified topic [analysis-results]", type=str, default='analysis-results')
@@ -88,6 +88,18 @@ for jsr in uncached_js_artefacts:
          results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
          if results:
              producer.send(args.to, results)
+             # and push to mongo...
+             d = { 'url': jsr.url, 'origin': jsr.origin }
+             d.update(**results.get('statements_by_count'))
+             db.statements_by_count.insert_one(d)
+             d = { 'url': jsr.url, 'origin': jsr.origin }
+             calls = safe_for_mongo(results.get('calls_by_count'))
+             calls.pop('_id', None)           # not wanted since already in d
+             d.update(calls)
+             db.count_by_function.insert_one(d)
+         else:
+             if args.v:
+                 print("Unable to analyse script: {}".format(jsr.url))
     else:
          d = asdict(jsr)
          d['reason'] = 'Could not locate in MongoDB'
