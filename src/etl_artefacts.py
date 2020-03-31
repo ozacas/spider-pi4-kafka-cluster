@@ -34,7 +34,7 @@ class SaveToMongo:
             raise ValueError("Expected MD5 and MD5 hash do not match: {} {} != {}".format(url, md5, artefact.checksum))
 
         # check to see if in mongo already
-        url_id = self.save_url(url, artefact.when)
+        url_id = self.save_url(artefact.url, artefact.when)
 
         script_len = len(script)
         key = { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }  
