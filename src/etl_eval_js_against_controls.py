@@ -10,7 +10,7 @@ from utils.features import find_best_control, analyse_script
 from utils.models import JavascriptArtefact, Password
 from dataclasses import asdict
 
-a = argparse.ArgumentParser(description="Read analysis results feature vector topic and closely related control vector (if any)")
+a = argparse.ArgumentParser(description="Evaluate and permanently store each AST vector against all controls, storing results in MongoDB and Kafka")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
 a.add_argument("--n", help="Read no more than N records from kafka [Inf]", type=int, default=float('Inf'))
 a.add_argument("--topic", help="Read analysis results from specified topic [analysis-results]", type=str, default="analysis-results") # NB: can only be this topic
