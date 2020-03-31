@@ -40,64 +40,64 @@ def cleanup(*args):
 
 origins = { }
 controls= { }
-n = 0
 signal.signal(signal.SIGINT, cleanup)
-total_fns = set()
 
 def get_function_call_vector(db, url):
     ret = db.count_by_function.find_one({ 'url': url })
     return ret
 
-controls = {}
+def next_artefact(consumer, max, verbose):
+    n = 0
+    for message in consumer:
+        rec = BestControl(**message.value)
+        yield rec 
+        n += 1
+        if verbose and n % 10000 == 0:
+            print("Processed {} records. Got data for {} origin hosts.".format(n, len(origins)))
+        if n >= max:
+            break
+
 for control in db.javascript_controls.find({}):
     #print(control)
     url = control.get('origin')
     controls[url] = control
-    if '0.10.2' in url:
-        print(control)
 
 if args.v:
     print("Loaded {} controls.".format(len(controls)))
 
-for message in consumer:
-    best_control = BestControl(**message.value)
+
+for best_control in filter(lambda c: c.ast_dist < args.threshold, next_artefact(consumer, args.n, args.v)):
     dist = best_control.ast_dist
-    n += 1
-    if args.v and n % 10000 == 0:
-        print("Processed {} records. Got data for {} origin hosts.".format(n, len(origins)))
 
-    # in practice we're only interested in real hits - and its incredibly rare that a real hit will 
-    # have a distance > 50 (typically means a giant patch)
-    if dist < args.threshold: 
-        up = urlparse(best_control.origin_url)
-        host = up.hostname
-        if not host:
-           continue
-        origins[host] = 1
-        d = asdict(best_control)
-        d.pop('diff_functions', None)
-        fv_origin = get_function_call_vector(db, best_control.origin_url)
-        if fv_origin is None:
-            print("WARNING: unable to find function call vector for {}".format(best_control.origin_url))
-            continue
+    up = urlparse(best_control.origin_url)
+    host = up.hostname
+    if not host:
+       continue
+    origins[host] = 1
+    d = asdict(best_control)
+    d.pop('diff_functions', None)
+    fv_origin = get_function_call_vector(db, best_control.origin_url)
+    if fv_origin is None:
+        print("WARNING: unable to find function call vector for {}".format(best_control.origin_url))
+        continue
 
-        u = best_control.control_url
-        fv_control= controls[u].get('calls_by_count')
-        for fn in best_control.diff_functions.split(' '):
-            if len(fn) > 0:
-                d['diff_function'] = fn
-                d['origin_host'] = host
-                d['origin_has_query'] = len(up.query) > 0
-                if up.port:
-                     d['origin_port'] = up.port
-                elif up.scheme == 'https':
-                     d['origin_port'] = 443
-                elif up.scheme == 'http':
-                     d['origin_port'] = 80
-                d['origin_scheme'] = up.scheme
-                d['control_family'] = controls[u].get('family')
-                d['expected_calls'] = fv_control.get(fn, None)
-                d['actual_calls'] = fv_origin.get(fn, None)
-                db.etl_javascript_controls.insert_one(d.copy())
+    u = best_control.control_url
+    fv_control = controls[u].get('calls_by_count')
+    for fn in best_control.diff_functions.split(' '):
+        if len(fn) > 0:
+            d['diff_function'] = fn
+            d['origin_host'] = host
+            d['origin_has_query'] = len(up.query) > 0
+            if up.port:
+                 d['origin_port'] = up.port
+            elif up.scheme == 'https':
+                 d['origin_port'] = 443
+            elif up.scheme == 'http':
+                 d['origin_port'] = 80
+            d['origin_scheme'] = up.scheme
+            d['control_family'] = controls[u].get('family')
+            d['expected_calls'] = fv_control.get(fn, None)
+            d['actual_calls'] = fv_origin.get(fn, None)
+            db.etl_javascript_controls.insert_one(d.copy())
 
 cleanup()
