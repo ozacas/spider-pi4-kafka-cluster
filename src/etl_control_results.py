@@ -14,8 +14,7 @@ a.add_argument("--topic", help="Kafka topic to get visited JS summary [javascrip
 a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [etl-controls2mongo]", type=str, default='etl-controls2mongo')
 a.add_argument("--start", help="Consume from earliest|latest message available in control results topic [latest]", type=str, default='latest')
 a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
-a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=int, default=1000000000)
-a.add_argument("--v", help="Debug verbosely", action="store_true")
+a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=float, default=float('Inf'))
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
@@ -30,16 +29,18 @@ mongo = pymongo.MongoClient(args.db, args.port,
 db = mongo[args.dbname]
 
 consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=args.group, 
-                         auto_offset_reset=args.start, consumer_timeout_ms=1000,
+                         auto_offset_reset=args.start, consumer_timeout_ms=10000,
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 
 def cleanup(*args):
     global consumer
+    global mongo
     if len(args):
         print("Ctrl+C pressed. Now cleaning up and terminating...")
     else:
         print("Finished analysis. Shutting down...")
     consumer.close()
+    mongo.close()
     sys.exit(0)
 
 def get_function_call_vector(db, url):
@@ -71,7 +72,7 @@ def load_controls(db, verbose):
 signal.signal(signal.SIGINT, cleanup)
 origins = { }
 controls = load_controls(db, args.v)
-for best_control in filter(lambda c: c.ast_dist < args.threshold, next_artefact(consumer, args.n, args.v)):
+for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact(consumer, args.n, args.v)):
     dist = best_control.ast_dist
 
     up = urlparse(best_control.origin_url)

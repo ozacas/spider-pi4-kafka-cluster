@@ -57,20 +57,22 @@ if args.v:
 if args.file:
    with open(args.file, 'rb') as fp:
        content = fp.read()
-       jsr = JavascriptArtefact(url=args.file, sha256=hashlib.sha256(content).hexdigest(), md5=hashlib.md5(content).hexdigest(), size_bytes=len(content))
+       jsr = JavascriptArtefact(url=args.file, sha256=hashlib.sha256(content).hexdigest(), 
+                                md5=hashlib.md5(content).hexdigest(), size_bytes=len(content))
        input_features = analyse_script(content, jsr)
        best_control = find_best_control(input_features, controls, db=db, debug=True)       
        print(best_control)
        cleanup()
 
-# 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) analyse_visited
+# 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 n = 0
 for message in consumer:
     best_control = find_best_control(message.value, controls, db=db)
     if args.v:
         print(best_control)
     n += 1
-    d = asdict(best_control)
+    d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
+
     # 2a. send results to kafka topic for streaming applications
     producer.send(args.to, d) 
     # 2b. send results to MongoDB for batch-oriented applications and for long-term storage

@@ -79,6 +79,7 @@ class BestControl:
     ast_dist: float         # AST syntax tree feature distance between origin and control? (0 means same features in JS code)
     function_dist: float    # function call feature distance between origin and control (lower means fewer differences, not comparable across JS families)
     diff_functions: str     # functions which do not have the same count between control and origin
+    cited_on: str = None    # include HTML page which cited this origin_url (useful for ETL)
 
 @dataclass
 class FeatureVector:

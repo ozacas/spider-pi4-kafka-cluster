@@ -44,10 +44,10 @@ def cleanup(*args):
 signal.signal(signal.SIGINT, cleanup)
 for message in consumer:
     u = message.value.get('id')
-    d = { 'url': u }
+    d = { 'url': u, 'origin': message.value.get('origin', None) }
     d.update(**message.value.get('statements_by_count')) 
     db.statements_by_count.insert_one(d)
-    d = { 'url': u }
+    d = { 'url': u, 'origin': message.value.get('origin', None) }
     calls = safe_for_mongo(message.value.get('calls_by_count'))
     calls.pop('_id', None)           # not wanted since already in d
     d.update(calls)

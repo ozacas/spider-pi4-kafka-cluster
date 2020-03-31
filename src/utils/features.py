@@ -68,7 +68,7 @@ def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extract
    d = asdict(jsr)
    if process.returncode == 0:
        ret = json.loads(process.stdout)
-       ret.update(d)       # will contain url key
+       ret.update(d)       # will contain url key and NOW origin html page also (missing in early data)
        ret.pop('id', None) # remove duplicate url entry silently
        call_vector = safe_for_mongo(ret.pop('calls_by_count')) # NB: for correct analysis both the AU JS and control vectors must both be safe-for-mongo'ed consistently
        #print(call_vector)
@@ -167,6 +167,7 @@ def find_best_control(input_features, controls, ignore_i18n=True, max_distance=1
 
    return BestControl(control_url=best_control, 
                       origin_url=input_features.get('url', input_features.get('id')), # LEGACY: url field used to be named id field
+                      cited_on=input_features.get('origin', None), # report owning HTML page also if possible (useful for data analysis)
                       sha256_matched=hash_match, 
                       ast_dist=best_distance, 
                       function_dist=function_dist, 
