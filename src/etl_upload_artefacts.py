@@ -100,7 +100,7 @@ if __name__ == "__main__":
     a.add_argument("--to", help="Kafka topic to get visited JS summary [visited]", type=str, default="visited")
     a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
-    a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=float, default=float('Inf'))
+    a.add_argument("--n", help="Read no more than N records from kafka", type=float, required=True) # NB: float to support Inf
     a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
     a.add_argument("--fail", help="Fail on first error", action='store_true')
     a.add_argument("--v", help="Debug verbosely", action="store_true")
