@@ -69,10 +69,12 @@ def next_artefact(consumer, max):
         if cnt >= max:
             break
 
-
+# we want only artefacts which are not cached and are JS (subject to maximum record limits)
 uncached_artefacts = filter(lambda a: a.url not in cache, next_artefact(consumer, args.n))
-for jsr in filter(lambda a: 'javascript' in a.content_type, uncached_artefacts): # javascript only artefacts
-    # eg.  {'url': 'https://alga.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 'md5': '4714b9a46307758a7272ecc666bc88a7'}
+for jsr in filter(lambda a: 'javascript' in a.content_type, uncached_artefacts): 
+    # eg.  {'url': 'https://XXXX.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 
+    #       'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 
+    #        'md5': '4714b9a46307758a7272ecc666bc88a7', 'origin': 'XXXX' }  NB: origin may be none for old records (sadly)
     cache[jsr.url] = 1
 
     # 1. verbose?
