@@ -9,7 +9,7 @@ from utils.models import BestControl, Password
 from dataclasses import asdict
 from urllib.parse import urlparse
 
-a = argparse.ArgumentParser(description="Peform ETL on JS control hits and dump non-normalised data into MongoDB ready for querying")
+a = argparse.ArgumentParser(description="Reconcile all data from control, origin and artefacts into one query-ready, non-normalised, Mongo collection")
 a.add_argument("--topic", help="Kafka topic to get visited JS summary [javascript-artefact-control-results]", type=str, default='javascript-artefact-control-results')
 a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [etl-controls2mongo]", type=str, default='etl-controls2mongo')
 a.add_argument("--start", help="Consume from earliest|latest message available in control results topic [latest]", type=str, default='latest')
@@ -72,7 +72,7 @@ def load_controls(db, verbose):
 def as_url_fields(url, prefix=''):
     up = urlparse(url)
     d = {}
-    d[prefix+'_host'] = host
+    d[prefix+'_host'] = up.hostname
     d[prefix+'_has_query'] = len(up.query) > 0
     if up.port:
         d[prefix+'_port'] = up.port
