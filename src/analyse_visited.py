@@ -20,6 +20,7 @@ a.add_argument("--db", help="Mongo database to populate with JS data [au_js]", t
 a.add_argument("--user", help="Database user to read artefacts from (read-only access required)", type=str, required=True)
 a.add_argument("--password", help="Password (prompted if not specified)", type=Password, default=Password.DEFAULT)
 a.add_argument("--topic", help="Kafka topic to get visited JS summary [visited]", type=str, default='visited')
+a.add_argument("--to", help="Send output to specified topic [analysis-results]", type=str, default='analysis-results')
 a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
 a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=int, default=1000000000)
 a.add_argument("--group", help="Use specified kafka consumer group to find correct topic position [javascript-analysis]", type=str, default='javascript-analysis')
@@ -83,7 +84,7 @@ for jsr in filter(lambda a: 'javascript' in a.content_type, uncached_artefacts):
     if js:
          results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
          if results:
-             producer.send('analysis-results', results)
+             producer.send(args.to, results)
     else:
          d = asdict(jsr)
          d['reason'] = 'Could not locate in MongoDB'
