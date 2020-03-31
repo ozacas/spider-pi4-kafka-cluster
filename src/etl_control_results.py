@@ -69,14 +69,29 @@ def load_controls(db, verbose):
         print("Loaded {} controls.".format(len(controls)))
     return controls
 
+def as_url_fields(url, prefix=''):
+    up = urlparse(url)
+    d = {}
+    d[prefix+'_host'] = host
+    d[prefix+'_has_query'] = len(up.query) > 0
+    if up.port:
+        d[prefix+'_port'] = up.port
+    elif up.scheme == 'https':
+        d[prefix+'_port'] = 443
+    elif up.scheme == 'http':
+        d[prefix+'_port'] = 80
+    d[prefix+'_scheme'] = up.scheme
+    d[prefix+'_path'] = up.path
+    return d
+
 signal.signal(signal.SIGINT, cleanup)
 origins = { }
 controls = load_controls(db, args.v)
 for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact(consumer, args.n, args.v)):
     dist = best_control.ast_dist
 
-    up = urlparse(best_control.origin_url)
-    host = up.hostname
+    origin_fields = as_url_fields(best_control.origin_url, prefix='origin')
+    host = origin_fields.get('origin_host')
     if host is None:
        continue
     origins[host] = 1
@@ -97,15 +112,14 @@ for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact
     for fn in best_control.diff_functions.split(' '):
         if len(fn) > 0:
             d['diff_function'] = fn
-            d['origin_host'] = host
-            d['origin_has_query'] = len(up.query) > 0
-            if up.port:
-                 d['origin_port'] = up.port
-            elif up.scheme == 'https':
-                 d['origin_port'] = 443
-            elif up.scheme == 'http':
-                 d['origin_port'] = 80
-            d['origin_scheme'] = up.scheme
+            # origin url (aka. JS url)
+            d.update(origin_fields)
+ 
+            # cited_on URL (aka. HTML page) iff specified
+            if best_control.cited_on:
+               d.update(as_url_fields(best_control.cited_on, 'cited_on'))
+
+            # other fields for ETL 
             d['control_family'] = controls[u].get('family')
             d['expected_calls'] = fv_control.get(fn, None)
             d['actual_calls'] = fv_origin.get(fn, None)
