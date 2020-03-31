@@ -75,10 +75,11 @@ class SaveToMongo:
         print("Sorted {} records.".format(len(l)))
         # finally process each record via mongo
         cnt = 0
+        verbose = self.debug
         for artefact in l:
             try:
-                if self.debug:
-                    print(tuple)
+                if verbose:
+                    print(artefact)
                 self.save_artefact(artefact, root, to)
                 cnt += 1
                 if cnt % 10000 == 0:
@@ -95,13 +96,13 @@ if __name__ == "__main__":
     a.add_argument("--db", help="Mongo database to populate with JS data from kafkaspider [au_js]", type=str, default="au_js")
     a.add_argument("--user", help="MongoDB user to connect as (readWrite access required)", type=str, required=True)
     a.add_argument("--password", help="MongoDB password (if not specified, will be prompted)", type=Password, default=Password.DEFAULT)
-    a.add_argument("--fail", help="Fail on first error", action='store_true')
-    a.add_argument("--visited", help="Kafka topic to get visited JS summary [visited]", type=str, default="visited")
+    a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
+    a.add_argument("--to", help="Kafka topic to get visited JS summary [visited]", type=str, default="visited")
     a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
-    a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
     a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=float, default=float('Inf'))
     a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off (empty string is no group)", type=str, default=None)
+    a.add_argument("--fail", help="Fail on first error", action='store_true')
     a.add_argument("--v", help="Debug verbosely", action="store_true")
     a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
     args = a.parse_args() 
@@ -123,4 +124,4 @@ if __name__ == "__main__":
                consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
 
     s = SaveToMongo(db=mongo[args.db], n=args.n, gid=gid, debug=args.v, consumer=consumer, producer=producer)  
-    s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail, to=args.visited)
+    s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail, to=args.to)
