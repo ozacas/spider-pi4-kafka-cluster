@@ -11,23 +11,21 @@ from utils.features import safe_for_mongo
 
 a = argparse.ArgumentParser(description="Read analysis results kafka topic and ETL into MongoDB")
 a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
-a.add_argument("--n", help="Read no more than N records from kafka [Inf]", type=int, default=1000000000)
 a.add_argument("--topic", help="Read analysis results from specified topic [analysis-results]", type=str, default="analysis-results") # NB: can only be this topic
 a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [features2mongo]", type=str, default='features2mongo')
-a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [latest]", type=str, default='latest')
+a.add_argument("--n", help="Read no more than N records from kafka [Inf]", type=int, default=1000000000)
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
 a.add_argument("--user", help="MongoDB RBAC username to use (readWrite access required)", type=str, required=True)
 a.add_argument("--password", help="MongoDB password for user", type=Password, default=Password.DEFAULT)
+a.add_argument("--v", help="Debug verbosely", action="store_true")
 args = a.parse_args()
 
 group = args.group
-start = 'latest'
 if len(group) < 1:
     group = None
-    start = 'earliest'
 consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=start, consumer_timeout_ms=10000, 
                          bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 mongo = pymongo.MongoClient(args.db, args.port, username=args.user, password=str(args.password))
