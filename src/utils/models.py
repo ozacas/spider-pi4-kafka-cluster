@@ -52,6 +52,7 @@ class JavascriptArtefact: # definition corresponds to visited kafka topic record
     content_type: str = 'text/javascript'
     when: str = str(datetime.utcnow())
     size_bytes: int = 0
+    origin: str # HTML page citing this artefact (maybe static or dynamic depending on who provides the artefact)
 
 @dataclass
 class CallsByCountVector:
