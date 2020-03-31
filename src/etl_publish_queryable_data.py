@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 a = argparse.ArgumentParser(description="Reconcile all data from control, origin and artefacts into one query-ready, non-normalised, Mongo collection")
 a.add_argument("--topic", help="Kafka topic to get visited JS summary [javascript-artefact-control-results]", type=str, default='javascript-artefact-control-results')
-a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [etl-controls2mongo]", type=str, default='etl-controls2mongo')
+a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [etl-hits]", type=str, default='etl-hits')
 a.add_argument("--start", help="Consume from earliest|latest message available in control results topic [latest]", type=str, default='latest')
 a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
 a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=float, default=float('Inf'))
@@ -86,6 +86,7 @@ def as_url_fields(url, prefix=''):
 
 signal.signal(signal.SIGINT, cleanup)
 origins = { }
+n_unable = n_ok = 0
 controls = load_controls(db, args.v)
 for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact(consumer, args.n, args.v)):
     dist = best_control.ast_dist
@@ -99,30 +100,32 @@ for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact
     d.pop('diff_functions', None)
     fv_origin = get_function_call_vector(db, best_control.origin_url)
     if fv_origin is None:
-        if args.v:
-            print("WARNING: unable to find function call vector for {}".format(best_control.origin_url))
+        n_unable += 1 
         continue
     else:
-        if args.v:
-            print("Got function call vector for {}".format(best_control.origin_url))
+        n_ok += 1
         # FALLTHRU
 
     u = best_control.control_url
     fv_control = controls[u].get('calls_by_count')
+    d.update(origin_fields)
+
+    # cited_on URL (aka. HTML page) iff specified
+    d.update(as_url_fields(best_control.cited_on, prefix='cited_on'))
+    d['control_family'] = controls[u].get('family')
+
+    # finally report each differentially called function as a separate record 
     for fn in best_control.diff_functions.split(' '):
         if len(fn) > 0:
             d['diff_function'] = fn
             # origin url (aka. JS url)
-            d.update(origin_fields)
- 
-            # cited_on URL (aka. HTML page) iff specified
-            if best_control.cited_on:
-               d.update(as_url_fields(best_control.cited_on, 'cited_on'))
 
             # other fields for ETL 
-            d['control_family'] = controls[u].get('family')
             d['expected_calls'] = fv_control.get(fn, None)
             d['actual_calls'] = fv_origin.get(fn, None)
-            db.etl_javascript_controls.insert_one(d.copy())
+            db.etl_hits.insert_one(d.copy())
 
+if args.v:
+    print("Unable to retrieve FV for {} URLs".format(n_unable))
+    print("Found {} FV's without problem".format(n_ok))
 cleanup()
