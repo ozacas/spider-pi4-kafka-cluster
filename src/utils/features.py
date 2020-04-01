@@ -17,8 +17,10 @@ normalised_ast_features_list =  [ "ArrayLiteral", "Assignment", "AstRoot", "Bloc
 
 
 def safe_for_mongo(function_vector):
-   # returns a dict which has all keys made safe for insertion into mongoDB
-   # since $ for fields is not permissable in mongo, we replace with F$ 
+   """ 
+   Returns a dict which has all keys made safe for insertion into MongoDB.
+   This primarily means fields with a key starting with '$' are replaced with 'F$'
+   """
    d = {}
    for k, v in function_vector.items():
        if k.startswith('$'):
@@ -26,7 +28,29 @@ def safe_for_mongo(function_vector):
        d[k] = v
    return d
 
+def as_url_fields(url, prefix=''):
+    """
+    Returns a dict with keys prefixed by prefix representing component parts and attributes of the chosen url. 
+    urlparse is used for parsing the url.
+    """
+    up = urlparse(url)
+    d = {}
+    d[prefix+'_host'] = up.hostname
+    d[prefix+'_has_query'] = len(up.query) > 0
+    if up.port:
+        d[prefix+'_port'] = up.port
+    elif up.scheme == 'https':
+        d[prefix+'_port'] = 443
+    elif up.scheme == 'http':
+        d[prefix+'_port'] = 80
+    d[prefix+'_scheme'] = up.scheme
+    d[prefix+'_path'] = up.path
+    return d
+
 def find_sha256_hash(db, url):
+   """
+   Return the sha256 hexdigest (if found) from the MongoDB. Ugly code.
+   """
    if db:
        # 1 lookup url
        url_id = db.urls.find_one({ 'url': url })
