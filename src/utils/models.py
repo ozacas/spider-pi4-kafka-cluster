@@ -1,13 +1,18 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 import getpass
+import os
 
 class Password:
     DEFAULT = 'Prompt if not specified'
 
     def __init__(self, value, prompt='Password: '):
         if value == self.DEFAULT:
-            value = getpass.getpass(prompt)
+            env = dict(os.environ)
+            if 'PASSWORD' in env:
+                value = env['PASSWORD']
+            else:
+                value = getpass.getpass(prompt)
         self.value = value
 
     def __str__(self):
