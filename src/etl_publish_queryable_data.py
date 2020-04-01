@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import os
 import sys
 import json
 import argparse
@@ -41,6 +42,7 @@ def cleanup(*args):
         print("Finished analysis. Shutting down...")
     consumer.close()
     mongo.close()
+    os.unlink('pid.etl.hits')
     sys.exit(0)
 
 def get_function_call_vector(db, url):
@@ -87,6 +89,8 @@ def as_url_fields(url, prefix=''):
 signal.signal(signal.SIGINT, cleanup)
 origins = { }
 n_unable = n_ok = 0
+with open('pid.etl.hits', 'w+') as fp:
+   fp.write(os.getpid())
 controls = load_controls(db, args.v)
 for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact(consumer, args.n, args.v)):
     dist = best_control.ast_dist
@@ -118,7 +122,6 @@ for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact
     for fn in best_control.diff_functions.split(' '):
         if len(fn) > 0:
             d['diff_function'] = fn
-            # origin url (aka. JS url)
 
             # other fields for ETL 
             d['expected_calls'] = fv_control.get(fn, None)

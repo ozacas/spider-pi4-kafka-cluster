@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import os
 import pymongo
 import json
 import argparse
@@ -42,6 +43,7 @@ def cleanup(*args):
         print("Ctrl-C pressed. Cleaning up...")
     consumer.close()
     mongo.close()
+    os.unlink('pid.eval.controls')
     sys.exit(0)
 
 signal.signal(signal.SIGINT, cleanup)
@@ -66,6 +68,8 @@ if args.file:
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 n = 0
+with open('pid.eval.controls', 'w+') as fp:
+   fp.write(os.getpid())
 for message in consumer:
     best_control = find_best_control(message.value, controls, db=db)
     if args.v:
@@ -75,7 +79,7 @@ for message in consumer:
 
     # 2a. send results to kafka topic for streaming applications
     producer.send(args.to, d) 
-    # 2b. send results to MongoDB for batch-oriented applications and for long-term storage
+    # 2b. also send results to MongoDB for batch-oriented applications and for long-term storage
     db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
 
     if n >= args.n:

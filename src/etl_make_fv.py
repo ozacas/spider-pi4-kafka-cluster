@@ -44,6 +44,7 @@ def cleanup(*args):
         print("Ctrl-C pressed. Cleaning up...")
     consumer.close()
     mongo.close()
+    os.unlink('pid.make.fv')
     sys.exit(0)
 
 cnt = 0    
@@ -77,6 +78,10 @@ def report_failure(producer, artefact, reason):
 
 # we want only artefacts which are not cached and are JS (subject to maximum record limits)
 uncached_js_artefacts = filter(lambda a: not a.url in cache, next_artefact(consumer, args.n))
+
+with open('pid.make.fv', 'w+') as fp:
+   fp.write(os.getpid())
+
 for jsr in uncached_js_artefacts:
     # eg.  {'url': 'https://XXXX.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 
     #       'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 

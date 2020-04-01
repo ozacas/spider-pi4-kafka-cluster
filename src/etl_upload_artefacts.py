@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+import os
 import json
 import hashlib
-import pymongo
-from bson.binary import Binary
 import argparse
 import pylru
 import socket
+import pymongo
+from bson.binary import Binary
 from collections import namedtuple
 from kafka import KafkaConsumer, KafkaProducer
 from utils.models import Password
@@ -123,5 +124,8 @@ if __name__ == "__main__":
     consumer = KafkaConsumer(args.artefacts, value_deserializer=lambda m: json.loads(m.decode('utf-8')), 
                consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
 
+    with open('pid.upload.artefacts', 'w+') as fp:
+       fp.write(os.getpid())
     s = SaveToMongo(db=mongo[args.db], n=args.n, gid=gid, debug=args.v, consumer=consumer, producer=producer)  
     s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail, to=args.to)
+    os.unlink('pid.upload.artefacts')

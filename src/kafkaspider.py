@@ -14,7 +14,7 @@ import argparse
 import pylru
 import random
 import socket
-import getpass
+import os
 from collections import namedtuple
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta
@@ -23,7 +23,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 from utils.fileitem import FileItem
 from utils.geo import AustraliaGeoLocator
 from utils.url import as_priority
-from utils.models import PageStats
+from utils.models import PageStats, Password
 
 class KafkaSpiderMixin(object):
 
@@ -169,7 +169,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        host = settings.get('MONGO_HOST')
        port = settings.get('MONGO_PORT')
        user = settings.get('KAFKASPIDER_MONGO_USER')    # to access blacklist
-       password = getpass.getpass('Password for {}@{}: '.format(user, host))
+       password = str(Password(Password.DEFAULT, 'Password for {}@{}: '.format(user, host)))
        mongo = pymongo.MongoClient(host, port, username=user, password=password)
        self.db = mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(recent_cache_max) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
@@ -179,6 +179,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.update_blacklist() # to ensure self.blacklist_domains is populated
        # populate recent_sites from previous run on this host
        self.init_recent_sites(self.recent_sites, bs)
+       # write a PID file so that ansible wont start duplicates on this host
+       with open("pid.kafkaspider", 'w+') as fp:
+           fp.write(os.getpid())
 
     def spider_closed(self, spider):
        # persist recent_sites to kafka topic so that we have long-term memory of caching
@@ -190,7 +193,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.logger.info("Saved recent sites to cache")
        # ensure main kafka consumer is cleaned up cleanly so that other spiders can re-balance as cleanly as possible
        spider.consumer.close()
-       pass
+       os.unlink("pid.kafkaspider")
 
     def init_recent_sites(self, cache, bootstrap_servers):
        # populate recent_sites from most-recent message in kafka topic
