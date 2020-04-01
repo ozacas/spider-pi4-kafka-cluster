@@ -69,7 +69,7 @@ if args.file:
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 n = 0
 with open('pid.eval.controls', 'w+') as fp:
-   fp.write(os.getpid())
+   fp.write(str(os.getpid()))
 for message in consumer:
     best_control = find_best_control(message.value, controls, db=db)
     if args.v:

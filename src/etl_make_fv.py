@@ -80,7 +80,7 @@ def report_failure(producer, artefact, reason):
 uncached_js_artefacts = filter(lambda a: not a.url in cache, next_artefact(consumer, args.n))
 
 with open('pid.make.fv', 'w+') as fp:
-   fp.write(os.getpid())
+   fp.write(str(os.getpid()))
 
 for jsr in uncached_js_artefacts:
     # eg.  {'url': 'https://XXXX.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 

@@ -37,7 +37,7 @@ def cleanup(*args):
     global consumer
     global mongo
     if len(args):
-        print("Ctrl+C pressed. Now cleaning up and terminating...")
+        print("Now cleaning up and terminating... please wait.")
     else:
         print("Finished analysis. Shutting down...")
     consumer.close()
@@ -86,11 +86,12 @@ def as_url_fields(url, prefix=''):
     d[prefix+'_path'] = up.path
     return d
 
-signal.signal(signal.SIGINT, cleanup)
+for s in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]:
+    signal.signal(s, cleanup)
 origins = { }
 n_unable = n_ok = 0
 with open('pid.etl.hits', 'w+') as fp:
-   fp.write(os.getpid())
+   fp.write(str(os.getpid()))
 controls = load_controls(db, args.v)
 for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact(consumer, args.n, args.v)):
     dist = best_control.ast_dist
