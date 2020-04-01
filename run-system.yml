@@ -3,43 +3,34 @@
 
 - name: run kafkaspider to crawl AU web
   hosts: pi1 pi2
-  - command: 
-      args:
-         chdir: {{ $ROOT }}
-         creates: {{ $ROOT }}/pid.kafkaspider # ansible wont start this cmd if this file exists
-      command: nohup taskset -c 1,2 scrapy runspider kafkaspider -L INFO
-    environment:
-      PASSWORD={{ $MONGO_RO_PASS }}  # for MongoDB role which can read the blacklisted domains
+  tasks:
+    - command: 
+         chdir: "{{ ROOT }}"
+         creates: "{{ ROOT }}/pid.kafkaspider" # ansible wont start this cmd if this file exists
+         cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RO_PASS }}" -c "{{ ROOT }}" /usr/bin/taskset -c 1,2 scrapy runspider kafkaspider.py -L INFO
 
 - name: crawl backlog of downloaded artefacts and ingest into MongoDB (program will exit once done)
   hosts: pi1 pi2
   tasks:
      - command: 
-         args:
-           chdir: {{ $ROOT }}
-           creates: {{ $ROOT }}/pid.upload.artefacts
-         command: nohup taskset -c 1 python3 etl_upload_artefacts.py --user rw --n 200000 --root /data/kafkaspider16 --artefacts javascript-artefacts-16
-       environment: 
-         PASSWORD={{ $MONGO_RW_PASS }} # read-write role to put artefact data into MongoDB
+         chdir: "{{ ROOT }}"
+         creates: "{{ ROOT }}/pid.upload.artefacts"
+         cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RW_PASS }}" -c "{{ ROOT }}" /usr/bin/taskset -c 1 python3 etl_upload_artefacts.py --user rw --n 200000 --root /data/kafkaspider16 --artefacts javascript-artefacts-16
+       when: 0
 
 - name: compute feature vectors and ingest into MongoDB
   hosts: pi2 pi5
   tasks: 
      - command: 
-         args:
-           chdir: {{ $ROOT }} 
-           creates: {{ $ROOT }}/pid.make.fv 
-         command: nohup taskset -c 2,3 python3 etl_make_fv.py --user rw 
-       environment:
-         PASSWORD={{ $MONGO_RW_PASS }} # read-write role to place feature vectors into Mongo
+         chdir: "{{ ROOT }}"
+         creates: "{{ ROOT }}/pid.make.fv"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" /usr/bin/taskset -c 2,3 python3 etl_make_fv.py --user rw 
 
 - name: process JS artefacts and assign best control (if any)
   hosts: pi2
   tasks:
      - command: 
-         args:
-           chdir: {{ $ROOT }}
-           creates: {{ $ROOT }}/pid.eval.controls
-         command: nohup taskset -c 3 python3 etl_eval_js_against_controls.py --user rw 
-       environment:
-         PASSWORD={{ $MONGO_RW_PASS }} # read-write role to put control best-hit data into MongoDB
+         chdir: "{{ ROOT }}"
+         creates: "{{ ROOT }}/pid.eval.controls"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --user rw 
+  
