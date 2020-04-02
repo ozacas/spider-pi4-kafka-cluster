@@ -9,14 +9,35 @@ DOWNLOAD_DELAY = 0.5
 DOWNLOAD_TIMEOUT = 30
 DOWNLOAD_MAXSIZE = 10000000
 DOWNLOAD_FAIL_ON_DATALOSS = True
+DOWNLOADER_STATS = False
 HTTPERROR_ALLOW_ALL = True 
 RANDOMIZE_DOWNLOAD_DELAY = True
 REDIRECT_MAX_TIMES = 5
 REDIRECT_ENABLED = True
+ROBOTSTXT_OBEY = True
 SCHEDULER_PRIORITY_QUEUE = 'scrapy.pqueues.DownloaderAwarePriorityQueue'
 SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 TELNETCONSOLE_ENABLED = False
+
+# Dont want caching/proxying, ajax crawling or http auth for now
+DOWNLOADER_MIDDLEWARES = {
+    'scrapy.downloadermiddlewares.robotstxt.RobotsTxtMiddleware': 100,
+    'scrapy.downloadermiddlewares.httpauth.HttpAuthMiddleware': None,
+    'scrapy.downloadermiddlewares.downloadtimeout.DownloadTimeoutMiddleware': 350,
+    'scrapy.downloadermiddlewares.defaultheaders.DefaultHeadersMiddleware': 400,
+    'scrapy.downloadermiddlewares.useragent.UserAgentMiddleware': None,
+    'scrapy.downloadermiddlewares.retry.RetryMiddleware': None,
+    'scrapy.downloadermiddlewares.ajaxcrawl.AjaxCrawlMiddleware': None,
+    'scrapy.downloadermiddlewares.redirect.MetaRefreshMiddleware': 580,
+    'scrapy.downloadermiddlewares.httpcompression.HttpCompressionMiddleware': 590,
+    'scrapy.downloadermiddlewares.redirect.RedirectMiddleware': 600,
+    'scrapy.downloadermiddlewares.cookies.CookiesMiddleware': 700,
+    'scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware': None,
+    'scrapy.downloadermiddlewares.stats.DownloaderStats': None,
+    'scrapy.downloadermiddlewares.httpcache.HttpCacheMiddleware': None,
+}
+
 
 # COMMON spider settings
 MONGO_HOST = 'pi1'
