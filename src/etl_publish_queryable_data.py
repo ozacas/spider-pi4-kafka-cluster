@@ -3,10 +3,11 @@ import os
 import sys
 import json
 import argparse
-import signal
 import pymongo
 from kafka import KafkaConsumer
 from utils.models import BestControl, Password
+from utils.misc import setup_signals, rm_pidfile, save_pidfile
+from utils.features import as_url_fields
 from dataclasses import asdict
 from urllib.parse import urlparse
 
@@ -21,7 +22,7 @@ a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, d
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
 a.add_argument("--user", help="MongoDB RBAC username to use (readWrite access required)", type=str, required=True)
 a.add_argument("--password", help="MongoDB password for user (prompted if not supplied)", type=Password, default=Password.DEFAULT)
-a.add_argument("--threshold", help="Ignore control hits with ast_distance greater than this", type=float, default=50.0)
+a.add_argument("--threshold", help="Ignore hits with ast_distance greater than this [50.0]", type=float, default=50.0)
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 args = a.parse_args()
 
@@ -42,7 +43,7 @@ def cleanup(*args):
         print("Finished analysis. Shutting down...")
     consumer.close()
     mongo.close()
-    os.unlink('pid.etl.hits')
+    rm_pidfile('pid.etl.hits')
     sys.exit(0)
 
 def get_function_call_vector(db, url):
@@ -86,12 +87,10 @@ def as_url_fields(url, prefix=''):
     d[prefix+'_path'] = up.path
     return d
 
-for s in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]:
-    signal.signal(s, cleanup)
+setup_signals(cleanup)
 origins = { }
 n_unable = n_ok = 0
-with open('pid.etl.hits', 'w+') as fp:
-   fp.write(str(os.getpid()))
+save_pidfile('pid.etl.hits')
 controls = load_controls(db, args.v)
 for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact(consumer, args.n, args.v)):
     dist = best_control.ast_dist

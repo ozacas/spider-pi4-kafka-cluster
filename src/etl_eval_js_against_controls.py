@@ -3,12 +3,12 @@ import os
 import pymongo
 import json
 import argparse
-import signal
 import sys
 import hashlib
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control, analyse_script
 from utils.models import JavascriptArtefact, Password
+from utils.misc import *
 from dataclasses import asdict
 
 a = argparse.ArgumentParser(description="Evaluate and permanently store each AST vector against all controls, storing results in MongoDB and Kafka")
@@ -43,10 +43,10 @@ def cleanup(*args):
         print("Ctrl-C pressed. Cleaning up...")
     consumer.close()
     mongo.close()
-    os.unlink('pid.eval.controls')
+    rm_pidfile('pid.eval.controls')
     sys.exit(0)
 
-signal.signal(signal.SIGINT, cleanup)
+setup_signals(cleanup)
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
 controls = list(db.javascript_controls.find())
@@ -68,8 +68,7 @@ if args.file:
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 n = 0
-with open('pid.eval.controls', 'w+') as fp:
-   fp.write(str(os.getpid()))
+save_pidfile('pid.eval.controls')
 for message in consumer:
     best_control = find_best_control(message.value, controls, db=db)
     if args.v:

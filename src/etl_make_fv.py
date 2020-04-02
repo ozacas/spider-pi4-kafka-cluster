@@ -8,10 +8,10 @@ import logging
 import argparse
 import pylru
 import sys
-import signal
 from utils.features import analyse_script, get_script, safe_for_mongo
 from datetime import datetime
 from utils.models import JavascriptArtefact, Password
+from utils.misc import rm_pidfile, save_pidfile
 
 a = argparse.ArgumentParser(description="Extract features from each javascript in visited topic and dump into analysis-results topic")
 a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
@@ -44,12 +44,12 @@ def cleanup(*args):
         print("Ctrl-C pressed. Cleaning up...")
     consumer.close()
     mongo.close()
-    os.unlink('pid.make.fv')
+    rm_pidfile('pid.make.fv')
     sys.exit(0)
 
 cnt = 0    
 cache = pylru.lrucache(1000)
-signal.signal(signal.SIGINT, cleanup)
+setup_signals(cleanup)
 
 if not os.path.exists(args.java):
     raise ValueError("Java executable does not exist: {}".format(args.java))
@@ -77,10 +77,8 @@ def report_failure(producer, artefact, reason):
     producer.send('feature-extraction-failures', d)
 
 # we want only artefacts which are not cached and are JS (subject to maximum record limits)
+save_pidfile('pid.make.fv')
 uncached_js_artefacts = filter(lambda a: not a.url in cache, next_artefact(consumer, args.n))
-
-with open('pid.make.fv', 'w+') as fp:
-   fp.write(str(os.getpid()))
 
 for jsr in uncached_js_artefacts:
     # eg.  {'url': 'https://XXXX.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 

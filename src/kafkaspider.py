@@ -22,7 +22,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from urllib.parse import urljoin, urlparse, urlunparse
 from utils.fileitem import FileItem
 from utils.geo import AustraliaGeoLocator
-from utils.misc import as_priority
+from utils.misc import as_priority, rm_pidfile, save_pidfile
 from utils.models import PageStats, Password
 
 class KafkaSpiderMixin(object):
@@ -180,8 +180,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # populate recent_sites from previous run on this host
        self.init_recent_sites(self.recent_sites, bs)
        # write a PID file so that ansible wont start duplicates on this host
-       with open("pid.kafkaspider", 'w+') as fp:
-           fp.write(str(os.getpid()))
+       save_pidfile("pid.kafkaspider")
 
     def spider_closed(self, spider):
        # persist recent_sites to kafka topic so that we have long-term memory of caching
@@ -193,7 +192,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.logger.info("Saved recent sites to cache")
        # ensure main kafka consumer is cleaned up cleanly so that other spiders can re-balance as cleanly as possible
        spider.consumer.close()
-       os.unlink("pid.kafkaspider")
+       rm_pidfile("pid.kafkaspider")
 
     def init_recent_sites(self, cache, bootstrap_servers):
        # populate recent_sites from most-recent message in kafka topic
