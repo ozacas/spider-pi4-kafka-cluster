@@ -157,17 +157,20 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # want to come back for a while. Hence we add the site to a long term "medium" blacklist which will hurt it for about a month of spidering and allow us to
        # focus on domains which we've not seen yet. The long-term blacklist is loaded at spider init, since the number of unique domains is 
        # likely to be fairly small. It is evaluated when reading each batch of URLs to ignore stuff which is overrepresented in the past month (topic retention time)
-       if value > 20: # site get above average visit of pages (and/or penalties)?
-           self.producer.send('kafkaspider-long-term-disinterest', { 'hostname': key, 'n_pages': value, 'date': datetime.utcnow().strftime("%m/%d/%Y") })
+       if value > 100 and self.init_completed: # NB: load of persistent cache will cause mass evictions, which we dont want to trigger (yet)
+           
+           self.producer.send(self.disinterest_topic, { 'hostname': key, 'n_pages': value, 'date': datetime.utcnow().strftime("%m/%d/%Y") })
 
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
        settings = get_project_settings()
+       self.init_completed = False
        topic = settings.get('ONEURL_KAFKA_URL_TOPIC')
        bs = settings.get('ONEURL_KAFKA_BOOTSTRAP')
        grp_id = settings.get('ONEURL_KAFKA_CONSUMER_GROUP')
        site_cache_max = settings.get('KAFKASPIDER_MAX_SITE_CACHE', 1000)
        recent_cache_max = settings.get('KAFKASPIDER_MAX_RECENT_CACHE', 5000)
+       self.disinterest_topic = settings.get('OVERREPRESENTED_HOSTS_TOPIC')
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=60000000) # crank max poll to ensure no kafkapython timeout, consumer wont die as the code is perfect ;-)
        self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=bs, batch_size=4096)
@@ -185,8 +188,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.update_blacklist() # to ensure self.blacklist_domains is populated
        # populate recent_sites from previous run on this host
        self.init_recent_sites(self.recent_sites, bs)
+       self.init_completed = True
        # populate the over-represented sites (~1 month visitation blacklist)
-       self.overrepresented_hosts = self.init_overrepresented_hosts(settings.get('OVERREPRESENTED_HOSTS_TOPIC'), bs)
+       self.overrepresented_hosts = self.init_overrepresented_hosts(self.disinterest_topic, bs)
        # write a PID file so that ansible wont start duplicates on this host
        save_pidfile("pid.kafkaspider")
 
@@ -204,8 +208,36 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def init_overrepresented_hosts(self, topic, bootstrap_servers):
        # since the kakfa topic retention time is set to a month, we can identify sites which are being visited every day and penalise them
-   
-       return set()
+       hosts = set()
+       calc = { }
+       consumer = KafkaConsumer(topic, bootstrap_servers=bootstrap_servers, group_id=None, auto_offset_reset='earliest',
+                                value_deserializer=lambda m: json.loads(m.decode('utf-8')), consumer_timeout_ms=1000) 
+       # 1.process large sites in topic
+       for message in consumer:
+           d = message.value
+           site = d['hostname']
+           ymd = d['date']
+           n = d['n_pages']
+           if site not in calc:
+               s = set()
+               s.add(ymd)
+               calc[site] =  { 'n': n, 'dates': s }
+           else:
+               existing = calc[site]
+               s = existing['dates']
+               s.add(ymd)
+               existing['n'] = max([n, existing['n']])
+       # 2. add highly fetch sites to internal data structure for the crawl. No more fetching until removed from the topic
+       for site in calc.keys():
+           total_n = calc[site].get('n') 
+           total_days = len(calc[site].get('dates'))
+           if total_n >= 500 and total_days >= 5:
+              hosts.add(site) 
+           elif total_days <= 3 and total_n >= 200:
+              hosts.add(site)
+
+       self.logger.info("Long-term blacklist has {} sites.".format(len(hosts)))
+       return hosts
 
     def init_recent_sites(self, cache, bootstrap_servers):
        # populate recent_sites from most-recent message in kafka topic
@@ -219,7 +251,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            for k,v in d.items():
               if k != 'host':
                  if k in cache:
-                     cache[k] += v  # frequently visited sites will be MRU relative to rarely seen sites 
+                     cache[k] = max([v, cache[k]])  # frequently visited sites will be MRU relative to rarely seen sites 
                  else:
                      cache[k] = v
 
