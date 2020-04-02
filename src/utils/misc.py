@@ -1,5 +1,5 @@
 import signal
-improt os
+import os
 from urllib.parse import urlparse
 
 def setup_signals(callback):
