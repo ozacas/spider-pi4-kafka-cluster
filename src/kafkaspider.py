@@ -153,6 +153,12 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def recent_site_eviction(self, key, value):
        self.logger.info("Evicting site cache entry: {} = {} (cache size {})".format(key, value, len(self.recent_sites)))
+       # the average value seen anecdotally at eviction time is around 10 pages before it is evicted. So if we see more than 20, then we dont
+       # want to come back for a while. Hence we add the site to a long term "medium" blacklist which will hurt it for about a month of spidering and allow us to
+       # focus on domains which we've not seen yet. The long-term blacklist is loaded at spider init, since the number of unique domains is 
+       # likely to be fairly small. It is evaluated when reading each batch of URLs to ignore stuff which is overrepresented in the past month (topic retention time)
+       if value > 20: # site get above average visit of pages (and/or penalties)?
+           self.producer.send('kafkaspider-long-term-disinterest', { 'hostname': key, 'n_pages': value, 'date': datetime.utcnow().strftime("%m/%d/%Y") })
 
     def __init__(self, *args, **kwargs):
        super().__init__(*args, **kwargs)
@@ -164,7 +170,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        recent_cache_max = settings.get('KAFKASPIDER_MAX_RECENT_CACHE', 5000)
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=60000000) # crank max poll to ensure no kafkapython timeout, consumer wont die as the code is perfect ;-)
-       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=bs)
+       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=bs, batch_size=4096)
        self.au_locator = AustraliaGeoLocator(db_location=settings.get('ONEURL_MAXMIND_DB'))
        host = settings.get('MONGO_HOST')
        port = settings.get('MONGO_PORT')
@@ -179,6 +185,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.update_blacklist() # to ensure self.blacklist_domains is populated
        # populate recent_sites from previous run on this host
        self.init_recent_sites(self.recent_sites, bs)
+       # populate the over-represented sites (~1 month visitation blacklist)
+       self.overrepresented_hosts = self.init_overrepresented_hosts(settings.get('OVERREPRESENTED_HOSTS_TOPIC'), bs)
        # write a PID file so that ansible wont start duplicates on this host
        save_pidfile("pid.kafkaspider")
 
@@ -193,6 +201,11 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # ensure main kafka consumer is cleaned up cleanly so that other spiders can re-balance as cleanly as possible
        spider.consumer.close()
        rm_pidfile("pid.kafkaspider")
+
+    def init_overrepresented_hosts(self, topic, bootstrap_servers):
+       # since the kakfa topic retention time is set to a month, we can identify sites which are being visited every day and penalise them
+   
+       return set()
 
     def init_recent_sites(self, cache, bootstrap_servers):
        # populate recent_sites from most-recent message in kafka topic
@@ -280,6 +293,12 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def update_blacklist(self):
         self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
+
+    def is_suitable_host(self, host, counts_by_host):
+        ret = super().is_suitable_host(host, counts_by_host)
+        if ret and host in self.overrepresented_hosts:
+           return False
+        return ret
 
     def parse(self, response):
         status = response.status
