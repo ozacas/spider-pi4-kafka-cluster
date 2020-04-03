@@ -122,14 +122,12 @@ class KafkaSpiderMixin(object):
                     up = urlparse(url)
                     host = up.hostname
                     if self.is_suitable_host(host, counts_by_host):
+                        batch.add(url)
                         req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
                         self.crawler.engine.crawl(req, spider=self)
-                        batch.add(url)
                         found += 1
                     else: 
                         #self.logger.info("Ignoring due to non-random ingest for {}".format(url))
-                        # TODO FIXME... push back onto the queue? nah... we have no shortage of urls!
-                        #self.producer.send(self.settings.get('ONEURL_KAFKA_URL_TOPIC'), { 'url': url })
                         non_random += 1
                         pass
             else: # no request?
@@ -231,9 +229,11 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        for site in calc.keys():
            total_n = calc[site].get('n') 
            total_days = len(calc[site].get('dates'))
-           if total_n >= 500 and total_days >= 5:
+           if total_n >= 1000 and total_days >= 5:
               hosts.add(site) 
-           elif total_days <= 3 and total_n >= 200:
+           elif total_days <= 3 and total_n >= 500:
+              hosts.add(site)
+           elif total_n >= 200 and total_days <= 2:
               hosts.add(site)
 
        self.logger.info("Long-term blacklist has {} sites.".format(len(hosts)))
@@ -310,7 +310,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            elif self.au_locator.is_au(up.hostname):
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
-               producer.send(topic, { 'url': url }, key=up.hostname.encode('utf-8'))  # send to the pending queue but send one host to exactly one partition only via key
+               producer.send(topic, { 'url': url }, key=up.hostname.encode('utf-8'))
                sent += 1
                if sent > max: 
                    break
