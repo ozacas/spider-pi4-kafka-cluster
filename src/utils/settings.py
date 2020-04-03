@@ -14,7 +14,8 @@ HTTPERROR_ALLOW_ALL = True
 RANDOMIZE_DOWNLOAD_DELAY = True
 REDIRECT_MAX_TIMES = 5
 REDIRECT_ENABLED = True
-ROBOTSTXT_OBEY = True
+# generating too many requests: since we dont visit many pages to the same site courtesy of kafka
+#ROBOTSTXT_OBEY = True
 SCHEDULER_PRIORITY_QUEUE = 'scrapy.pqueues.DownloaderAwarePriorityQueue'
 SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
@@ -22,7 +23,7 @@ TELNETCONSOLE_ENABLED = False
 
 # Dont want caching/proxying, ajax crawling or http auth for now
 DOWNLOADER_MIDDLEWARES = {
-    'scrapy.downloadermiddlewares.robotstxt.RobotsTxtMiddleware': 100,
+    'scrapy.downloadermiddlewares.robotstxt.RobotsTxtMiddleware': None,
     'scrapy.downloadermiddlewares.httpauth.HttpAuthMiddleware': None,
     'scrapy.downloadermiddlewares.downloadtimeout.DownloadTimeoutMiddleware': 350,
     'scrapy.downloadermiddlewares.defaultheaders.DefaultHeadersMiddleware': 400,
@@ -56,6 +57,7 @@ SITE_INTERNAL_LINK_LIMIT = 20 # if we visit more than twenty pages according to 
 KAFKASPIDER_MAX_SITE_CACHE = 1000 # dont go crazy with this number, doing so may exceed the max kafka message size which will fail persisting site cache state
 KAFKASPIDER_MAX_RECENT_CACHE = 5000 # handle navbar related links quickly without refetching. Cache is not persisted
 KAFKASPIDER_MONGO_USER = 'ro' # read only MongoDB user to access blacklisted domains from spidering
+OVERREPRESENTED_HOSTS_TOPIC = 'kafkaspider-long-term-disinterest'
 
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)
 FILES_STORE = '/data/kafkaspider16' # must exist on scrapy host with suitable permissions for the spider-user account
