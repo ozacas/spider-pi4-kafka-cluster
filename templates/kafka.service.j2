@@ -4,7 +4,7 @@ After=network.target zookeeper.service
 ConditionPathExists=
 
 [Service]
-Environment=JMX_PORT=9989
+#Environment=JMX_PORT=9989
 #ExecStartPre=/usr/sbin/sshd -t
 ExecStart={{KAFKA_HOME}}/bin/kafka-server-start.sh {{KAFKA_HOME}}/config/server.properties
 KillMode=process
