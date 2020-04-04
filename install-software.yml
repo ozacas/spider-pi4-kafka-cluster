@@ -25,7 +25,7 @@
          mode: '0644'
          directory_mode: '0750'
 
-- name: ensure pip is installed to manage python 
+- name: ensure pip is installed to manage python and system is up-to-date
   hosts: kafka-hosts thug-hosts
   become: yes
   tasks:
@@ -38,6 +38,8 @@
            pkgconfig
            gcc
            graphviz
+         update_cache: yes
+     - pacman: upgrade=yes 
 
 - name: ensure libemu is installed for pygraphviz
   hosts: thug-hosts
@@ -152,3 +154,9 @@
         dest: /etc/thug/
         owner: root
         group: root
+
+- name: ensure daemonize binary is installed into /usr/local/bin so that we can run executables without ansible handholding
+  hosts: thug-hosts
+  become: yes
+  tasks:
+    - copy: src=software/daemonize dest=/usr/local/bin/daemonize owner=root group=root mode='0711'
