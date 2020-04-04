@@ -1,23 +1,23 @@
 [thug-hosts]
-192.168.1.80
-192.168.1.81
-192.168.1.84
+pi1
+pi2
+pi5
 
 [kafka-hosts]
-192.168.1.82
-192.168.1.83
-192.168.1.84
+pi3
+pi4
+pi5
 
 [kafka-manager]
-192.168.1.82
+pi3
 
 [zookeeper-hosts]
-192.168.1.82
-192.168.1.83
-192.168.1.84
+pi3
+pi4
+pi5
 
 [mongodb-host]
-192.168.1.80
+pi1
 
 [control-workstation]
 192.68.1.151 ansible_connection=local
