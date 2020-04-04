@@ -48,7 +48,31 @@ class CDNJS:
 
 class JSDelivr:
    def __init__(self, *args, **kwargs):
+      self.base = "https://data.jsdelivr.com/v1/package"
+      self.cdn_base = "https://cdn.jsdelivr.net/{}/{}@{}/{}" # package_type, family, version_spec, file path
       pass
 
    def fetch(self, family, variant, version, ignore_i18n=True):
-      pass
+      # 1. compute the package type since the API doesnt provide it: TODO FIXME - risky if malicious package with same family? Nah...
+      package_type = None
+      for type in ['gh', 'npm']:
+          reported_versions = "{}/{}/{}".format(self.base, type, family)
+          resp = requests.get(reported_versions)
+          if resp.status_code == 200:
+             j = resp.json()
+             package_type = type
+             available_versions = [version for version in j['versions']]
+             break
+
+      # 2. get all available versions and obtain JS artefacts for caller to process
+      if package_type:
+          for v in available_versions:
+              resp = requests.get("{}/{}/{}@{}/flat".format(self.base, package_type, family, v))
+              if resp.status_code == 200: # ignore un-available versions
+                 j = resp.json()
+                 for artefact in filter(lambda a: a['name'].endswith(".js"), j['files']): 
+                     ret = (self.cdn_base.format(package_type, family, v, artefact['name']), family, variant, v)
+                     yield ret
+          return
+      # failure 
+      return []
