@@ -123,7 +123,7 @@ class KafkaSpiderMixin(object):
                     host = up.hostname
                     if self.is_suitable_host(host, counts_by_host):
                         batch.add(url)
-                        req = scrapy.Request(url, callback=self.parse, errback=self.errback, dont_filter=True)
+                        req = scrapy.Request(url, callback=self.parse, errback=self.errback) # NB: let scrapy scheduler filter dupes should they happen (eg. across batches) 
                         self.crawler.engine.crawl(req, spider=self)
                         found += 1
                     else: 
@@ -151,8 +151,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
 
     def recent_site_eviction(self, key, value):
        self.logger.info("Evicting site cache entry: {} = {} (cache size {})".format(key, value, len(self.recent_sites)))
-       # the average value seen anecdotally at eviction time is around 10 pages before it is evicted. So if we see more than 20, then we dont
-       # want to come back for a while. Hence we add the site to a long term "medium" blacklist which will hurt it for about a month of spidering and allow us to
+       # the average value seen anecdotally at eviction time is around 10 pages before it is evicted. So if we see more than 100 then its consistently over-represented in the URL list. So we dont want to come back for a while. Hence we add the site to a long term "medium" blacklist which will hurt it for about a month of spidering and allow us to
        # focus on domains which we've not seen yet. The long-term blacklist is loaded at spider init, since the number of unique domains is 
        # likely to be fairly small. It is evaluated when reading each batch of URLs to ignore stuff which is overrepresented in the past month (topic retention time)
        if value > 100 and self.init_completed: # NB: load of persistent cache will cause mass evictions, which we dont want to trigger (yet)
