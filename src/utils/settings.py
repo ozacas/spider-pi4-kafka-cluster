@@ -10,10 +10,9 @@ DOWNLOAD_TIMEOUT = 30
 DOWNLOAD_MAXSIZE = 10000000
 DOWNLOAD_FAIL_ON_DATALOSS = True
 DOWNLOADER_STATS = False
-HTTPERROR_ALLOW_ALL = True 
 RANDOMIZE_DOWNLOAD_DELAY = True
-REDIRECT_MAX_TIMES = 5
 REDIRECT_ENABLED = True
+REDIRECT_MAX_TIMES = 5
 # generating too many requests: since we dont visit many pages to the same site courtesy of kafka
 #ROBOTSTXT_OBEY = True
 SCHEDULER_PRIORITY_QUEUE = 'scrapy.pqueues.DownloaderAwarePriorityQueue'
