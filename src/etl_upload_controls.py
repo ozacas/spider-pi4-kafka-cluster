@@ -7,8 +7,7 @@ import requests
 from datetime import datetime
 from utils.features import analyse_script
 from utils.models import JavascriptArtefact, Password
-from utils.cdnjs import CDNJS
-from tempfile import NamedTemporaryFile
+from utils.cdn import CDNJS, JSDelivr
 
 a = argparse.ArgumentParser(description="Insert feature vectors from artefacts into MongoDB")
 a.add_argument("--v", help="Debug verbosely", action="store_true")
@@ -24,18 +23,23 @@ a.add_argument("--java", help="Path to JVM executable [/usr/bin/java]", type=str
 a.add_argument("--extractor", help="Path to feature extractor JAR", type=str, default="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar")
 a.add_argument("--list", help="List available assets, but do not save to DB", action="store_true")
 a.add_argument("--i18n", help="Save internationalised versions of JS [False]", action="store_true", default=False)
+a.add_argument("--provider", help="Specify CDN provider (cdnjs|jsdelivr) [cdnjs]", type=str, choices=['cdnjs', 'jsdelivr'])
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.user, password=str(args.password))
 db = mongo[args.dbname]
 
-def save_control(url, family, version, variant):
+def save_control(url, family, version, variant, force=False, refuse_hashes=set()):
    resp = requests.get(url)
    content = resp.content
 
    jsr = JavascriptArtefact(when=str(datetime.utcnow()), sha256=hashlib.sha256(content).hexdigest(),
                              md5 = hashlib.md5(content).hexdigest(), url=url,
                              inline=False, content_type='text/javascript', size_bytes=len(content))
+   if jsr.sha256 in refuse_hashes and not force:
+       print("Refusing to update existing control as dupe: {}".format(jsr))
+       return
+
    ret = analyse_script(content, jsr, producer=None, java=args.java, feature_extractor=args.extractor)
    if ret is None:
        raise ValueError('Could not analyse script {}'.format(jsr.url))
@@ -46,13 +50,14 @@ def save_control(url, family, version, variant):
    if args.v:
        print(resp) 
 
-cdnjs = CDNJS()
-for url, family, variant, version in cdnjs.fetch(args.family, args.variant, args.release, ignore_i18n=not args.i18n):
+provider = CDNJS() if args.provider == "cdnjs" else JSDelivr()
+existing_control_hashes = set(db.javascript_controls.distinct('sha256'))
+for url, family, variant, version in provider.fetch(args.family, args.variant, args.release, ignore_i18n=not args.i18n):
     if args.v or args.list:
-       print("Found control artefact: {}".format(url))
+       print("Found artefact: {}".format(url))
     if not args.list:
        try: 
-           save_control(url, family, variant, version)
+           save_control(url, family, variant, version, refuse_hashes=existing_control_hashes)
        except Exception as e:
            print(str(e))
     
