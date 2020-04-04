@@ -334,7 +334,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
     def parse(self, response):
         status = response.status
         url = response.url
-        if status < 200 or status >=400:
+        if status != 200:
            self.recent_cache[url] = 1
            up = urlparse(url)
            self.logger.info("Penalising {} due to http status {}".format(up.hostname, status))
