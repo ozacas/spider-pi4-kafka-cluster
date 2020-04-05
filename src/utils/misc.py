@@ -7,7 +7,11 @@ def setup_signals(callback):
        signal.signal(s, callback)
 
 def rm_pidfile(suffix, root="/home/acas"):
-   os.unlink("{}/{}".format(root, suffix))
+   # NB: must not raise an exception if not found (which can happen with independent system activity)
+   try: 
+       os.unlink("{}/{}".format(root, suffix))
+   except Exception as e:
+       print("WARNING: rm_pidfile({}, {}): {}".format(suffix, root, str(e)))
 
 def save_pidfile(suffix, root="/home/acas"):
    with open("{}/{}".format(root, suffix), 'w+') as fp:

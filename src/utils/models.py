@@ -137,3 +137,18 @@ class FeatureVector:
     Label: int = 0
     ElementGet: int = 0
     Name: int = 0
+
+@dataclass 
+class JavascriptVectorSummary:
+    origin: str                 # control CDN url
+    sum_of_ast_features: int    # JS Abstract Syntax Tree Vector sum
+    sum_of_functions: int       # JS Function Call count Vector sum
+    last_updated: str           # date that etl_control_fix_magnitude.py was last run on the control
+
+    def __lt__(self, other):
+       if self.sum_of_ast_features < other.sum_of_ast_features:
+          return True
+       elif self.sum_of_ast_features == other.sum_of_ast_features:
+          return self.sum_of_functions < other.sum_of_functions
+       else:
+          return False

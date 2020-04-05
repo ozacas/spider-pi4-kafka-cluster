@@ -160,14 +160,26 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = 1 / common if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None, debug=False): 
-   best_control = None
+def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None, debug=False, control_index=None): 
+   best_control = second_best_control = None
    best_distance = float('Inf')
+   origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
+   cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
    hash_match = False
    input_vector, total_sum = normalise_vector(input_features['statements_by_count'])
+
    if total_sum > 50:  # ignore really small vectors which dont have enough features to enable meaningful comparison
-       suitable_controls = filter(lambda c: not (ignore_i18n and '/i18n/' in c), controls)
-       for control in suitable_controls:
+       suitable_controls = filter(lambda c: not (ignore_i18n and '/i18n/' in c['origin']), controls)
+       if control_index:
+           # only those controls within max_distance (either side) from the input vector AST feature sum are considered feasible, 
+           # all others need not be searched. This could be tighter.
+           feasible_controls = [c.origin for c in filter(lambda c: c.sum_of_ast_features >= total_sum - max_distance and c.sum_of_ast_features <= total_sum + max_distance, control_index)]
+       else:
+           # every control is feasible
+           feasible_controls = [c['origin'] for c in controls]
+       if debug:
+           print("Found {} feasible controls.\n".format(len(feasible_controls)))
+       for control in filter(lambda c: c['origin'] in feasible_controls, suitable_controls):
            control_url = control.get('origin')
            control_vector, _ = normalise_vector(control['statements_by_count'])
        
@@ -175,11 +187,14 @@ def find_best_control(input_features, controls, ignore_i18n=True, max_distance=1
            if dist < best_distance and dist <= max_distance:
                if debug:
                    print("Got good distance {} for {}".format(dist, control_url)) 
-               best_control = control_url
+               second_best_control = best_control
+               # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
+               best_control = BestControl(control_url=control_url, origin_url=origin_url, cited_on=cited_on,
+                                          sha256_matched=False, ast_dist=dist, function_dist=float('Inf'), diff_functions='')
                best_distance = dist
                control_function_calls = control['calls_by_count']
-               if dist < 0.00001:     # try for a hash match against a control?
-                   hash_match = find_hash_match(db, input_features, best_control)
+               if dist < 0.00001:     # small distance means we can try for a hash match against control?
+                   hash_match = find_hash_match(db, input_features, best_control.control_url)
                    break    # save time since we've likely found the best control
    else:
        print("WARNING: too small vector for meaningful control matching: {}".format(input_features))
@@ -188,11 +203,7 @@ def find_best_control(input_features, controls, ignore_i18n=True, max_distance=1
    function_dist = float('Inf') # NB: only computed if best_distance < max_distance as it can be quite expensive
    if best_distance < max_distance:
        function_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control_function_calls)
+       best_control.function_dist = function_dist
+       best_control.diff_functions = ' '.join(diff_functions)
 
-   return BestControl(control_url=best_control, 
-                      origin_url=input_features.get('url', input_features.get('id')), # LEGACY: url field used to be named id field
-                      cited_on=input_features.get('origin', None), # report owning HTML page also if possible (useful for data analysis)
-                      sha256_matched=hash_match, 
-                      ast_dist=best_distance, 
-                      function_dist=function_dist, 
-                      diff_functions=' '.join(diff_functions)) # functions for which there is a difference in call counts between control and input JS
+   return (best_control, second_best_control)

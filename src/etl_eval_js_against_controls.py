@@ -7,7 +7,7 @@ import sys
 import hashlib
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control, analyse_script
-from utils.models import JavascriptArtefact, Password
+from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
 from utils.misc import *
 from dataclasses import asdict
 
@@ -25,6 +25,7 @@ a.add_argument("--password", help="Specify password for user (prompted if requir
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
 a.add_argument("--to", help="Save results to named topic [javascript-artefact-control-results]", type=str, default="javascript-artefact-control-results")
+a.add_argument("--extractor", help="JAR file to extract features as JSON [extract-features.jar]", type=str, default="/home/acas/src/extract-features.jar")
 args = a.parse_args()
 
 group = args.group
@@ -51,6 +52,11 @@ setup_signals(cleanup)
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
 controls = list(db.javascript_controls.find())
 print("Loaded {} control vectors from MongoDB".format(len(controls)))
+# 0b. read magnitude of each vector so that we have the ability to reduce the number of comparisons performed to realistic controls
+control_magnitudes = []
+for d in list(db.javascript_controls_summary.find()):
+    d.pop('_id')
+    control_magnitudes.append(JavascriptVectorSummary(**d)) 
 
 if args.v:
    print("Reporting unique families with JS controls (please wait this may take some time):")
@@ -61,16 +67,22 @@ if args.file:
        content = fp.read()
        jsr = JavascriptArtefact(url=args.file, sha256=hashlib.sha256(content).hexdigest(), 
                                 md5=hashlib.md5(content).hexdigest(), size_bytes=len(content))
-       input_features = analyse_script(content, jsr)
-       best_control = find_best_control(input_features, controls, db=db, debug=True)       
+       input_features = analyse_script(content, jsr, feature_extractor=args.extractor)
+       if input_features is None:
+           print("Unable to extract features... aborting.")
+           cleanup()
+       best_control, next_best_control = find_best_control(input_features, controls, db=db, debug=True, control_index=control_magnitudes)       
+       print("*** WINNING CONTROL HIT")
        print(best_control)
+       print("*** NEXT BEST CONTROL HIT (diff_functions and function dist not available)")
+       print(next_best_control)
        cleanup()
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 n = 0
 save_pidfile('pid.eval.controls')
 for message in consumer:
-    best_control = find_best_control(message.value, controls, db=db)
+    best_control, next_best_control = find_best_control(message.value, controls, db=db)
     if args.v:
         print(best_control)
     n += 1
@@ -78,6 +90,7 @@ for message in consumer:
 
     # 2a. send results to kafka topic for streaming applications
     producer.send(args.to, d) 
+
     # 2b. also send results to MongoDB for batch-oriented applications and for long-term storage
     db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
 
