@@ -107,12 +107,10 @@ def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extract
 
    return ret
 
-def normalise_vector(ast_features):
-   # ensure return vector is standardised in name order with all values filled in
-   global normalised_ast_features_list
+def normalise_vector(ast_features, feature_names=normalised_ast_features_list):
    ret = []
    sum = 0
-   for f in normalised_ast_features_list:
+   for f in feature_names:
        v = ast_features.get(f, 0)
        sum += v
        ret.append(v)  # vector must always have the same length with the keys in a consistent order for comparison
