@@ -82,10 +82,12 @@ if args.file:
 n = 0
 save_pidfile('pid.eval.controls')
 for message in consumer:
-    best_control, next_best_control = find_best_control(message.value, controls, db=db)
+    best_control, next_best_control = find_best_control(message.value, controls, db=db, control_index=control_magnitudes)
+    n += 1
+
     if args.v:
         print(best_control)
-    n += 1
+
     d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
 
     # 2a. send results to kafka topic for streaming applications

@@ -159,12 +159,14 @@ def calc_function_dist(origin_calls, control_calls):
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
 def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None, debug=False, control_index=None): 
-   best_control = second_best_control = None
+   second_best_control = None
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
    hash_match = False
    input_vector, total_sum = normalise_vector(input_features['statements_by_count'])
+   best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
+                                          sha256_matched=False, ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='')
 
    if total_sum > 50:  # ignore really small vectors which dont have enough features to enable meaningful comparison
        suitable_controls = filter(lambda c: not (ignore_i18n and '/i18n/' in c['origin']), controls)
