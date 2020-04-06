@@ -5,7 +5,7 @@
   hosts: pi1 pi2
   tasks:
     - command: 
-         chdir: "{{ ROOT }}"
+         chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.kafkaspider" # ansible wont start this cmd if this file exists
          cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RO_PASS }}" -c "{{ ROOT }}" -o log.out.kafkaspider -e log.err.kafkaspider /usr/bin/taskset -c 1,2 scrapy runspider kafkaspider.py -L INFO
       when: SPIDER == 1
@@ -16,7 +16,7 @@
      - stat: path="{{ DATA_ROOT }}"
        register: data_root
      - command: 
-         chdir: "{{ ROOT }}"
+         chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.upload.artefacts"
          cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.uploadartefacts -e log.err.uploadartefacts /usr/bin/taskset -c 1 python3 etl_upload_artefacts.py --user rw --n 200000 --root "{{ DATA_ROOT }}" --artefacts "{{ ARTEFACT_TOPIC }}" --group "js2mongo-{{ inventory_hostname_short }}" --start earliest
        when: SPIDER == 0 and data_root.stat.exists and data_root.stat.isdir
@@ -25,7 +25,7 @@
   hosts: pi2 pi5
   tasks: 
      - command: 
-         chdir: "{{ ROOT }}"
+         chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.make.fv"
          cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 etl_make_fv.py --user rw --v
 
@@ -33,7 +33,7 @@
   hosts: pi2
   tasks:
      - command: 
-         chdir: "{{ ROOT }}"
+         chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.eval.controls"
          cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --user rw --v
  
