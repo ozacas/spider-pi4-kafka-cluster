@@ -7,6 +7,10 @@ import sys
 import hashlib
 from utils.features import analyse_script, normalise_vector
 from utils.models import JavascriptArtefact
+from scipy import spatial
+
+# Usage: python3 calc_distance.py --file1 test-javascript/customize-preview.js --file2 test-javascript/customize-preview.min.js --extractor `pwd`/extract-features.jar
+# which will compare a minimised JS artefact against a non-minified artefact and report distances
 
 a = argparse.ArgumentParser(description="Evaluate and permanently store each AST vector against all controls, storing results in MongoDB and Kafka")
 a.add_argument("--v", help="Debug verbosely", action="store_true")
@@ -31,7 +35,9 @@ if args.v:
     print(nv1)
     print(nv2)
 euclidean_dist = math.dist(nv1, nv2)
+cosine_dist = spatial.distance.cosine(nv1, nv2)
 print("Euclidean distance for AST vector: "+str(euclidean_dist))
+print("Cosine distance for AST vector: "+str(cosine_dist))
 fn1 = set(ret1["calls_by_count"].keys())
 fn2 = set(ret2["calls_by_count"].keys())
 common_fns = fn1.union(fn2)
@@ -41,4 +47,5 @@ if args.v:
     print("Function Vector 1"+str(nv1)) 
     print("Function Vector 2"+str(nv2))
 print("Euclidean distance for Function Call vector: "+str(math.dist(nv1, nv2)))
+print("Cosine distance for Function Call vector: "+str(spatial.distance.cosine(nv1, nv2)))
 exit(0)
