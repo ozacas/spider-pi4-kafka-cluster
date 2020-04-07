@@ -195,10 +195,19 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # persist recent_sites to kafka topic so that we have long-term memory of caching
        d = { }
        d['host'] = socket.gethostname()
+       long_term = { }
+       # NB: update recent sites cache for next run, whenever that may be
        for k,v in spider.recent_sites.items():
            d[k] = v
+           if v > 100:  # should be entered into long-term memory?
+              long_term[k] = v
        spider.producer.send('recent-sites-cache', d)
        self.logger.info("Saved recent sites to cache")
+       # NB: push long-term disinterested data into topic
+       for k in long_term.keys():
+            spider.logger.info("Adding {} to long-term memory (visited {} pages, incl. penalties)".format(k, long_term[k]))
+            spider.producer.send(spider.disinterest_topic, { 'hostname': k, 'n_pages': long_term[k], 'date': datetime.utcnow().strftime("%m/%d/%Y") }) 
+
        # ensure main kafka consumer is cleaned up cleanly so that other spiders can re-balance as cleanly as possible
        spider.consumer.close()
        rm_pidfile("pid.kafkaspider")
