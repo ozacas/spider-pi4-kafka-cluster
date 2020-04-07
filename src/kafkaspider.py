@@ -209,6 +209,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
             spider.producer.send(spider.disinterest_topic, { 'hostname': k, 'n_pages': long_term[k], 'date': datetime.utcnow().strftime("%m/%d/%Y") }) 
 
        # ensure main kafka consumer is cleaned up cleanly so that other spiders can re-balance as cleanly as possible
+       spider.producer.flush()
+       spider.producer.close()
        spider.consumer.close()
        rm_pidfile("pid.kafkaspider")
 
