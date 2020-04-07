@@ -8,7 +8,7 @@ from dataclasses import asdict
 from utils.features import analyse_script, normalise_vector
 from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
 
-a = argparse.ArgumentParser(description="Insert feature vectors from artefacts into MongoDB")
+a = argparse.ArgumentParser(description="Insert feature vector summation (for faster search) from JS controls into MongoDB")
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
