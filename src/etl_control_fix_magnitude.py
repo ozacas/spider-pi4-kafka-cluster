@@ -5,7 +5,7 @@ import json
 import requests
 from datetime import datetime
 from dataclasses import asdict
-from utils.features import analyse_script, normalise_vector
+from utils.features import normalise_vector
 from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
 
 a = argparse.ArgumentParser(description="Insert feature vector summation (for faster search) from JS controls into MongoDB")

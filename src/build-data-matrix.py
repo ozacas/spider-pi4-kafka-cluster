@@ -2,12 +2,12 @@
 import json
 import csv
 import sys
-import signal
 import pylru
 import argparse
 from kafka import KafkaConsumer
 from utils.models import FeatureVector, JavascriptArtefact, Password
 from utils.features import analyse_script
+from utils.misc import setup_signals
 from dataclasses import fields
 import pymongo
 
@@ -74,7 +74,7 @@ def resolve_feature_vector(db, message):
        sha256 = message.get('sha256')
        md5 = message.get('md5')
        jsr = JavascriptArtefact(url=url, sha256=sha256, md5=md5)
-       ret = analyse_script(code, jsr, None)
+       ret = analyse_script(code, jsr)
        d.update(**ret['statements_by_count'])
 
    return d
@@ -92,7 +92,7 @@ def eviction(hash, fv):
    print_fv_as_csv(fv)
 
 cache = pylru.lrucache(10 * 1000, eviction)
-signal.signal(signal.SIGINT, cleanup)
+setup_signals(cleanup)
 for message in consumer:
    if 'id' in message.value:
       try:

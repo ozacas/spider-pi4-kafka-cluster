@@ -77,7 +77,7 @@ def get_script(db, artefact, logger):
        logger.warning("Failed to find JS in database for {}".format(artefact))
    return None
 
-def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
+def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
    # save code to a file
    tmpfile = NamedTemporaryFile(delete=False)
    tmpfile.write(js)
@@ -97,9 +97,6 @@ def analyse_script(js, jsr, producer=None, java='/usr/bin/java', feature_extract
        call_vector = safe_for_mongo(ret.pop('calls_by_count')) # NB: for correct analysis both the AU JS and control vectors must both be safe-for-mongo'ed consistently
        #print(call_vector)
        ret['calls_by_count'] = call_vector
-       # FALLTHRU
-   elif producer:
-       producer.send("feature-extraction-failures", d)
        # FALLTHRU
 
    # cleanup

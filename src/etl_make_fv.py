@@ -93,7 +93,7 @@ for jsr in uncached_js_artefacts:
     # 2. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
     js = get_script(db, jsr, logger)
     if js:
-         results = analyse_script(js, jsr, producer=producer, java=args.java, feature_extractor=args.extractor)
+         results = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
          if results:
              # push to mongo...
              d = { 'url': jsr.url, 'origin': jsr.origin }

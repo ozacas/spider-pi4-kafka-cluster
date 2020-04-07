@@ -3,7 +3,7 @@ from kafka import KafkaConsumer, KafkaProducer
 import json
 import sys
 from urllib.parse import urlparse
-from utils.url import as_priority
+from utils.misc import as_priority
 import pylru
 import argparse
 
