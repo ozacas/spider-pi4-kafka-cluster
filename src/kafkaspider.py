@@ -239,7 +239,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        for site in calc.keys():
            total_n = calc[site].get('n') 
            total_days = len(calc[site].get('dates'))
-           if total_n >= 1000 and total_days >= 5:
+           if total_n >= 1000:
               hosts.add(site) 
            elif total_days <= 3 and total_n >= 500:
               hosts.add(site)
