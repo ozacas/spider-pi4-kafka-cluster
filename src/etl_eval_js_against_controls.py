@@ -28,12 +28,6 @@ a.add_argument("--to", help="Save results to named topic [javascript-artefact-co
 a.add_argument("--extractor", help="JAR file to extract features as JSON [extract-features.jar]", type=str, default="/home/acas/src/extract-features.jar")
 args = a.parse_args()
 
-group = args.group
-if len(group) < 1:
-    group = None
-consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=args.start, 
-                         bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 mongo = pymongo.MongoClient(args.db, args.port, username=args.user, password=str(args.password))
 db = mongo[args.dbname]
 
@@ -47,7 +41,6 @@ def cleanup(*args):
     rm_pidfile('pid.eval.controls')
     sys.exit(0)
 
-setup_signals(cleanup)
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
 controls = list(db.javascript_controls.find())
@@ -71,12 +64,20 @@ if args.file:
        if input_features is None:
            print("Unable to extract features... aborting.")
            cleanup()
-       best_control, next_best_control = find_best_control(input_features, controls, db=db, debug=True, control_index=control_magnitudes)       
+       best_control, next_best_control = find_best_control(input_features, controls, db=db, debug=True, control_index=control_magnitudes) # index None so that all are searched
        print("*** WINNING CONTROL HIT")
        print(best_control)
        print("*** NEXT BEST CONTROL HIT (diff_functions and function dist not available)")
        print(next_best_control)
        cleanup()
+
+group = args.group
+if len(group) < 1:
+    group = None
+consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=args.start, 
+                         bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
+producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+setup_signals(cleanup)
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 n = 0
