@@ -8,10 +8,10 @@ import json
 import hashlib
 import pymongo
 import pylru
-import getpass
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafkaspider import KafkaSpiderMixin
+from utils.models import Password
 
 class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'snippetspider'
@@ -32,7 +32,7 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        host = settings.get('MONGO_HOST') 
        port = settings.get('MONGO_PORT')
        user = settings.get('SNIPPETSPIDER_MONGO_USER')
-       password = getpass.getpass("Password for {}@{}: ".format(user, host))
+       password = str(Password(Password.DEFAULT)) # NB: read from environment variable iff specified
        mongo = pymongo.MongoClient(host, port, username=user, password=password)
        self.db = mongo[settings.get('MONGO_DB')]
        self.recent_cache = pylru.lrucache(10 * 1024)
