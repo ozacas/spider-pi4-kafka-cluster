@@ -49,8 +49,13 @@ class CDNJS:
 class JSDelivr:
    def __init__(self, *args, **kwargs):
       self.base = "https://data.jsdelivr.com/v1/package"
-      self.cdn_base = "https://cdn.jsdelivr.net/{}/{}@{}/{}" # package_type, family, version_spec, file path
+      self.cdn_base = "https://cdn.jsdelivr.net/{}/{}@{}{}" # package_type, family, version_spec, file path
       pass
+
+   def suitable_variant(self, variant, name):
+      if variant is None or len(variant) < 1:
+          return True
+      return variant in name
 
    def fetch(self, family, variant, version, ignore_i18n=True):
       # 1. compute the package type since the API doesnt provide it: TODO FIXME - risky if malicious package with same family? Nah...
@@ -70,8 +75,11 @@ class JSDelivr:
               resp = requests.get("{}/{}/{}@{}/flat".format(self.base, package_type, family, v))
               if resp.status_code == 200: # ignore un-available versions
                  j = resp.json()
-                 for artefact in filter(lambda a: a['name'].endswith(".js"), j['files']): 
-                     ret = (self.cdn_base.format(package_type, family, v, artefact['name']), family, variant, v)
+                 for artefact in filter(lambda a: a['name'].endswith(".js") and self.suitable_variant(variant, a['name']), j['files']): 
+                     path = artefact['name']      # NB: ensure exactly one slash between version and path, as it will 404 if too many...
+                     if not path.startswith("/"):
+                         path = "/" + path
+                     ret = (self.cdn_base.format(package_type, family, v, path), family, variant, v)
                      yield ret
           return
       # failure 
