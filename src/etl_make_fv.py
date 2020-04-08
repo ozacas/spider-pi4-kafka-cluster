@@ -73,7 +73,7 @@ def next_artefact(consumer, max):
 
 def report_failure(producer, artefact, reason):
     d = asdict(artefact)
-    d['reason'] = reason if len(reason) < 300 else "{}...".format(reason.substring(0, 300))
+    d['reason'] = reason if len(reason) < 300 else "{}...".format(reason[0:300])
     producer.send('feature-extraction-failures', d)
 
 # we want only artefacts which are not cached and are JS (subject to maximum record limits)
@@ -94,7 +94,7 @@ for jsr in uncached_js_artefacts:
     js = get_script(db, jsr, logger)
     if js:
          results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
-         if failed:
+         if not failed:
              # push to mongo...
              d = { 'url': jsr.url, 'origin': jsr.origin }
              d.update(**results.get('statements_by_count'))
