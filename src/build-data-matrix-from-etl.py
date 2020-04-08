@@ -13,7 +13,7 @@ def dump_pretty(result):
 
 def dump_distances(db, pretty=False, threshold=10.0):
     result = db.etl_hits.aggregate([
-        { "$match": { "ast_dist": { "$lt": threshold } } },
+        { "$match": { "ast_dist": { "$lt": threshold }, "function_dist": { "$lt": threshold }  } },
         { "$group":
              { "_id": { "control_url": "$control_url",
                         "origin_url": "$origin_url",
@@ -28,7 +28,7 @@ def dump_distances(db, pretty=False, threshold=10.0):
     if pretty:
         dump_pretty(result)
     else:
-        headers = ['host', 'min_distance', 'avg_distance', 'max_distance', 'n_pages', 'control_url', 'origin_url']
+        headers = ['host', 'min_distance', 'avg_distance', 'max_distance', 'min_function_dist', 'n_pages', 'control_url', 'origin_url']
         print('\t'.join(headers))
         for rec in result:
            #print(rec)
@@ -117,7 +117,7 @@ a.add_argument("--user", help="MongoDB user to connect as (read-only access requ
 a.add_argument("--password", help="MongoDB password (if not specified, will be prompted)", type=Password, default=Password.DEFAULT)
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
-a.add_argument("--query", help="Run specified query, one of: sitesbycontrol|functionsbycontrol", type=str, choices=['sitesbycontrol', 'functionsbycontrol', 'distances'])
+a.add_argument("--query", help="Run specified query, one of: distances|sitesbycontrol|functionsbycontrol", type=str, choices=['sitesbycontrol', 'functionsbycontrol', 'distances'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 args = a.parse_args()
 
@@ -128,5 +128,5 @@ if args.query == "functionsbycontrol":
 elif args.query == "sitesbycontrol":
     dump_sites_by_control(db, want_set=args.v)
 elif args.query == "distances":
-    dump_distances(db, pretty=args.pretty)
+    dump_distances(db, pretty=args.pretty, threshold=5 if not args.extra else int(args.extra))
 exit(0)
