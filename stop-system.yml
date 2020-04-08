@@ -1,0 +1,29 @@
+- name: tell processes to gracefully shutdown
+  hosts: pi1 pi2 pi5
+  gather_facts: no
+  tasks:
+    - shell: for f in "{{ PID_ROOT }}"/pid.*; do cat $f; echo; done
+      register: proc
+    - debug: msg="{{ proc }}"
+    - shell: kill -INT {{ item }}
+      with_items:
+        - "{{ proc.stdout_lines }}"
+      register: proc2die
+    - wait_for:
+        path: "/proc/{{ item }}/status"
+        state: absent
+        timeout: 120
+      with_items:
+        - "{{ proc.stdout_lines }}"
+    - shell: kill -HUP {{ item }}
+      with_items:
+        - "{{ proc.stdout_lines }}"
+    - find:
+        paths: "{{ PID_ROOT }}"
+        patterns: 'pid.*'
+      register: pid_list
+    - file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "{{ pid_list }}"
