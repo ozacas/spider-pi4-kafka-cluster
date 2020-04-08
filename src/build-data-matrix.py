@@ -74,8 +74,11 @@ def resolve_feature_vector(db, message):
        sha256 = message.get('sha256')
        md5 = message.get('md5')
        jsr = JavascriptArtefact(url=url, sha256=sha256, md5=md5)
-       ret = analyse_script(code, jsr)
-       d.update(**ret['statements_by_count'])
+       ret, failed, stderr = analyse_script(code, jsr)
+       if not failed:
+           d.update(**ret['statements_by_count'])
+       else:
+           raise Exception(stderr)
 
    return d
 

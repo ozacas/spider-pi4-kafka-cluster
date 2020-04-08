@@ -102,7 +102,7 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
    # cleanup
    os.unlink(tmpfile.name)
 
-   return ret
+   return (ret, process.returncode != 0, process.stderr)  # JSON (iff successful else None), failed (boolean), stderr capture
 
 def normalise_vector(ast_features, feature_names=normalised_ast_features_list):
    ret = []

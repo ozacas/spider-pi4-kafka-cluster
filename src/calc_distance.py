@@ -22,7 +22,9 @@ args = a.parse_args()
 def calc_vector(filename):
     with open(filename, 'rb') as fp:
         jsr = JavascriptArtefact(url="file:{}".format(filename), sha256="XXX", md5="XXX")
-        ret = analyse_script(fp.read(), jsr, feature_extractor=args.extractor)
+        ret, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor=args.extractor)
+        if failed:
+            raise Exception(stderr)
         return ret
 
 ret1 = calc_vector(args.file1)

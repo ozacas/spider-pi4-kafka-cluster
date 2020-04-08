@@ -40,8 +40,8 @@ def save_control(url, family, version, variant, force=False, refuse_hashes=set()
        print("Refusing to update existing control as dupe: {}".format(jsr))
        return jsr
 
-   ret = analyse_script(content, jsr, java=args.java, feature_extractor=args.extractor)
-   if ret is None:
+   ret, failed, stderr = analyse_script(content, jsr, java=args.java, feature_extractor=args.extractor)
+   if failed:
        raise ValueError('Could not analyse script {}'.format(jsr.url))
    ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider })
    #print(ret)

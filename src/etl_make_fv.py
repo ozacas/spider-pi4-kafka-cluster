@@ -73,7 +73,7 @@ def next_artefact(consumer, max):
 
 def report_failure(producer, artefact, reason):
     d = asdict(artefact)
-    d['reason'] = reason
+    d['reason'] = reason if len(reason) < 300 else "{}...".format(reason.substring(0, 300))
     producer.send('feature-extraction-failures', d)
 
 # we want only artefacts which are not cached and are JS (subject to maximum record limits)
@@ -93,8 +93,8 @@ for jsr in uncached_js_artefacts:
     # 2. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
     js = get_script(db, jsr, logger)
     if js:
-         results = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
-         if results:
+         results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
+         if failed:
              # push to mongo...
              d = { 'url': jsr.url, 'origin': jsr.origin }
              d.update(**results.get('statements_by_count'))
@@ -108,7 +108,7 @@ for jsr in uncached_js_artefacts:
              # and now kafka now that the DB has been populated
              producer.send('analysis-results', results)
          else:
-             report_failure(producer, jsr, "Unable to analyse script")
+             report_failure(producer, jsr, "Unable to analyse script: {}".format(stderr))
     else:
          report_failure(producer, jsr, 'Could not locate in MongoDB')
 

@@ -60,9 +60,10 @@ if args.file:
        content = fp.read()
        jsr = JavascriptArtefact(url=args.file, sha256=hashlib.sha256(content).hexdigest(), 
                                 md5=hashlib.md5(content).hexdigest(), size_bytes=len(content))
-       input_features = analyse_script(content, jsr, feature_extractor=args.extractor)
-       if input_features is None:
+       input_features, failed, stderr = analyse_script(content, jsr, feature_extractor=args.extractor)
+       if failed:
            print("Unable to extract features... aborting.")
+           print(stderr)
            cleanup()
        best_control, next_best_control = find_best_control(input_features, controls, db=db, debug=True, control_index=control_magnitudes) # index None so that all are searched
        print("*** WINNING CONTROL HIT")
