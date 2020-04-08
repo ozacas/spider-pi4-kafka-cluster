@@ -19,6 +19,7 @@ def dump_distances(db, pretty=False, threshold=10.0):
                         "origin_url": "$origin_url",
                         "cited_on_host": "$cited_on_host" },
                "distances": { "$addToSet": "$ast_dist" },
+               "diff_functions": { "$addToSet": "$diff_function" },
                "min_function_dist": { "$min": "$function_dist" },
                "pages": { "$addToSet": "$cited_on_path" }
              }
@@ -28,7 +29,7 @@ def dump_distances(db, pretty=False, threshold=10.0):
     if pretty:
         dump_pretty(result)
     else:
-        headers = ['host', 'min_distance', 'avg_distance', 'max_distance', 'min_function_dist', 'n_pages', 'control_url', 'origin_url']
+        headers = ['host', 'min_distance', 'avg_distance', 'max_distance', 'min_function_dist', 'n_pages', 'diff_functions', 'control_url', 'origin_url']
         print('\t'.join(headers))
         for rec in result:
            #print(rec)
@@ -36,7 +37,8 @@ def dump_distances(db, pretty=False, threshold=10.0):
            id = rec.get('_id')
            distances = rec.get('distances')
            l = [ id['cited_on_host'], str(min(distances)), str(mean(distances)), str(max(distances)), 
-                 str(rec.get('min_function_dist')), str(len(rec.get('pages'))), id['control_url'], id['origin_url'] ]
+                 str(rec.get('min_function_dist')), str(len(rec.get('pages'))), 
+                 str(sorted(list(rec.get('diff_functions')))), id['control_url'], id['origin_url'] ]
            print('\t'.join(l))
 
 def dump_sites_by_control(db, pretty=False, want_set=False):
@@ -128,5 +130,5 @@ if args.query == "functionsbycontrol":
 elif args.query == "sitesbycontrol":
     dump_sites_by_control(db, want_set=args.v)
 elif args.query == "distances":
-    dump_distances(db, pretty=args.pretty, threshold=5 if not args.extra else int(args.extra))
+    dump_distances(db, pretty=args.pretty, threshold=10.0 if not args.extra else float(args.extra))
 exit(0)
