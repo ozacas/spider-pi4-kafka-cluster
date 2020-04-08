@@ -11,6 +11,7 @@ DOWNLOAD_FAIL_ON_DATALOSS = True
 DOWNLOADER_STATS = False
 HTTPERROR_ALLOWED_CODES = [400, 401, 402, 403, 404, 410, 500, 501, 502, 503] # just the major ones for applying a crawl penalty to the site
 LOG_LEVEL = 'INFO'
+MEDIA_ALLOW_REDIRECTS = True # item pipeline must also permit redirects to fetch JS (ugh... ugly!)
 RANDOMIZE_DOWNLOAD_DELAY = True
 REDIRECT_ENABLED = True
 REDIRECT_MAX_TIMES = 5
