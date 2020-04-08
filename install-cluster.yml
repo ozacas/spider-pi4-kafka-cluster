@@ -37,13 +37,17 @@
           - tar
         state: present
 
-- name: disable swap on kafka/zookeeper hosts
+- name: disable swap on kafka/zookeeper hosts and ensure sufficient mmap
   hosts: kafka-hosts zookeeper-hosts
   become: yes
   tasks:
     - sysctl:
         name: vm.swappiness
         value: '1'
+        state: present
+    - sysctl:
+        name: vm.max_map_count
+        value: '262144'
         state: present
 
 - name: ensure all kafka/zookeeper cluster nodes have same host entries
