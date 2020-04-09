@@ -9,7 +9,6 @@ from utils.models import BestControl, Password
 from utils.misc import setup_signals, rm_pidfile, save_pidfile
 from utils.features import as_url_fields
 from dataclasses import asdict
-from urllib.parse import urlparse
 
 a = argparse.ArgumentParser(description="Reconcile all data from control, origin and artefacts into one query-ready, non-normalised, Mongo collection")
 a.add_argument("--topic", help="Kafka topic to get visited JS summary [javascript-artefact-control-results]", type=str, default='javascript-artefact-control-results')
