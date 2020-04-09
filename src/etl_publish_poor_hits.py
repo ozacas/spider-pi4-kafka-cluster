@@ -70,8 +70,8 @@ for bad_hit in filter(lambda c: c.ast_dist > args.threshold, next_artefact(consu
     # so here we want to provide enough data (even for the bad hit) to enable build-data-matrix-from-etl.py to 
     # be able to efficiently query for clusters of bad hits
     d = { 'ast_dist': bad_hit.ast_dist, 'function_dist': bad_hit.function_dist, 'origin_url': bad_hit.origin_url, 'cited_on': bad_hit.cited_on }
-    d.update(as_url_fields(bad_hit.origin_url, 'origin'))
-    d.update(as_url_fields(bad_hit.cited_on, 'cited_on'))
+    d.update(as_url_fields(bad_hit.origin_url, prefix='origin'))
+    d.update(as_url_fields(bad_hit.cited_on, prefix='cited_on'))
     # and finally compute hashes for the content for clustering 
     sha256, url_id = find_sha256_hash(db, bad_hit.origin_url)
     uid = None
