@@ -6,6 +6,7 @@ import hashlib
 from dataclasses import asdict
 from utils.models import BestControl
 from tempfile import NamedTemporaryFile
+from urllib.parse import urlparse
 
 # comes from MongoDB (db.statements_by_count_keys collection) but for performance is listed here
 normalised_ast_features_list =  [ "ArrayLiteral", "Assignment", "AstRoot", "Block", "BreakStatement", "CatchClause", "ConditionalExpression",
