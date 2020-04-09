@@ -41,6 +41,31 @@ def dump_distances(db, pretty=False, threshold=10.0):
                  str(sorted(list(rec.get('diff_functions')))), id['control_url'], id['origin_url'] ]
            print('\t'.join(l))
 
+def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False):
+    result = db.etl_bad_hits.aggregate([
+                 { "$match": { "sha256": { "$ne": None } } },
+                 { "$group":
+                      { "_id": "$sha256",
+                        "unique_js": { "$addToSet": "$origin_url" },
+                        "sites": { "$addToSet": "$cited_on_host" } 
+                      }
+                 },
+                 { "$sort": { "_id": 1, "unique_js": -1 } }
+    ], allowDiskUse=True)
+  
+    if pretty:
+        dump_pretty(result.find())
+    else:
+        headers = ["sha256", "n_js", "n_sites_observed"]
+        if want_set: 
+            headers.append("cited_on")
+        print('\t'.join(headers))
+        for rec in result:
+             l = [rec['_id'], str(len(rec.get('unique_js'))), str(len(rec.get('sites')))]
+             if want_set:
+                 l.append(' '.join(rec.get('sites')))
+             print('\t'.join(l))
+
 def dump_sites_by_control(db, pretty=False, want_set=False):
     result = db.etl_hits.aggregate([ 
                  { "$group": 
@@ -119,7 +144,7 @@ a.add_argument("--user", help="MongoDB user to connect as (read-only access requ
 a.add_argument("--password", help="MongoDB password (if not specified, will be prompted)", type=Password, default=Password.DEFAULT)
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
-a.add_argument("--query", help="Run specified query, one of: distances|sitesbycontrol|functionsbycontrol", type=str, choices=['sitesbycontrol', 'functionsbycontrol', 'distances'])
+a.add_argument("--query", help="Run specified query, one of: unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 args = a.parse_args()
 
@@ -131,4 +156,6 @@ elif args.query == "sitesbycontrol":
     dump_sites_by_control(db, want_set=args.v)
 elif args.query == "distances":
     dump_distances(db, pretty=args.pretty, threshold=10.0 if not args.extra else float(args.extra))
+elif args.query == "unresolved_clusters":
+    dump_unresolved_clusters(db, pretty=args.pretty, threshold=100.0, want_set=args.v) # distances over 100 will be considered for clustering
 exit(0)
