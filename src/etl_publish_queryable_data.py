@@ -72,21 +72,6 @@ def load_controls(db, verbose):
         print("Loaded {} controls.".format(len(controls)))
     return controls
 
-def as_url_fields(url, prefix=''):
-    up = urlparse(url)
-    d = {}
-    d[prefix+'_host'] = up.hostname
-    d[prefix+'_has_query'] = len(up.query) > 0
-    if up.port:
-        d[prefix+'_port'] = up.port
-    elif up.scheme == 'https':
-        d[prefix+'_port'] = 443
-    elif up.scheme == 'http':
-        d[prefix+'_port'] = 80
-    d[prefix+'_scheme'] = up.scheme
-    d[prefix+'_path'] = up.path
-    return d
-
 setup_signals(cleanup)
 origins = { }
 n_unable = n_ok = 0
