@@ -2,6 +2,7 @@ geoip2
 kafka-python
 certifi
 wheel
+pymongo
 pylru
 scrapy
 dnspython
