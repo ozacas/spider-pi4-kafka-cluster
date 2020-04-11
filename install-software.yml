@@ -1,6 +1,6 @@
 
 - name: setup data directories for crawl data, geolocation and other data files
-  hosts: thug-hosts
+  hosts: thug-hosts x86-thug-hosts
   tasks:
      - file:
          path: /home/acas/data
@@ -14,7 +14,7 @@
        become: yes
 
 - name: ensure software is on thug hosts
-  hosts: thug-hosts
+  hosts: thug-hosts 
   tasks:
      - file: # purge existing contents since we want a clean slate (ie. not cumulative)
          path: /home/acas/src
@@ -25,8 +25,18 @@
          mode: '0644'
          directory_mode: '0750'
 
+- name: key system requirements for thug software install
+  gather_facts: no
+  hosts: x86-thug-hosts
+  become: yes
+  tasks:
+    - apt: 
+        name: ['libffi-dev', 'ssdeep', 'pkg-config', 'gcc', 'graphviz']
+        update_cache: yes
+        state: present
+
 - name: ensure pip is installed to manage python and system is up-to-date
-  hosts: kafka-hosts thug-hosts
+  hosts: kafka-hosts thug-hosts 
   become: yes
   tasks:
      - pacman: name=python-pip state=present
@@ -52,19 +62,28 @@
          group: root
  
 - name: ensure python3 pre-reqs are installed
-  hosts: thug-hosts
+  hosts: thug-hosts 
   become: yes
   tasks:
      - pip:
          executable: pip3
          requirements: /home/acas/src/requirements.txt
 
+- name: ensure python3 pre-reqs are install
+  hosts: x86-thug-hosts
+  become: yes
+  tasks:
+     - pip:
+         executable: /usr/bin/pip3
+         requirements: /home/acas/src/requirements.txt
+
 - name: ensure thug pip3 pre-reqs are installed
-  hosts: thug-hosts
+  hosts: thug-hosts x86-thug-hosts
   become: yes
   tasks:
      - pip:
          executable: pip3
+         extra_args: --no-cache-dir
          name:
            - PySocks==1.7.1
            - beautifulsoup4==4.8.2
@@ -85,9 +104,10 @@
            - yara-python==3.11.0
            - zope.interface==4.7.1
            - cffi
+           - scrapy
 
 - name: install data files (geolite2 city db, AU seed URLs)
-  hosts: thug-hosts
+  hosts: thug-hosts x86-thug-hosts
   tasks:
     - unarchive:
         src: software/GeoLite2-City_20200114.tar.gz

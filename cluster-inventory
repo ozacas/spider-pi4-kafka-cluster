@@ -3,6 +3,12 @@ pi1
 pi2
 pi5
 
+[x86-thug-hosts]
+192.168.1.114
+
+[x86-thug-hosts:vars]
+ansible_python_interpreter=/usr/bin/python3.5
+
 [kafka-hosts]
 pi3
 pi4

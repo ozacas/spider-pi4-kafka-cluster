@@ -24,7 +24,7 @@
        when: SPIDER == 0 and data_root.stat.exists and data_root.stat.isdir
 
 - name: compute feature vectors and ingest into MongoDB
-  hosts: pi2 pi5
+  hosts: pi2 192.168.1.114
   gather_facts: no
   tasks: 
      - command: 
@@ -41,10 +41,10 @@
          cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --user rw --v
 
 - name: store javascript snippets embedded on HTML pages limited to only 1 CPU core
-  hosts: pi1
+  hosts: 192.168.1.114
   tasks:
      - command: 
          chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.snippetspider"
          cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.snippetspider -e log.err.snippetspider /usr/bin/taskset -c 2 scrapy  runspider snippet_spider.py -L INFO
-       when: 0 # disabled as it current impacts performance of kafkaspider SPIDER == 1 
+       when: SPIDER == 1 
