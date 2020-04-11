@@ -31,7 +31,7 @@
   become: yes
   tasks:
     - apt: 
-        name: ['libffi-dev', 'ssdeep', 'pkg-config', 'gcc', 'graphviz']
+        name: ['libffi-dev', 'ssdeep', 'pkg-config', 'gcc', 'graphviz', 'graphviz-dev', 'libemu-dev']
         update_cache: yes
         state: present
 
@@ -74,7 +74,6 @@
   become: yes
   tasks:
      - pip:
-         executable: /usr/bin/pip3
          requirements: /home/acas/src/requirements.txt
 
 - name: ensure thug pip3 pre-reqs are installed
@@ -83,7 +82,6 @@
   tasks:
      - pip:
          executable: pip3
-         extra_args: --no-cache-dir
          name:
            - PySocks==1.7.1
            - beautifulsoup4==4.8.2
