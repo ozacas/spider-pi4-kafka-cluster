@@ -6,3 +6,4 @@ pymongo
 pylru
 scrapy
 dnspython
+sqlite3
