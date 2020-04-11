@@ -43,17 +43,18 @@ with tempfile.TemporaryDirectory() as tdir:
        fp.write(resp.content)
    script, url_id = find_script(db, args.url)
    if not script:
-       print("Unable to find {} in database!".format(args.url))
-       exit(1)
+       raise Exception("Unable to find {} in database!".format(args.url))
    with open('{}/artefact.js'.format(tdir), 'wb+') as fp:
        fp.write(script.get('code'))
    # 2. beautify them (ie. reduce minimisation to ensure consistent representation for diff'ing etc.)
    bs1 = "{}/1.js".format(tdir)
    bs2 = "{}/2.js".format(tdir)
    proc = run([args.beautifier, "-o", bs1, "{}/control.js".format(tdir)])
-   print(proc)
+   if proc.returncode != 0:
+      raise Exception("Unable to beautify control!")
    proc = run([args.beautifier, "-o", bs2, "{}/artefact.js".format(tdir)])
-   print(proc)
+   if proc.returncode != 0:
+      raise Exception("Unable to beautify artefact!")
 
    # 3. run meld on the resulting beautified-JS for both control and artefact
    diff_proc = run([args.diff, bs1, bs2])
