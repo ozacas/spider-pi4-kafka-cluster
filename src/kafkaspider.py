@@ -424,8 +424,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            up = urlparse(url)
            self.penalise(up.hostname, penalty=2) # dont want to slow down the spider on sites with undesirable site design
           
+        self.logger.info("Adding {} items to FilesPipeline".format(len(ret)))
 
-        return ret  # url's come only from kafka, not the parse() invocation
+        return ret  # url's come only from kafka, not the parse() invocation. But JS artefacts will be returned from here for the FilesPipeline to ingest 
 
 if __name__ == "__main__":
     process = CrawlerProcess()
