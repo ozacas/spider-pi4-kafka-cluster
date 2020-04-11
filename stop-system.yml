@@ -1,5 +1,5 @@
 - name: tell processes to gracefully shutdown
-  hosts: pi1 pi2 pi5
+  hosts: pi1 pi2 pi5 x86-thug-hosts
   gather_facts: no
   tasks:
     - shell: for f in "{{ PID_ROOT }}"/pid.*; do cat $f; echo; done
