@@ -22,6 +22,6 @@
 
 - name: poweroff cluster
   become: yes
-  hosts: kafka-hosts thug-hosts zookeeper-hosts
+  hosts: kafka-hosts thug-hosts zookeeper-hosts x86-thug-hosts
   tasks:
     - command: /sbin/poweroff
