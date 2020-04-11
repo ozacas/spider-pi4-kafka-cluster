@@ -4,7 +4,6 @@ from dataclasses import dataclass, asdict
 import os
 import json
 import pymongo
-import logging
 import argparse
 import pylru
 import sys
@@ -35,7 +34,6 @@ consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 mongo = pymongo.MongoClient(args.mongo_host, args.mongo_port, username=args.user, password=str(args.password))
 db = mongo[args.db]
-logger = logging.getLogger(__name__)
 
 def cleanup(*args):
     global consumer
@@ -91,7 +89,7 @@ for jsr in uncached_js_artefacts:
         print(jsr)
 
     # 2. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
-    js = get_script(db, jsr, logger)
+    js = get_script(db, jsr)
     if js:
          results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
          if not failed:
