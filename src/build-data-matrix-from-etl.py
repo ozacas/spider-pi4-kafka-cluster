@@ -4,12 +4,70 @@ import csv
 import sys
 import argparse
 import pprint
+from dataclasses import dataclass
 from statistics import mean
 from utils.models import Password
+
+@dataclass
+class FunctionProbability:
+   control_family: str
+   function_name: str
+   n_sites: int = 0
+   n_pages: int = 0
+   n_sites_for_family: int = 0
+   n_pages_for_family: int = 0
 
 def dump_pretty(result):
     for rec in result:
         pprint.pprint(rec)
+
+def dump_function_probabilities(db, pretty=False, threshold=20.0):
+    # 1. compute function probability across each family of controls (per differentially expressed function)
+    sites_by_function_count = db.etl_hits.aggregate([
+        { "$match": { "ast_dist": { "$lt": threshold }, "function_dist": { "$lt": threshold } } },
+        { "$group": 
+             { "_id": { "family": "$control_family", "diff_function": "$diff_function" } ,
+               "sites": { "$addToSet": "$cited_on_host" },
+               "unique_pages": { "$addToSet": "$cited_on" },
+             }
+        },
+        { "$sort": { "_id.family": 1, "_id.diff_function": 1 } },
+    ], allowDiskUse=True)
+
+    final_result = []
+    for rec in sites_by_function_count:
+        id = rec.get('_id') 
+        fp = FunctionProbability(control_family=id['family'], function_name=id['diff_function'], 
+                                 n_sites=len(rec.get('sites')), n_pages=len(rec.get('unique_pages')))
+        final_result.append(fp)
+    print("Len final_result is {}".format(len(final_result)))
+
+    # 2. and update with the values for number of unique sites and pages for each family
+    family_results = db.etl_hits.aggregate([
+        { "$match": { "ast_dist": { "$lt": threshold }, "function_dist": { "$lt": threshold } } },
+        { "$group": 
+             { "_id": { "family": "$control_family" },
+               "sites": { "$addToSet": "$cited_on_host" },
+               "unique_pages": { "$addToSet": "$cited_on" }
+             }
+        },
+    ], allowDiskUse=True)
+    result = { }
+    for rec in family_results:
+        id = rec['_id']
+        family = id.get('family')
+        print(family)
+        result[family] = { "n_sites": len(rec.get('sites')), "n_pages": len(rec.get('unique_pages')) }
+
+    # 3. merge into final_result dataclasses
+    for fp in final_result:
+         if fp.control_family not in result: # maybe not any diff functions for a given control?
+            continue
+         obj = result[fp.control_family]
+         fp.n_sites_for_family = obj.get('n_sites')
+         fp.n_pages_for_family = obj.get('n_pages')
+         print(fp)
+
 
 def dump_distances(db, pretty=False, threshold=10.0):
     result = db.etl_hits.aggregate([
@@ -144,7 +202,7 @@ a.add_argument("--user", help="MongoDB user to connect as (read-only access requ
 a.add_argument("--password", help="MongoDB password (if not specified, will be prompted)", type=Password, default=Password.DEFAULT)
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
-a.add_argument("--query", help="Run specified query, one of: unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances'])
+a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 args = a.parse_args()
 
@@ -158,4 +216,6 @@ elif args.query == "distances":
     dump_distances(db, pretty=args.pretty, threshold=10.0 if not args.extra else float(args.extra))
 elif args.query == "unresolved_clusters":
     dump_unresolved_clusters(db, pretty=args.pretty, threshold=100.0, want_set=args.v) # distances over 100 will be considered for clustering
+elif args.query == "function_probabilities":
+    dump_function_probabilities(db, pretty=args.pretty, threshold=20.0) 
 exit(0)
