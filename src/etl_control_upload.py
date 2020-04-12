@@ -1,12 +1,14 @@
 #!/usr/bin/python3
 import pymongo
+from bson.binary import Binary
 import argparse
 import json
 import hashlib
 import requests
+from dataclasses import asdict
 from datetime import datetime
-from utils.features import analyse_script
-from utils.models import JavascriptArtefact, Password
+from utils.features import analyse_script, normalise_vector
+from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
 from utils.cdn import CDNJS, JSDelivr
 
 a = argparse.ArgumentParser(description="Insert feature vectors from artefacts into MongoDB")
@@ -24,6 +26,7 @@ a.add_argument("--extractor", help="Path to feature extractor JAR", type=str, de
 a.add_argument("--list", help="List available assets, but do not save to DB", action="store_true")
 a.add_argument("--i18n", help="Save internationalised versions of JS [False]", action="store_true", default=False)
 a.add_argument("--provider", help="Specify CDN provider (cdnjs|jsdelivr) [cdnjs]", type=str, choices=['cdnjs', 'jsdelivr'])
+a.add_argument("--update", help="Only update existing controls by re-fetching from CDN provider", action="store_true")
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.user, password=str(args.password))
@@ -46,20 +49,35 @@ def save_control(url, family, version, variant, force=False, refuse_hashes=set()
    ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider })
    #print(ret)
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
-   resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family }, { "$set": ret }, upsert=True)
-   if args.v:
-       print(resp) 
+   resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family }, 
+                                                     { "$set": ret }, upsert=True)
+   resp = db.javascript_control_code.find_one_and_update({ 'origin': url }, 
+                                                     { "$set": { 'origin': url, 'code': Binary(content), 
+                                                       "last_updated": jsr.when } }, upsert=True)
+   # this code comes from etl_control_fix_magnitude, which means we dont need to run it separately
+   vector, total_sum = normalise_vector(ret['statements_by_count'])
+   sum_of_function_calls = sum(ret['calls_by_count'].values())
+   vs = JavascriptVectorSummary(origin=url, sum_of_ast_features=total_sum,
+                                 sum_of_functions=sum_of_function_calls, last_updated=jsr.when)
+   db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert = True)
    return jsr
 
-provider = CDNJS() if args.provider == "cdnjs" else JSDelivr()
 existing_control_hashes = set(db.javascript_controls.distinct('sha256'))
-for url, family, variant, version in provider.fetch(args.family, args.variant, args.release, ignore_i18n=not args.i18n):
+
+if args.update:
+    controls_to_save = [(ret['origin'], ret['family'], ret['variant'], ret['version'], ret['provider']) for ret in db.javascript_controls.find()]
+else:
+    fetcher = CDNJS() if args.provider == "cdnjs" else JSDelivr()
+    controls_to_save = fetcher.fetch(args.family, args.variant, args.release, ignore_i18n=not args.i18n, provider=args.provider)
+for url, family, variant, version, provider in controls_to_save:
     if args.v or args.list:
        print("Found artefact: {}".format(url))
     if not args.list:
        try: 
-           artefact = save_control(url, family, variant, version, refuse_hashes=existing_control_hashes, provider=args.provider)
+           artefact = save_control(url, family, variant, version, refuse_hashes=existing_control_hashes, provider=provider)
            existing_control_hashes.add(artefact.sha256)
+           if args.v:
+               print(artefact)
        except Exception as e:
            print(str(e))
     

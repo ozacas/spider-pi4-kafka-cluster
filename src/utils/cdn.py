@@ -25,7 +25,7 @@ class CDNJS:
       url = ret[0].lower()
       return '/i18n/' in url or '/lang/' in url
 
-   def fetch(self, family, variant, version, ignore_i18n=True):
+   def fetch(self, family, variant, version, ignore_i18n=True, provider=None):
       url = "{}/{}".format(self.base, family)
       resp = requests.get(url, headers={ 'Content-Type': 'application/json' }) 
       j = resp.json()
@@ -38,9 +38,9 @@ class CDNJS:
              if not file.endswith(".js"):
                  continue
              if version is not None and (version and asset['version'] == version):
-                 ret = ("{}{}/{}/{}".format(self.cdn, family, version, file), family, variant, version)
+                 ret = ("{}{}/{}/{}".format(self.cdn, family, version, file), family, variant, version, provider)
              else:
-                 ret = ("{}{}/{}/{}".format(self.cdn, family, asset['version'], file), family, variant, asset['version'])
+                 ret = ("{}{}/{}/{}".format(self.cdn, family, asset['version'], file), family, variant, asset['version'], provider)
              if ignore_i18n and self.is_i18n(ret):
                  pass
              else:
@@ -57,7 +57,7 @@ class JSDelivr:
           return True
       return variant in name
 
-   def fetch(self, family, variant, version, ignore_i18n=True):
+   def fetch(self, family, variant, version, ignore_i18n=True, provider=None):
       # 1. compute the package type since the API doesnt provide it: TODO FIXME - risky if malicious package with same family? Nah...
       package_type = None
       for type in ['gh', 'npm']:
@@ -79,7 +79,7 @@ class JSDelivr:
                      path = artefact['name']      # NB: ensure exactly one slash between version and path, as it will 404 if too many...
                      if not path.startswith("/"):
                          path = "/" + path
-                     ret = (self.cdn_base.format(package_type, family, v, path), family, variant, v)
+                     ret = (self.cdn_base.format(package_type, family, v, path), family, variant, v, provider)
                      yield ret
           return
       # failure 
