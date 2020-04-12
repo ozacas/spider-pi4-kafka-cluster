@@ -11,21 +11,21 @@ from utils.features import analyse_script, normalise_vector
 from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
 from utils.cdn import CDNJS, JSDelivr
 
-a = argparse.ArgumentParser(description="Insert feature vectors from artefacts into MongoDB")
+a = argparse.ArgumentParser(description="Insert control artefact features into MongoDB using artefacts from CDN providers")
 a.add_argument("--v", help="Debug verbosely", action="store_true")
 a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
 a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
 a.add_argument("--user", help="User to authenticate to MongoDB RBAC (readWrite access required)", type=str, required=True)
 a.add_argument("--password", help="Password for user (prompted if not supplied)", type=Password, default=Password.DEFAULT)
-a.add_argument("--family", help="Name of JS family eg. jquery", type=str, required=True)
+a.add_argument("--family", help="Name of JS family eg. jquery (ignored iff --update)", type=str, default='jquery')
 a.add_argument("--release", help="Name of release eg. 1.10.3a", type=str, default=None)
 a.add_argument("--variant", help="Only save artefacts which match variant designation eg. minimised [None]", type=str, default=None)
 a.add_argument("--java", help="Path to JVM executable [/usr/bin/java]", type=str, default="/usr/bin/java")
 a.add_argument("--extractor", help="Path to feature extractor JAR", type=str, default="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar")
 a.add_argument("--list", help="List available assets, but do not save to DB", action="store_true")
 a.add_argument("--i18n", help="Save internationalised versions of JS [False]", action="store_true", default=False)
-a.add_argument("--provider", help="Specify CDN provider (cdnjs|jsdelivr) [cdnjs]", type=str, choices=['cdnjs', 'jsdelivr'])
+a.add_argument("--provider", help="Specify CDN provider [cdnjs]", type=str, choices=['cdnjs', 'jsdelivr'])
 a.add_argument("--update", help="Only update existing controls by re-fetching from CDN provider", action="store_true")
 args = a.parse_args()
 
