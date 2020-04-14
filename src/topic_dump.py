@@ -32,3 +32,5 @@ for message in consumer:
     cnt += 1
     if cnt >= args.n:
         break
+
+exit(0)
