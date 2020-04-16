@@ -7,7 +7,7 @@ import hashlib
 import requests
 from dataclasses import asdict
 from datetime import datetime
-from utils.features import analyse_script, normalise_vector
+from utils.features import analyse_script, normalise_vector, normalised_ast_features_list
 from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
 from utils.cdn import CDNJS, JSDelivr
 
@@ -61,7 +61,7 @@ def save_control(url, family, version, variant, force=False, refuse_hashes=None,
                                                      { "$set": { 'origin': url, 'code': Binary(content), 
                                                        "last_updated": jsr.when } }, upsert=True)
    # this code comes from etl_control_fix_magnitude, which means we dont need to run it separately
-   vector, total_sum = normalise_vector(ret['statements_by_count'])
+   vector, total_sum = normalise_vector(ret['statements_by_count'], feature_names=normalised_ast_features_list)
    sum_of_function_calls = sum(ret['calls_by_count'].values())
    vs = JavascriptVectorSummary(origin=url, sum_of_ast_features=total_sum,
                                  sum_of_functions=sum_of_function_calls, last_updated=jsr.when)
