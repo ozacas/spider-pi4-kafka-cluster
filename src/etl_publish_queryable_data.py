@@ -4,7 +4,7 @@ import sys
 import json
 import argparse
 import pymongo
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 from utils.models import BestControl, Password
 from utils.misc import setup_signals, rm_pidfile, save_pidfile
 from utils.features import as_url_fields
@@ -32,6 +32,7 @@ db = mongo[args.dbname]
 consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=args.group, 
                          auto_offset_reset=args.start, consumer_timeout_ms=10000,
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')))
+producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=lambda m: json.dumps(m).encode('utf-8'))
 
 def cleanup(*args):
     global consumer
@@ -102,15 +103,25 @@ for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact
     d.update(as_url_fields(best_control.cited_on, prefix='cited_on'))
     d['control_family'] = controls[u].get('family')
 
+    # good hits get sent to the suspicious analysis pipeline
+    diff_fns_list = best_control.diff_functions.split(' ')
+    if (dist < 10.0 or (dist < 20.0 and len(diff_fns_list) < 10)) and (dist > 0.0 and best_control.function_dist > 0.0):
+        dc = d.copy()
+        dc.pop('_id', None)
+        dc['diff_functions'] = best_control.diff_functions
+        producer.send('etl-good-hits', dc)
+
     # finally report each differentially called function as a separate record 
-    for fn in best_control.diff_functions.split(' '):
+    for fn in diff_fns_list:
         if len(fn) > 0:
             d['diff_function'] = fn
 
             # other fields for ETL 
             d['expected_calls'] = fv_control.get(fn, None)
             d['actual_calls'] = fv_origin.get(fn, None)
-            db.etl_hits.insert_one(d.copy())
+            dc = d.copy()
+            db.etl_hits.insert_one(dc)
+             
 
 if args.v:
     print("Unable to retrieve FV for {} URLs".format(n_unable))
