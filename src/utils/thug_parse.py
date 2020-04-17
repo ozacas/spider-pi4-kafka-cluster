@@ -17,7 +17,8 @@ anchor_regex = re.compile('^\[(.*?)\]\s+<a\s+href="([^"]+?)"\s*>.*$')
 class ThugLogParser(object):
    def __init__(self, **kwargs):
       self.au_locator = kwargs.get('au_locator')
-      self.db = kwargs.get('db')
+      self.mongo = kwargs.get('mongo')
+      self.db = self.mongo['thug']
       self.user_agent = kwargs.get('user_agent')
       self.origin = kwargs.get('origin')
    
