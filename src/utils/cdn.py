@@ -37,8 +37,12 @@ class CDNJS:
           for file in suitable_js:
              if not file.endswith(".js"):
                  continue
-             if version is not None and (version and asset['version'] == version):
-                 ret = ("{}{}/{}/{}".format(self.cdn, family, version, file), family, variant, version, provider)
+#            print(version, asset['version'])
+             if version is not None:
+                 if asset['version'] == version:
+                     ret = ("{}{}/{}/{}".format(self.cdn, family, version, file), family, variant, version, provider)
+                 else:
+                     continue
              else:
                  ret = ("{}{}/{}/{}".format(self.cdn, family, asset['version'], file), family, variant, asset['version'], provider)
              if ignore_i18n and self.is_i18n(ret):
@@ -57,6 +61,12 @@ class JSDelivr:
           return True
       return variant in name
 
+   def suitable_version(self, reported_version, wanted_version):
+      if wanted_version is None:
+          return True # all versions suitable
+      #print(reported_version+ " " + wanted_version)
+      return wanted_version == reported_version
+
    def fetch(self, family, variant, version, ignore_i18n=True, provider=None):
       # 1. compute the package type since the API doesnt provide it: TODO FIXME - risky if malicious package with same family? Nah...
       package_type = None
@@ -66,7 +76,7 @@ class JSDelivr:
           if resp.status_code == 200:
              j = resp.json()
              package_type = type
-             available_versions = [version for version in j['versions']]
+             available_versions = [v for v in j['versions'] if self.suitable_version(v, version)]
              break
 
       # 2. get all available versions and obtain JS artefacts for caller to process
