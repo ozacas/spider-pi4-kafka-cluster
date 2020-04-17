@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 def test_as_priority():
    pri = as_priority('https://www.google.com', None)
-   assert pri is not None and pri <= 3
+   assert pri is not None and pri <= 2
 
    # avoid re-parsing url's if we can
    up = urlparse('https://www.google.com')

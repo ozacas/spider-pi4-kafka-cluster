@@ -6,19 +6,19 @@ from dataclasses import asdict
 from utils.models import ThugLog
 
 #[2020-01-22 13:39:45] [MongoDB] Analysis ID: 5e27b5f1c2da48806667697e
-analysis_regex = re.compile("^\[(.*?)\]\s+\[MongoDB\]\s+Analysis\s+ID:\s+([a-z0-9]+)$")
+analysis_regex = re.compile("^\\[(.*?)\\]\\s+\\[MongoDB\\]\\s+Analysis\\s+ID:\\s+([a-z0-9]+)$")
 
-script_src_regex = re.compile("^\[(.*?)\]\s+\[script src redirection\]\s+(\S+)\s\-\>\s(\S+)\s*$")
-link_href_regex  = re.compile("^\[(.*?)\]\s+\[link redirection\]\s+(\S+)\s\-\>\s(\S+)$")
+script_src_regex = re.compile("^\\[(.*?)\\]\\s+\\[script src redirection\\]\\s+(\\S+)\\s->\\s(\\S+)\\s*$")
+link_href_regex  = re.compile("^\\[(.*?)\\]\\s+\\[link redirection\\]\\s+(\\S+)\\s->\\s(\\S+)$")
 # eg. [2020-01-22 13:42:17] [HTTP] URL: https://fonts.googleapis.com/css?family=Open+Sans:300,400,700 (Content-type: text/css; charset =utf-8, MD5: d2570265994455a6b680c3bf861bd52b)
-url_regex = re.compile("^\[(.*?)\]\s+\[HTTP\]\s+URL\:\s+(\S+)\s*\(Content\-type\:\s+(\S+);\s+charset=(\S+),\s+MD5\:\s+([a-z0-9]+)\)\s*$")
-anchor_regex = re.compile('^\[(.*?)\]\s+<a\s+href="([^"]+?)"\s*>.*$')
+url_regex = re.compile("^\\[(.*?)\\]\\s+\\[HTTP\\]\\s+URL:\\s+(\\S+)\\s*\\(Content-type:\\s+(\\S+);\\s+charset=(\\S+),\\s+MD5:\\s+([a-z0-9]+)\\)\\s*$")
+anchor_regex = re.compile('^\\[(.*?)\\]\\s+<a\\s+href="([^"]+?)"\\s*>.*$')
 
 class ThugLogParser(object):
    def __init__(self, **kwargs):
       self.au_locator = kwargs.get('au_locator')
       self.mongo = kwargs.get('mongo')
-      self.db = self.mongo['thug']
+      self.db = self.mongo[kwargs.get('db', 'thug')]
       self.user_agent = kwargs.get('user_agent')
       self.origin = kwargs.get('origin')
    
@@ -32,8 +32,7 @@ class ThugLogParser(object):
    def is_already_seen(self, url):
       if self.mongo is None:
           return False
-      db = self.mongo.thug
-      urls = db.urls
+      urls = self.db.urls
       if urls:
           return urls.count_documents({ 'url': url }) > 0
       return False

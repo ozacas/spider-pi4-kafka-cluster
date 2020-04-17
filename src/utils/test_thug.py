@@ -10,3 +10,5 @@ def test_thug_parser(pytestconfig):
     ThugLogParser(context={ 'url': 'foo' }, 
               au_locator=AustraliaGeoLocator(),
               mongo=mongo).parse("{}/data/example10.log".format(pytestconfig.rootdir))
+    print(mongo['thug'].called)
+    print(mongo['thug'].method_list)
