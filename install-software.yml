@@ -19,11 +19,14 @@
      - file: # purge existing contents since we want a clean slate (ie. not cumulative)
          path: /home/acas/src
          state: absent
-     - copy:
+     - synchronize:
          src: src
          dest: /home/acas
-         mode: '0644'
-         directory_mode: '0750'
+         rsync_opts:
+           - "--exclude=.git" 
+           - "--exclude=.tox"
+           - "-zz"
+
 
 - name: key system requirements for thug software install
   gather_facts: no
