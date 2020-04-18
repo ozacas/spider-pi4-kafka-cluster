@@ -43,12 +43,11 @@ def cleanup(*args):
 
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
-controls = list(db.javascript_controls.find())
-print("Loaded {} control vectors from MongoDB".format(len(controls)))
+controls = list(db.javascript_controls.find({}, { 'literals_by_count': False }))
+print("Loaded {} AST control vectors from MongoDB".format(len(controls)))
 # 0b. read magnitude of each vector so that we have the ability to reduce the number of comparisons performed to realistic controls
 control_magnitudes = []
-for d in list(db.javascript_controls_summary.find()):
-    d.pop('_id')
+for d in list(db.javascript_controls_summary.find({}, { '_id': False })):
     control_magnitudes.append(JavascriptVectorSummary(**d)) 
 
 if args.v:
