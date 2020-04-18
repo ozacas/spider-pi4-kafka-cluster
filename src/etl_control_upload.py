@@ -24,7 +24,7 @@ a.add_argument("--variant", help="Only save artefacts which match variant design
 a.add_argument("--java", help="Path to JVM executable [/usr/bin/java]", type=str, default="/usr/bin/java")
 a.add_argument("--extractor", help="Path to feature extractor JAR", type=str, default="/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/extract-features.jar")
 a.add_argument("--i18n", help="Save internationalised versions of JS [False]", action="store_true", default=False)
-a.add_argument("--provider", help="Specify CDN provider [cdnjs]", type=str, choices=['cdnjs', 'jsdelivr'], default='cdnjs')
+a.add_argument("--provider", help="Specify CDN provider [cdnjs]", type=str, choices=['cdnjs', 'jsdelivr'], required=False) # not mandated as it will side-effect matches if --update-all is specified
 group = a.add_mutually_exclusive_group()
 group.add_argument("--list", help="List available assets, but do not save to DB", action="store_true")
 group.add_argument("--update-all", help="Only update existing controls by re-fetching from CDN provider", action="store_true")
@@ -70,11 +70,17 @@ def save_control(url, family, version, variant, force=False, refuse_hashes=None,
 
 
 if args.update_all:
-    controls_to_save = [(ret['origin'], ret['family'], ret['variant'], ret['variant'], ret.get('provider', '')) for ret in db.javascript_controls.find()]
+    d = {}
+    if args.family:
+       d['family'] = args.family
+    if args.provider:
+       d['provider'] = args.provider
+    print("Matching controls {}".format(d))
+    controls_to_save = [(ret['origin'], ret['family'], ret['variant'], ret['variant'], ret.get('provider', '')) for ret in db.javascript_controls.find(d)]
     existing_control_hashes = set()
     print("Updating all MongoDB data for {} JS controls.".format(len(controls_to_save)))
 else:
-    fetcher = CDNJS() if args.provider == "cdnjs" else JSDelivr()
+    fetcher = JSDelivr() if args.provider == "jsdelivr" else CDNJS()
     existing_control_hashes = set(db.javascript_controls.distinct('sha256'))
     controls_to_save = fetcher.fetch(args.family, args.variant, args.release, ignore_i18n=not args.i18n, provider=args.provider)
     print("Using {} to fetch matching JS controls for family={}, release={}, variant={}".format(args.provider, args.family, args.release, args.variant))
