@@ -64,7 +64,7 @@ def next_artefact(consumer, max, verbose):
 
 def load_controls(db, verbose):
     controls = {}
-    for control in db.javascript_controls.find({}):
+    for control in db.javascript_controls.find({}, { 'literals_by_count': False }):
         #print(control)
         url = control.get('origin')
         controls[url] = control
