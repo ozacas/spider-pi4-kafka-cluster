@@ -12,6 +12,7 @@ from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafkaspider import KafkaSpiderMixin
 from utils.models import Password
+from utils.misc import save_pidfile, rm_pidfile
 
 class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'snippetspider'
@@ -38,6 +39,12 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.recent_cache = pylru.lrucache(10 * 1024)
        self.cache = pylru.lrucache(500)
        self.update_blacklist()
+       save_pidfile('pid.snippetspider')
+
+    def spider_closed(self, spider):
+        # NB: to be overridden by subclass eg. to persist state
+        spider.logger.info("Closed spider")
+        rm_pidfile('pid.snippetspider')
 
     @classmethod
     def from_crawler(cls, crawler, *args, **kwargs):
