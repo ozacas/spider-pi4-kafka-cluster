@@ -31,7 +31,7 @@ args = a.parse_args()
 
 consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=args.group, auto_offset_reset=args.start,
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=args.bootstrap)
 mongo = pymongo.MongoClient(args.mongo_host, args.mongo_port, username=args.user, password=str(args.password))
 db = mongo[args.db]
 
@@ -89,21 +89,23 @@ for jsr in uncached_js_artefacts:
         print(jsr)
 
     # 2. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
-    js = get_script(db, jsr)
+    (js, js_id) = get_script(db, jsr)
     if js:
          results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
          if not failed:
              # push to mongo...
-             d = { 'url': jsr.url, 'origin': jsr.origin }
+             d = asdict(jsr)
              d.update(**results.get('statements_by_count'))
+             d.update({ "js_id": js_id })
              db.statements_by_count.insert_one(d)
-             d = { 'url': jsr.url, 'origin': jsr.origin }
+             d = asdict(jsr)
              calls = safe_for_mongo(results.get('calls_by_count'))
-             calls.pop('_id', None)           # not wanted since already in d
              d.update(calls)
+             d.update({ "js_id": js_id })
              db.count_by_function.insert_one(d)
 
              # and now kafka now that the DB has been populated
+             results.update({ "js_id": js_id })
              producer.send('analysis-results', results)
          else:
              report_failure(producer, jsr, "Unable to analyse script: {}".format(stderr))
