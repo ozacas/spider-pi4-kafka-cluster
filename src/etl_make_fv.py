@@ -74,6 +74,27 @@ def report_failure(producer, artefact, reason):
     d['reason'] = reason if len(reason) < 300 else "{}...".format(reason[0:300])
     producer.send('feature-extraction-failures', d)
 
+def save_ast_vector(db, jsr, ast_vector):
+   d = asdict(jsr)
+   d.update(**ast_vector)  # ast_vector never needs to be made safe for Mongo, since its just mozilla rhino statement types for keys
+   d.update({ "js_id": js_id })
+   assert '_id' not in d.keys()
+   db.statements_by_count.insert_one(d)
+
+def save_call_vector(db, jsr, call_vector):
+   d = asdict(jsr)
+   calls = safe_for_mongo(results.get('calls_by_count'))
+   d.update(calls)
+   d.update({ "js_id": js_id })
+   assert '_id' not in d.keys()
+   db.count_by_function.insert_one(d)
+
+def save_to_kafka(producer, results):
+   # and now kafka now that the DB has been populated
+   results.update({ "js_id": js_id })
+   assert '_id' not in results.keys()
+   producer.send('analysis-results', results)
+
 # we want only artefacts which are not cached and are JS (subject to maximum record limits)
 save_pidfile('pid.make.fv')
 uncached_js_artefacts = filter(lambda a: not a.url in cache, next_artefact(consumer, args.n))
@@ -93,20 +114,10 @@ for jsr in uncached_js_artefacts:
     if js:
          results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
          if not failed:
-             # push to mongo...
-             d = asdict(jsr)
-             d.update(**results.get('statements_by_count'))
-             d.update({ "js_id": js_id })
-             db.statements_by_count.insert_one(d)
-             d = asdict(jsr)
-             calls = safe_for_mongo(results.get('calls_by_count'))
-             d.update(calls)
-             d.update({ "js_id": js_id })
-             db.count_by_function.insert_one(d)
-
-             # and now kafka now that the DB has been populated
-             results.update({ "js_id": js_id })
-             producer.send('analysis-results', results)
+             save_ast_vector(db, jsr, results.get('statements_by_count'))
+             save_call_vector(db, jsr, results.get('calls_by_count')) 
+             # NB: dont save literal vector to mongo atm, kafka only
+             save_to_kafka(producer, results)
          else:
              report_failure(producer, jsr, "Unable to analyse script: {}".format(stderr))
     else:
