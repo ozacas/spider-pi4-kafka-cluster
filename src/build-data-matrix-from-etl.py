@@ -1,12 +1,10 @@
 #!/usr/bin/python3
 import pymongo
-import csv
 import sys
 import argparse
-import pprint
 from dataclasses import dataclass
 from statistics import mean
-from utils.models import Password
+from utils.misc import *
 
 @dataclass
 class FunctionProbability:
@@ -18,6 +16,7 @@ class FunctionProbability:
    n_pages_for_family: int = 0
 
 def dump_pretty(result):
+    import pprint
     for rec in result:
         pprint.pprint(rec)
 
@@ -195,19 +194,15 @@ def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=Fals
 
 
 a = argparse.ArgumentParser(description="Process results for a given query onto stdout for ingestion in data analysis pipeline")
-a.add_argument("--host", help="Hostname/IP with Mongo instance [pi1]", type=str, default="pi1")
-a.add_argument("--port", help="TCP/IP port for Mongo instance [27017]", type=int, default=27017)
-a.add_argument("--db", help="Mongo database to populate with JS data from kafkaspider [au_js]", type=str, default="au_js")
-a.add_argument("--user", help="MongoDB user to connect as (read-only access required)", type=str, required=True)
-a.add_argument("--password", help="MongoDB password (if not specified, will be prompted)", type=Password, default=Password.DEFAULT)
-a.add_argument("--v", help="Debug verbosely", action="store_true")
+add_mongo_arguments(a)
+add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
 a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 args = a.parse_args()
 
-mongo = pymongo.MongoClient(args.host, args.port, username=args.user, password=str(args.password))
-db = mongo[args.db]
+mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
+db = mongo[args.dbname]
 if args.query == "functionsbycontrol":
     dump_diff_functions_by_control(db, pretty=args.pretty, control=args.extra, want_set=args.v)
 elif args.query == "sitesbycontrol":
