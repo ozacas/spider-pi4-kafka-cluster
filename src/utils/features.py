@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 from urllib.parse import urlparse
 
 # comes from MongoDB (db.statements_by_count_keys collection) but for performance is listed here
-normalised_ast_features_list =  [ "ArrayLiteral", "Assignment", "AstRoot", "Block", "BreakStatement", "CatchClause", "ConditionalExpression",
+ast_feature_list =  [ "ArrayLiteral", "Assignment", "AstRoot", "Block", "BreakStatement", "CatchClause", "ConditionalExpression",
         "ContinueStatement", "DoLoop", "ElementGet", "EmptyExpression", "EmptyStatement", "ExpressionStatement", "ForInLoop", "ForLoop",
         "FunctionCall", "FunctionNode", "IfStatement", "InfixExpression", "KeywordLiteral", "Label", "LabeledStatement", "Name",
         "NewExpression", "NumberLiteral", "ObjectLiteral", "ObjectProperty", "ParenthesizedExpression", "PropertyGet",
@@ -107,7 +107,17 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
 
    return (ret, process.returncode != 0, process.stderr)  # JSON (iff successful else None), failed (boolean), stderr capture
 
-def normalise_vector(features, feature_names=None):
+def compute_distance(v1, v2, short_vector_penalty=True):
+   svp = 1.0
+   if short_vector_penalty and len(v1) < 15:
+       svp = 20.0 / len(v1)
+   return math.dist(v1, v2) * svp
+
+def calculate_ast_vector(d):
+   global ast_feature_list
+   return calculate_vector(d, feature_names=ast_feature_list)
+
+def calculate_vector(features, feature_names=None):
    if feature_names is None:
        raise ValueError("must supply a list of vector feature names (set semantics)")
 
@@ -167,8 +177,7 @@ def find_best_control(input_features, controls, ignore_i18n=True, max_distance=1
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
    hash_match = False
-   global normalised_ast_features_list
-   input_vector, total_sum = normalise_vector(input_features['statements_by_count'], feature_names=normalised_ast_features_list)
+   input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
                                           sha256_matched=False, ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='')
 
@@ -185,7 +194,7 @@ def find_best_control(input_features, controls, ignore_i18n=True, max_distance=1
            print("Found {} feasible controls.\n".format(len(feasible_controls)))
        for control in filter(lambda c: c['origin'] in feasible_controls, suitable_controls):
            control_url = control.get('origin')
-           control_vector, _ = normalise_vector(control['statements_by_count'], feature_names=normalised_ast_features_list)
+           control_vector, _ = calculate_ast_vector(control['statements_by_count'])
        
            dist = math.dist(input_vector, control_vector)
            if dist < best_distance and dist <= max_distance:
