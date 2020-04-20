@@ -5,7 +5,7 @@ import json
 import argparse
 import sys
 import hashlib
-from utils.features import analyse_script, normalise_vector
+from utils.features import analyse_script, calculate_ast_vector, calculate_vector
 from utils.models import JavascriptArtefact
 from scipy import spatial
 
@@ -29,8 +29,8 @@ def calc_vector(filename):
 
 ret1 = calc_vector(args.file1)
 ret2 = calc_vector(args.file2)
-nv1, sum1 = normalise_vector(ret1["statements_by_count"])
-nv2, sum2 = normalise_vector(ret2["statements_by_count"])
+nv1, sum1 = calculate_ast_vector(ret1["statements_by_count"])
+nv2, sum2 = calculate_ast_vector(ret2["statements_by_count"])
 if args.v:
     print(ret1)
     print(ret2)
@@ -42,9 +42,9 @@ print("Euclidean distance for AST vector: "+str(euclidean_dist))
 print("Cosine distance for AST vector: "+str(cosine_dist))
 fn1 = set(ret1["calls_by_count"].keys())
 fn2 = set(ret2["calls_by_count"].keys())
-common_fns = fn1.union(fn2)
-nv1, sum3 = normalise_vector(ret1["calls_by_count"], feature_names=common_fns)
-nv2, sum4 = normalise_vector(ret2["calls_by_count"], feature_names=common_fns)
+all_fns = fn1.union(fn2)
+nv1, sum3 = calculate_vector(ret1["calls_by_count"], feature_names=all_fns)
+nv2, sum4 = calculate_vector(ret2["calls_by_count"], feature_names=all_fns)
 if args.v:
     print("Function Vector 1"+str(nv1)) 
     print("Function Vector 2"+str(nv2))
