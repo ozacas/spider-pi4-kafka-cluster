@@ -69,17 +69,12 @@ def find_sha256_hash(db, url):
        return (script.get('sha256'), url_id)
    return (None, None)
 
-def get_script(db, artefact, logger=None):
+def get_script(db, artefact):
    # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
    d = { 'sha256': artefact.sha256.strip(), 'md5': artefact.md5.strip(), 'size_bytes': artefact.size_bytes } # ENSURE we set the right fields so Mongo uses the index
    collection = db.snippets if artefact.inline else db.scripts
    js = collection.find_one(d)
-   if js:
-       return js.get(u'code')
-   # oops... something failed so we log it and keep going with the next message
-   if logger:
-       logger.warning("Failed to find JS in database for {}".format(artefact))
-   return None
+   return (js.get(u'code'), str(js.get('_id'))) if js else (None, None)
 
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
    # save code to a file
@@ -101,6 +96,10 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
        call_vector = safe_for_mongo(ret.pop('calls_by_count')) # NB: for correct analysis both the AU JS and control vectors must both be safe-for-mongo'ed consistently
        #print(call_vector)
        ret['calls_by_count'] = call_vector
+       tmp = ret.pop('literals_by_count')
+       literal_vector = safe_for_mongo({ k[0:200]: v  for k,v in tmp.items() }) # HACK TODO FIXME: we assume that the first 200 chars per literal is unique
+       ret['literals_by_count'] = literal_vector
+
        # FALLTHRU
 
    # cleanup
