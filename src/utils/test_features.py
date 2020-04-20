@@ -21,8 +21,7 @@ def test_compute_function_dist():
    b = { "crud": 20, "foo": 3, "bar": 7 }
    dist, diff_functions = calc_function_dist(a, b)
    assert dist >= 10.01 and dist <= 10.02 
-   sorted(diff_functions)
-   assert diff_functions == ['baz', 'crud']
+   assert sorted(diff_functions) == ['baz', 'crud']
    a = { "tmp": 1 }
    b = { "tmp": 2 }
    dist, diff_functions = calc_function_dist(a, b)
