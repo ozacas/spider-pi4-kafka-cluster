@@ -77,16 +77,16 @@ def report_failure(producer, artefact, reason):
 def save_ast_vector(db, jsr, ast_vector):
    d = asdict(jsr)
    d.update(**ast_vector)  # ast_vector never needs to be made safe for Mongo, since its just mozilla rhino statement types for keys
-   d.update({ "js_id": js_id })
+   d.update({ "__js_id": js_id })
    assert '_id' not in d.keys()
    db.statements_by_count.insert_one(d)
 
 def save_call_vector(db, jsr, call_vector):
    d = asdict(jsr)
    calls = safe_for_mongo(results.get('calls_by_count'))
+   d.update({ "__js_id": js_id })
    d.update(calls)
-   d.update({ "js_id": js_id })
-   assert '_id' not in d.keys()
+   d.pop('_id', None) # BUG: FIXME -- sometimes it appears to be present, so... maybe people have functions called _id???
    db.count_by_function.insert_one(d)
 
 def save_to_kafka(producer, results):

@@ -17,14 +17,14 @@ ast_feature_list =  [ "ArrayLiteral", "Assignment", "AstRoot", "Block", "BreakSt
         "TryStatement", "UnaryExpression", "VariableDeclaration", "VariableInitializer", "WhileLoop", "WithStatement", "XmlLiteral", "XmlString" ]
 
 
-def safe_for_mongo(function_vector):
+def safe_for_mongo(items):
    """ 
    Returns a dict which has all keys made safe for insertion into MongoDB.
    This primarily means fields with a key starting with '$' are replaced with 'F$'
    """
    d = {}
-   for k, v in function_vector.items():
-       if k.startswith('$'):
+   for k, v in items.items():
+       if k.startswith('$') or k == '_id':
            k = "F"+k
        d[k] = v
    return d
@@ -151,8 +151,9 @@ def find_hash_match(db, input_features, control_url):
 
 def calc_function_dist(origin_calls, control_calls):
    # function distance is a little different: all function calls are used for distance, even if only present in one vector 
-   fns = set(origin_calls.keys())
-   fns.update(control_calls.keys())
+   o_calls = set(origin_calls.keys())
+   c_calls = set(control_calls.keys())
+   fns = c_calls.union(o_calls)
    vec1 = []
    vec2 = []
    #print("*** origin_calls {}".format(origin_calls))
