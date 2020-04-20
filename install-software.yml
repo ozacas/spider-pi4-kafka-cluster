@@ -13,8 +13,18 @@
          mode: '0750'
        become: yes
 
+- name: key system requirements for thug software install
+  gather_facts: no
+  hosts: x86-thug-hosts
+  become: yes
+  tasks:
+    - apt: 
+        name: ['rsync', 'libffi-dev', 'ssdeep', 'pkg-config', 'gcc', 'graphviz', 'graphviz-dev', 'libemu-dev']
+        update_cache: yes
+        state: present
+
 - name: ensure software is on thug hosts
-  hosts: thug-hosts 
+  hosts: thug-hosts x86-thug-hosts
   tasks:
      - file: # purge existing contents since we want a clean slate (ie. not cumulative)
          path: /home/acas/src
@@ -26,17 +36,6 @@
            - "--exclude=.git" 
            - "--exclude=.tox"
            - "-zz"
-
-
-- name: key system requirements for thug software install
-  gather_facts: no
-  hosts: x86-thug-hosts
-  become: yes
-  tasks:
-    - apt: 
-        name: ['libffi-dev', 'ssdeep', 'pkg-config', 'gcc', 'graphviz', 'graphviz-dev', 'libemu-dev']
-        update_cache: yes
-        state: present
 
 - name: ensure pip is installed to manage python and system is up-to-date
   hosts: kafka-hosts thug-hosts 
