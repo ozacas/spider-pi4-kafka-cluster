@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 import pytest
-from utils.features import safe_for_mongo, as_url_fields, compute_distance
+from utils.features import safe_for_mongo, as_url_fields, compute_distance, calculate_ast_vector
 
 def test_safe_for_mongo():
    assert safe_for_mongo({ 'a': 0, '$': 1 }) == { 'a': 0, 'F$': 1 }
@@ -12,3 +12,12 @@ def test_as_url_fields():
 def test_compute_distance():
    assert compute_distance([1.0, 3.0, 9.0], [1.0, 3.0, 9.0]) < 0.0000001
    assert compute_distance([1.0, 3.0], [1.0, 3.0], short_vector_penalty=True) < 0.0001
+   assert compute_distance([112, 33], [99, 12]) >= 246.98
+   dist = compute_distance([112, 33], [99, 12], short_vector_penalty=False)
+   assert dist >= 24.6981 and dist <= 24.6982
+
+def test_compute_ast_vector():
+   d = { "ArrayLiteral": 10, "Assignment": 7, "AstRoot": 1 }
+   tuple = calculate_ast_vector(d) 
+   assert tuple == ([10, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 18) 
+   assert compute_distance(tuple[0], tuple[0]) <= 0.001

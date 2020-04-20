@@ -36,16 +36,18 @@ def as_url_fields(url, prefix=''):
     """
     up = urlparse(url)
     d = {}
-    d[prefix+'_host'] = up.hostname
-    d[prefix+'_has_query'] = len(up.query) > 0
+    if len(prefix) > 0:
+        prefix = "{}_".format(prefix)
+    d[prefix+'host'] = up.hostname
+    d[prefix+'has_query'] = len(up.query) > 0
     if up.port:
-        d[prefix+'_port'] = up.port
+        d[prefix+'port'] = up.port
     elif up.scheme == 'https':
-        d[prefix+'_port'] = 443
+        d[prefix+'port'] = 443
     elif up.scheme == 'http':
-        d[prefix+'_port'] = 80
-    d[prefix+'_scheme'] = up.scheme
-    d[prefix+'_path'] = up.path
+        d[prefix+'port'] = 80
+    d[prefix+'scheme'] = up.scheme
+    d[prefix+'path'] = up.path
     return d
 
 def find_script(db, url):
