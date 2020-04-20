@@ -12,23 +12,19 @@ from utils.misc import *
 from dataclasses import asdict
 
 a = argparse.ArgumentParser(description="Evaluate and permanently store each AST vector against all controls, storing results in MongoDB and Kafka")
-a.add_argument("--bootstrap", help="Kafka bootstrap servers", type=str, default="kafka1")
-a.add_argument("--n", help="Read no more than N records from kafka [Inf]", type=int, default=float('Inf'))
-a.add_argument("--topic", help="Read analysis results from specified topic [analysis-results]", type=str, default="analysis-results") # NB: can only be this topic
-a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [vet-features]", type=str, default='vet-features')
-a.add_argument("--v", help="Debug verbosely", action="store_true")
-a.add_argument("--start", help="Consume from earliest|latest message available in artefacts topic [earliest]", type=str, default='earliest')
-a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
+add_kafka_arguments(a, 
+                    consumer=True,
+                    producer=True, # and save to a topic
+                    default_from='analysis-results',
+                    default_group='vet-features', 
+                    default_to="javascript-artefact-control-results")
+add_mongo_arguments(a, default_access="read-write")
+add_extractor_arguments(a)
+add_debug_arguments(a)
 a.add_argument("--file", help="Debug specified file and exit []", type=str, default=None)
-a.add_argument("--user", help="Specify MongoDB user with read/write access to dbname", type=str, required=True)
-a.add_argument("--password", help="Specify password for user (prompted if required)", type=Password, default=Password.DEFAULT)
-a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
-a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
-a.add_argument("--to", help="Save results to named topic [javascript-artefact-control-results]", type=str, default="javascript-artefact-control-results")
-a.add_argument("--extractor", help="JAR file to extract features as JSON [extract-features.jar]", type=str, default="/home/acas/src/extract-features.jar")
 args = a.parse_args()
 
-mongo = pymongo.MongoClient(args.db, args.port, username=args.user, password=str(args.password))
+mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
 db = mongo[args.dbname]
 
 def cleanup(*args):
@@ -74,7 +70,7 @@ if args.file:
 group = args.group
 if len(group) < 1:
     group = None
-consumer = KafkaConsumer(args.topic, group_id=group, auto_offset_reset=args.start, 
+consumer = KafkaConsumer(args.consume_from, group_id=group, auto_offset_reset=args.start, 
                          bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 setup_signals(cleanup)
