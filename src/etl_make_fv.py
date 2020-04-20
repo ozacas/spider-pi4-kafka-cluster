@@ -10,30 +10,25 @@ import sys
 from utils.features import analyse_script, get_script, safe_for_mongo
 from datetime import datetime
 from utils.models import JavascriptArtefact, Password
-from utils.misc import rm_pidfile, save_pidfile, setup_signals
+from utils.misc import *
 
 a = argparse.ArgumentParser(description="Extract features from each javascript in visited topic and dump into analysis-results topic")
-a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
-a.add_argument("--mongo-port", help="TCP/IP port for mongo instance [27017]", type=int, default=27017)
-a.add_argument("--db", help="Mongo database to populate with JS data [au_js]", type=str, default="au_js")
-a.add_argument("--user", help="Database user to read artefacts from (read-write access required)", type=str, required=True)
-a.add_argument("--password", help="Password (prompted if not specified)", type=Password, default=Password.DEFAULT)
-a.add_argument("--topic", help="Kafka topic to get visited JS summary [visited]", type=str, default='visited')
-a.add_argument("--to", help="Send output to specified topic [analysis-results]", type=str, default='analysis-results')
-a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
-a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=int, default=1000000000)
-a.add_argument("--group", help="Use specified kafka consumer group to find correct topic position [javascript-analysis]", type=str, default='javascript-analysis')
-a.add_argument("--start", help="Start at earliest|latest available message [earliest]", type=str, default='earliest')
-a.add_argument("--v", help="Debug verbosely", action="store_true")
-a.add_argument("--java", help="Java client used to run the program", type=str, default="/usr/bin/java")
-a.add_argument("--extractor", help="JAR file to perform the feature calculation for each JS artefact", type=str, default="/home/acas/src/extract-features.jar")
+add_kafka_arguments(a,
+                    consumer=True, # ensure we can read from a topic
+                    producer=True, # and save to a topic
+                    default_from='visited',
+                    default_group='javascript-analysis',
+                    default_to='analysis-results')
+add_mongo_arguments(a, default_access="read-write")
+add_extractor_arguments(a)
+add_debug_arguments(a)
 args = a.parse_args()
 
-consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=args.group, auto_offset_reset=args.start,
+consumer = KafkaConsumer(args.consume_from, bootstrap_servers=args.bootstrap, group_id=args.group, auto_offset_reset=args.start,
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=args.bootstrap)
-mongo = pymongo.MongoClient(args.mongo_host, args.mongo_port, username=args.user, password=str(args.password))
-db = mongo[args.db]
+mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
+db = mongo[args.dbname]
 
 def cleanup(*args):
     global consumer
