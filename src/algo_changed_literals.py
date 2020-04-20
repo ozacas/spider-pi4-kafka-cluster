@@ -8,7 +8,7 @@ from typing import Iterable
 from kafka import KafkaConsumer, KafkaProducer
 from utils.models import Password, JavascriptArtefact
 from utils.misc import setup_signals, rm_pidfile, save_pidfile
-from utils.features import as_url_fields, find_script, analyse_script, normalise_vector
+from utils.features import find_script, analyse_script, calculate_vector
 
 a = argparse.ArgumentParser(description="Examine perfect hits (based on AST and/or Function dist) looking for literals of interest")
 a.add_argument("--topic", help="Kafka topic to read good hits from ETL publishing [javascript-artefact-control-results]", type=str, default='javascript-artefact-control-results')
@@ -64,13 +64,17 @@ setup_signals(cleanup)
 save_pidfile('pid.identify.perfect.changed.literals')
 
 def looks_suspicious(set: Iterable[str]):
-   keywords = ['json', 'submit', 'eval', 'https://', 'http://', 'charCodeAt', 'ajax', 'get', 'net', 'post']
+   partial_words = ['json', 'submit', 'eval', 'https://', 'http://', 'encode', 'decode', 'URI', 'network', 'dns']
+   key_words = ['get', 'post', 'xmlHttpRequest', 'ajax', 'charCodeAt', 'createElement', 'insertBefore', 'appendChild']
+   matched = 0
    for s in set:
-      if any(x in s.lower() for x in keywords):
-          return True
-      if len(s) > 1024:
-          return True
-   return False
+      if any(x in s.lower() for x in partial_words):
+          matched += 1
+      if len(s) > 512:
+          matched += 1
+      if any(x == s.lower() for x in key_words):
+          matched += 1
+   return matched >= 2
 
 n_suspicious = n_failed = 0
 for good_hit in next_artefact(consumer, args.n, args.v):
@@ -86,15 +90,18 @@ for good_hit in next_artefact(consumer, args.n, args.v):
            continue
        jsr = JavascriptArtefact(url=good_hit['origin_url'], sha256=script.get('sha256'), md5=script.get('md5'), size_bytes=script.get('size_bytes'))
        ret, failed, stderr = analyse_script(content, jsr, java=args.java, feature_extractor=args.extractor)
+       if args.v:
+           print(jsr)
        if not failed:
            ks = set(lv_control.keys())
            lv_origin = ret.get('literals_by_count', {})
            origin_literals_not_in_control = set(lv_origin.keys()).difference(lv_control.keys())
-           v1, lv_control_sum = normalise_vector(lv_control, feature_names=ks) 
+           v1, lv_control_sum = calculate_vector(lv_control, feature_names=ks) 
            if len(origin_literals_not_in_control) > 0 and looks_suspicious(origin_literals_not_in_control):
                print("*" * 40)
                print(good_hit)
                print([k[0:200] for k in origin_literals_not_in_control]) # dont print more than first 200 chars per changed literal
+               good_hit.update({ 'unexpected_literals': list(origin_iterals_not_in_control) })
                producer.send('javascript-artefacts-suspicious', good_hit)
                n_suspicious += 1
        else:
