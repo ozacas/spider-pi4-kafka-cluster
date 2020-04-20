@@ -7,7 +7,7 @@ import hashlib
 import requests
 from dataclasses import asdict
 from datetime import datetime
-from utils.features import analyse_script, normalise_vector, normalised_ast_features_list
+from utils.features import analyse_script, calculate_ast_vector
 from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
 from utils.cdn import CDNJS, JSDelivr
 
@@ -18,7 +18,7 @@ a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, d
 a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
 a.add_argument("--user", help="User to authenticate to MongoDB RBAC (readWrite access required)", type=str, required=True)
 a.add_argument("--password", help="Password for user (prompted if not supplied)", type=Password, default=Password.DEFAULT)
-a.add_argument("--family", help="Name of JS family eg. jquery (ignored iff --update)", type=str, default='jquery')
+a.add_argument("--family", help="Name of JS family eg. jquery (ignored iff --update)", type=str)
 a.add_argument("--release", help="Name of release eg. 1.10.3a", type=str, default=None)
 a.add_argument("--variant", help="Only save artefacts which match variant designation eg. minimised [None]", type=str, default=None)
 a.add_argument("--java", help="Path to JVM executable [/usr/bin/java]", type=str, default="/usr/bin/java")
@@ -60,18 +60,19 @@ def save_control(url, family, version, variant, force=False, refuse_hashes=None,
    db.javascript_control_code.find_one_and_update({ 'origin': url }, 
                                                      { "$set": { 'origin': url, 'code': Binary(content), 
                                                        "last_updated": jsr.when } }, upsert=True)
-   # this code comes from etl_control_fix_magnitude, which means we dont need to run it separately
-   vector, total_sum = normalise_vector(ret['statements_by_count'], feature_names=normalised_ast_features_list)
+   
+   vector, total_sum = calculate_ast_vector(ret['statements_by_count'])
    sum_of_function_calls = sum(ret['calls_by_count'].values())
+   sum_of_literals = sum(ret['literals_by_count'].values())
    vs = JavascriptVectorSummary(origin=url, sum_of_ast_features=total_sum,
-                                 sum_of_functions=sum_of_function_calls, last_updated=jsr.when)
+                                 sum_of_functions=sum_of_function_calls, sum_of_literals=sum_of_literals, last_updated=jsr.when)
    db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
    return jsr
 
 
 if args.update_all:
     d = {}
-    if args.family:
+    if args.family is not None:
        d['family'] = args.family
     if args.provider:
        d['provider'] = args.provider
@@ -82,8 +83,9 @@ if args.update_all:
 else:
     fetcher = JSDelivr() if args.provider == "jsdelivr" else CDNJS()
     existing_control_hashes = set(db.javascript_controls.distinct('sha256'))
-    controls_to_save = fetcher.fetch(args.family, args.variant, args.release, ignore_i18n=not args.i18n, provider=args.provider)
-    print("Using {} to fetch matching JS controls for family={}, release={}, variant={}".format(args.provider, args.family, args.release, args.variant))
+    family = args.family if args.family is not None else 'jquery' 
+    controls_to_save = fetcher.fetch(family, args.variant, args.release, ignore_i18n=not args.i18n, provider=args.provider)
+    print("Using {} to fetch matching JS controls for family={}, release={}, variant={}".format(args.provider, family, args.release, args.variant))
 
 for url, family, variant, version, provider in controls_to_save:
     if args.v or args.list:
