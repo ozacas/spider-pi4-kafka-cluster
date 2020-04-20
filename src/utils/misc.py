@@ -81,6 +81,9 @@ def add_kafka_arguments(args, producer=False, consumer=True, default_from='', de
        args.add_argument("--start", 
                       help="Consume from earliest|latest message available in from topic [latest]", 
                       type=str, default='latest', choices=('earliest', 'latest'))
+       args.add_argument("--n",
+                      help="Consume no more than N records [Inf]",
+                      type=float, default=float('Inf'))
    if producer:
        args.add_argument("--to", help="Output records to specified topic [{}]".format(default_to), type=str, default=default_to)
 
