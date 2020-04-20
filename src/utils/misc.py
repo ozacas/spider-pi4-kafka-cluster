@@ -61,7 +61,9 @@ def add_mongo_arguments(args, default_host='pi1', default_port=27017, default_db
                      help="Name on mongo DB to access [{}]".format(default_db), 
                      type=str, default=default_db)
    args.add_argument("--dbuser", 
-                     help="MongoDB RBAC username to use ({} access required)".format(default_access), type=str, required=True)
+                     help="MongoDB RBAC username to use ({} access required)".format(default_access), 
+                     type=str, 
+                     required=True)
    args.add_argument("--dbpassword", 
                      help="MongoDB password for user (prompted if not supplied)", type=Password, default=Password.DEFAULT)
 
