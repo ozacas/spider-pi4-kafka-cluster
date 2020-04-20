@@ -11,6 +11,8 @@ class Password:
             env = dict(os.environ)
             if 'PASSWORD' in env:
                 value = env['PASSWORD']
+                if len(value) < 1:
+                    value = getpass.getpass(prompt)
             else:
                 value = getpass.getpass(prompt)
         self.value = value
@@ -143,8 +145,8 @@ class JavascriptVectorSummary:
     origin: str                 # control CDN url
     sum_of_ast_features: int    # JS Abstract Syntax Tree Vector sum
     sum_of_functions: int       # JS Function Call count Vector sum
-    sum_of_literals: int = 0    # Literals (truncated to max of 200 chars see analyse_script()) vector
     last_updated: str           # date that etl_control_fix_magnitude.py was last run on the control
+    sum_of_literals: int = 0    # Literals (truncated to max of 200 chars see analyse_script()) vector
 
     def __lt__(self, other):
        if self.sum_of_ast_features < other.sum_of_ast_features:
