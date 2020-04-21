@@ -56,7 +56,8 @@ def find_script(db, url, want_code=True):
        url_id = db.urls.find_one({ 'url': url })
        if url_id:
             # 2. lookup script_url to find the script_id (TODO FIXME: control which spider'ed version is retrieved from the DB????)
-            ret = db.script_url.find_one({ 'url_id': url_id.get('_id') }, { "code": 1 if want_code else 0 })
+            want_code_settings = {} if want_code else { 'code': 0 }
+            ret = db.script_url.find_one({ 'url_id': url_id.get('_id') }, want_code_settings)
             if ret:
                # 3. ok, now we can get the script document to return the hash
                return (db.scripts.find_one({ '_id': ret.get('script') }), url_id)
@@ -66,7 +67,7 @@ def find_sha256_hash(db, url):
    """
    Similar to find_script(), but returns only the sha256 hexdigest (if found) 
    """
-   script, url_id = find_script(db, url)
+   script, url_id = find_script(db, url, want_code=False)
    if script:
        return (script.get('sha256'), url_id)
    return (None, None)
