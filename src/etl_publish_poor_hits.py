@@ -6,27 +6,19 @@ import argparse
 import pymongo
 from kafka import KafkaConsumer
 from utils.models import BestControl, Password
-from utils.misc import setup_signals, rm_pidfile, save_pidfile
+from utils.misc import *
 from utils.features import as_url_fields, find_sha256_hash
 from dataclasses import asdict
 
 a = argparse.ArgumentParser(description="Reconcile poor hits into non-normalised, Mongo collection")
-a.add_argument("--topic", help="Kafka topic to get visited JS summary [javascript-artefact-control-results]", type=str, default='javascript-artefact-control-results')
-a.add_argument("--group", help="Use specified kafka consumer group to remember where we left off [etl-bad-hits]", type=str, default='etl-bad-hits')
-a.add_argument("--start", help="Consume from earliest|latest message available in control results topic [latest]", type=str, default='earliest')
-a.add_argument("--bootstrap", help="Kafka bootstrap servers [kafka1]", type=str, default="kafka1")
-a.add_argument("--n", help="Read no more than N records from kafka [infinite]", type=float, default=float('Inf'))
-a.add_argument("--db", help="Mongo host/ip to save to [pi1]", type=str, default="pi1")
-a.add_argument("--port", help="TCP port to access mongo db [27017]", type=int, default=27017)
-a.add_argument("--dbname", help="Name on mongo DB to access [au_js]", type=str, default="au_js")
-a.add_argument("--user", help="MongoDB RBAC username to use (readWrite access required)", type=str, required=True)
-a.add_argument("--password", help="MongoDB password for user (prompted if not supplied)", type=Password, default=Password.DEFAULT)
+add_kafka_arguments(a, consumer=True, default_from='javascript-artefact-control-results', default_group='etl-bad-hits')
+add_mongo_arguments(a, default_access="read-write")
+add_debug_arguments(a)
 a.add_argument("--threshold", help="Only report hits with ast_distance greater than this [50.0]", type=float, default=50.0)
-a.add_argument("--v", help="Debug verbosely", action="store_true")
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, 
-                            username=args.user, password=str(args.password))
+                            username=args.dbuser, password=str(args.dbpassword))
 db = mongo[args.dbname]
 
 consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=args.group, 
