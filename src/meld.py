@@ -6,24 +6,20 @@ import logging
 import argparse
 import tempfile
 from subprocess import run
-from utils.models import Password
 from utils.features import find_script 
+from utils.misc import add_mongo_arguments, add_debug_arguments
 from datetime import datetime
 
 a = argparse.ArgumentParser(description="Run meld on the chosen URL as its best control, after JS beatification (optional)")
-a.add_argument("--mongo-host", help="Hostname/IP with mongo instance [pi1]", type=str, default="pi1")
-a.add_argument("--mongo-port", help="TCP/IP port for mongo instance [27017]", type=int, default=27017)
-a.add_argument("--db", help="Mongo database to populate with JS data [au_js]", type=str, default="au_js")
-a.add_argument("--user", help="Database user to read artefacts from (read-only access required)", type=str, required=True)
-a.add_argument("--password", help="Password (prompted if not specified)", type=Password, default=Password.DEFAULT)
-a.add_argument("--v", help="Debug verbosely", action="store_true")
+add_mongo_arguments(a)
+add_debug_arguments(a)
 a.add_argument("--url", help="URL of Javascript to investigate (code fetched from DB, not internet)", type=str, required=True)
 a.add_argument("--diff", help="Diff program to run [/usr/bin/meld]", type=str, default="/usr/bin/meld")
 a.add_argument("--beautifier", help="JS Beautifier to run [/usr/local/bin/js-beautify]", type=str, default="/usr/local/bin/js-beautify")
 args = a.parse_args()
 
-mongo = pymongo.MongoClient(args.mongo_host, args.mongo_port, username=args.user, password=str(args.password))
-db = mongo[args.db]
+mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
+db = mongo[args.dbname]
 
 # look for suitable control in etl_hits
 result = db.etl_hits.find_one({ 'origin_url': args.url })
