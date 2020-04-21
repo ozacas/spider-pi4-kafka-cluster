@@ -1,15 +1,16 @@
 #!/usr/bin/python3
 from kafka import KafkaConsumer, KafkaProducer
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 import os
 import json
 import pymongo
 import argparse
 import pylru
 import sys
-from utils.features import analyse_script, get_script, safe_for_mongo
+from utils.features import analyse_script, get_script
 from datetime import datetime
-from utils.models import JavascriptArtefact, Password
+from utils.io import save_call_vector, save_ast_vector
+from utils.models import JavascriptArtefact
 from utils.misc import *
 
 a = argparse.ArgumentParser(description="Extract features from each javascript in visited topic and dump into analysis-results topic")
@@ -69,21 +70,6 @@ def report_failure(producer, artefact, reason):
     d['reason'] = reason if len(reason) < 300 else "{}...".format(reason[0:300])
     producer.send('feature-extraction-failures', d)
 
-def save_ast_vector(db, jsr, ast_vector):
-   d = asdict(jsr)
-   d.update(**ast_vector)  # ast_vector never needs to be made safe for Mongo, since its just mozilla rhino statement types for keys
-   d.update({ "__js_id": js_id })
-   assert '_id' not in d.keys()
-   db.statements_by_count.insert_one(d)
-
-def save_call_vector(db, jsr, call_vector):
-   d = asdict(jsr)
-   calls = safe_for_mongo(results.get('calls_by_count'))
-   d.update({ "__js_id": js_id })
-   d.update(calls)
-   d.pop('_id', None) # BUG: FIXME -- sometimes it appears to be present, so... maybe people have functions called _id???
-   db.count_by_function.insert_one(d)
-
 def save_to_kafka(producer, results):
    # and now kafka now that the DB has been populated
    results.update({ "js_id": js_id })
@@ -109,8 +95,8 @@ for jsr in uncached_js_artefacts:
     if js:
          results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
          if not failed:
-             save_ast_vector(db, jsr, results.get('statements_by_count'))
-             save_call_vector(db, jsr, results.get('calls_by_count')) 
+             save_ast_vector(db, jsr, results.get('statements_by_count'), js_id=js_id)
+             save_call_vector(db, jsr, results.get('calls_by_count'), js_id=js_id) 
              # NB: dont save literal vector to mongo atm, kafka only
              save_to_kafka(producer, results)
          else:
