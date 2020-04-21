@@ -1,4 +1,6 @@
 from unittest.mock import Mock
+from dataclasses import dataclass
+from typing import Dict
 import pytest
 from utils.io import *
 
@@ -23,3 +25,23 @@ def test_save_call_vector():
    assert len(args) == 1
    assert args[0] == {'js_id': '123eff33', 'url': '1.js', 'origin': '2.html', 'calls': {'eval': 2, 'parseJSON': 1}}
    assert name == "count_by_function.insert_one"
+
+@dataclass
+class Junk:
+   value: Dict
+   crap: int = 0
+
+def test_next_artefact():
+   # test that no filter works as expected
+   j = Junk(value={ 'ast_dist': 10.0, 'function_dist': 10.0}, crap=22)
+   d = [ j ]
+   results = list(next_artefact(d, filter_cb=None))
+   assert len(results) == 1
+   assert results[0] == j.value
+
+   # test that filtering work as expected
+   j2 = Junk(value={ 'ast_dist': 0.0, 'function_dist': 0.02}, crap=99) 
+   d = [ j, j2 ]
+   results = list(next_artefact(d, filter_cb=lambda v: v['ast_dist'] < 0.01 or v['function_dist'] < 0.01))
+   assert len(results) == 1
+   assert results[0] == j2.value
