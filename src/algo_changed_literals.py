@@ -8,6 +8,7 @@ from typing import Iterable
 from kafka import KafkaConsumer, KafkaProducer
 from utils.models import JavascriptArtefact
 from utils.misc import *
+from utils.io import next_artefact
 from utils.features import find_script, analyse_script, calculate_vector
 
 a = argparse.ArgumentParser(description="Examine perfect hits (based on AST and/or Function dist) looking for literals of interest")
@@ -43,24 +44,12 @@ def cleanup(*args):
     rm_pidfile('pid.identify.perfect.changed.literals')
     sys.exit(0)
 
-def next_artefact(consumer, max, verbose):
-    n = 0
-    for message in consumer:
-        v = message.value
-        if v['ast_dist'] < 0.01 or v['function_dist'] < 0.01: # only yield good hits - this program is otherwise not interested
-            yield v
-        n += 1
-        if verbose and n % 10000 == 0:
-            print("Processed {} records.".format(n))
-        if n >= max:
-            break
-
 setup_signals(cleanup)
 save_pidfile('pid.identify.perfect.changed.literals')
 
 def looks_suspicious(set: Iterable[str]):
    partial_words = ['json', 'submit', 'eval', 'https://', 'http://', 'encode', 'decode', 'URI', 'network', 'dns']
-   key_words = ['get', 'post', 'xmlHttpRequest', 'ajax', 'charCodeAt', 'createElement', 'insertBefore', 'appendChild']
+   key_words = ['get', 'post', 'fromCharCode', 'xmlHttpRequest', 'ajax', 'charCodeAt', 'createElement', 'insertBefore', 'appendChild']
    matched = 0
    for s in set:
       if any(x in s.lower() for x in partial_words):
@@ -72,9 +61,10 @@ def looks_suspicious(set: Iterable[str]):
    return matched >= 2
 
 n_suspicious = n_failed = 0
-for good_hit in next_artefact(consumer, args.n, args.v):
-   # ok so we have a hit with near perfect AST syntax to a control AND function calls which are also a perfect match to controls
+for good_hit in next_artefact(consumer, args.n, args.v, lambda v: v['ast_dist'] < 0.01 or v['function_dist'] < 0.01):
+   # ok so we have a hit with near perfect AST syntax to a control OR function calls which are also a perfect match to controls
    # but what about literal strings in the code? 
+   print(good_hit)
    lv_control = db.javascript_controls.find_one({ 'origin': good_hit['control_url'] }).get('literals_by_count')
    script, _ = find_script(db, good_hit['origin_url'])
    if script and lv_control:
