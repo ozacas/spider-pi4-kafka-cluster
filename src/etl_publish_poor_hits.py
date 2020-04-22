@@ -21,7 +21,7 @@ mongo = pymongo.MongoClient(args.db, args.port,
                             username=args.dbuser, password=str(args.dbpassword))
 db = mongo[args.dbname]
 
-consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=args.group, 
+consumer = KafkaConsumer(args.consume_from, bootstrap_servers=args.bootstrap, group_id=args.group, 
                          auto_offset_reset=args.start, consumer_timeout_ms=10000,
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')))
 
