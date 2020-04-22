@@ -94,6 +94,7 @@ if __name__ == "__main__":
     a = argparse.ArgumentParser(description="Process JS artefact topic records and filesystem JS into specified mongo host")
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
     a.add_argument("--fail", help="Fail on first error", action='store_true')
+    a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
     add_mongo_arguments(a, default_access="read-write")
     add_kafka_arguments(a, 
                         consumer=True, 
