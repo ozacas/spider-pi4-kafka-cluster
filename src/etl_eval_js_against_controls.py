@@ -7,7 +7,7 @@ import sys
 import hashlib
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control, analyse_script
-from utils.models import JavascriptArtefact, Password, JavascriptVectorSummary
+from utils.models import JavascriptArtefact, JavascriptVectorSummary
 from utils.misc import *
 from dataclasses import asdict
 
