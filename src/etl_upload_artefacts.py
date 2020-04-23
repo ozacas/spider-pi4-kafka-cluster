@@ -1,84 +1,45 @@
 # -*- coding: utf-8 -*-
 import os
 import json
-import hashlib
 import argparse
 import pylru
 import socket
 import pymongo
+from collections import namedtuple
 from bson.binary import Binary
 from kafka import KafkaConsumer, KafkaProducer
 from utils.misc import *
-from utils.io import next_artefact
+from utils.io import next_artefact, save_script, artefact_tuple
 
-class SaveToMongo:
 
-    def __init__(self, *args, **kwargs):
-        self.db = kwargs.get('db')
-        self.producer = kwargs.get('producer')
-        self.consumer = kwargs.get('consumer')
-        self.n = kwargs.get('n')
-        self.debug = kwargs.get('debug')
+def save_artefact(db, producer, artefact, root, to):
+   path = "{}/{}".format(root, artefact.path)
+   with open(path, 'rb') as fp:
+        d = save_script(db, artefact, Binary(fp.read()))
+        # d already contains 'sha256', 'md5' and 'size_bytes' so this update will make it compatible with the JavascriptArtefact dataclass
+        d.update({ 'url': artefact.url, 
+                   'inline': False, 
+                   'content-type': 'text/javascript', 
+                   'when': artefact.when, 
+                   'origin': artefact.origin })
+        producer.send(to, d)
 
-    def save_url(self, artefact):
-         result = self.db.urls.insert_one({ 'url': artefact.url, 'last_visited': artefact.when, 'origin': artefact.origin })
-         return result.inserted_id
-
-    def save_script(self, artefact, script, content_type=None):
-        # NB: we work hard here to avoid mongo calls which will slow down the spider
-
-        # compute hashes to search for
-        db = self.db
-        sha256 = hashlib.sha256(script).hexdigest()
-        md5 = hashlib.md5(script).hexdigest()
-        if md5 != artefact.checksum:
-            raise ValueError("Expected MD5 and MD5 hash do not match: {} {} != {}".format(url, md5, artefact.checksum))
-
-        # check to see if in mongo already
-        url_id = self.save_url(artefact)
-
-        script_len = len(script)
-        key = { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }  
-        value = key.copy() # NB: shallow copy is sufficient for this application
-        value.update({ 'code': script })
-
-        s = db.scripts.find_one_and_update(key, { '$set': value }, upsert=True, return_document=pymongo.ReturnDocument.AFTER)
-        db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
-
-        return key
-
-    def save_artefact(self, artefact, root, to):
-        path = "{}/{}".format(root, artefact.path)
-        with open(path, 'rb') as fp:
-             d = self.save_script(artefact, Binary(fp.read()))
-             d.update({ 'url': artefact.url, 'inline': False, 'content-type': 'text/javascript', 'when': artefact.when, 'origin': artefact.origin })
-             self.producer.send(to, d)
-
-    def run(self, root, my_hostname=None, fail_on_error=False, to=None): # eg. root='/data/kafkaspider2'
-        print("Loading records matching {} from kafka topic".format(my_hostname))
-        l = [JavascriptArtefact(**r) for r in self.next_artefact(self.consumer, self.n, 
-                                           filter_cb=lambda m: m.value['host'] == my_hostname and not m.value['origin'] is None)]
-        print("Loaded {} records.".format(len(l)))
-
-        # sort by checksum and then by sha1 hash to speed mongo queries (maybe)
-        l = sorted(l)
-        print("Sorted {} records.".format(len(l)))
-        # finally process each record via mongo
-        cnt = 0
-        verbose = self.debug
-        for artefact in l:
-            try:
-                if verbose:
-                    print(artefact)
-                self.save_artefact(artefact, root, to)
-                cnt += 1
-                if cnt % 10000 == 0:
-                    print("Processed {} records.".format(cnt))
-            except Exception as e:
-                if fail_on_error:
-                     raise(e)
-                print(e)
-            
+def save_batch(db, batch_of_artefacts, producer, root, fail_on_error=False, to=None, verbose=False): # eg. root='/data/kafkaspider2'
+   # finally process each record via mongo
+   cnt = 0
+   for artefact in batch_of_artefacts:
+       try:
+           if verbose:
+               print(artefact)
+           save_artefact(db, producer, artefact, root, to)
+           cnt += 1
+           if cnt % 10000 == 0:
+               print("Processed {} records.".format(cnt))
+       except Exception as e:
+           if fail_on_error:
+              raise(e)
+           print(e)
+           
 if __name__ == "__main__":
     a = argparse.ArgumentParser(description="Process JS artefact topic records and filesystem JS into specified mongo host")
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
@@ -107,11 +68,17 @@ if __name__ == "__main__":
             print("Terminating on first error.")
 
     mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
+    db = mongo[args.dbname]
     producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
     consumer = KafkaConsumer(args.consume_from, value_deserializer=lambda m: json.loads(m.decode('utf-8')), 
-               consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
+                             consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
 
     save_pidfile('pid.upload.artefacts')
-    s = SaveToMongo(db=mongo[args.db], n=args.n, gid=gid, debug=args.v, consumer=consumer, producer=producer)  
-    s.run(args.root, my_hostname=socket.gethostname(), fail_on_error=args.fail, to=args.to)
+    my_hostname = socket.gethostname()
+    print("Loading records matching {} from kafka topic".format(my_hostname))
+    type = artefact_tuple()
+    batch = sorted([type(**r) for r in self.next_artefact(consumer, args.n, 
+                       filter_cb=lambda m: m.value['host'] == my_hostname and not m.value['origin'] is None)])
+    print("Loaded {} records.".format(len(batch)))
+    save_batch(db, batch, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v)
     rm_pidfile('pid.upload.artefacts')
