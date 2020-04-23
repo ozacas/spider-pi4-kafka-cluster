@@ -7,9 +7,9 @@ import pylru
 import socket
 import pymongo
 from bson.binary import Binary
-from collections import namedtuple
 from kafka import KafkaConsumer, KafkaProducer
 from utils.misc import *
+from utils.io import next_artefact
 
 class SaveToMongo:
 
@@ -54,21 +54,10 @@ class SaveToMongo:
              d.update({ 'url': artefact.url, 'inline': False, 'content-type': 'text/javascript', 'when': artefact.when, 'origin': artefact.origin })
              self.producer.send(to, d)
 
-    def next_artefact(self, consumer, n, wanted_hostname):
-        cnt = 0
-        record = namedtuple('JavascriptArtefact', 'url origin host checksum path when')
-        record.__lt__ = lambda self, other: self.checksum < other.checksum
-        for message in consumer:
-             d = message.value
-             if d['host'] == wanted_hostname and not d['origin'] is None: # origin being none test is due to an earlier in obsolete code, probably ok to remove now data is stale
-                 cnt += 1
-                 yield record(**d)
-                 if cnt >= n:  
-                     break
-
     def run(self, root, my_hostname=None, fail_on_error=False, to=None): # eg. root='/data/kafkaspider2'
         print("Loading records matching {} from kafka topic".format(my_hostname))
-        l = [r for r in self.next_artefact(self.consumer, self.n, my_hostname)]
+        l = [JavascriptArtefact(**r) for r in self.next_artefact(self.consumer, self.n, 
+                                           filter_cb=lambda m: m.value['host'] == my_hostname and not m.value['origin'] is None)]
         print("Loaded {} records.".format(len(l)))
 
         # sort by checksum and then by sha1 hash to speed mongo queries (maybe)
