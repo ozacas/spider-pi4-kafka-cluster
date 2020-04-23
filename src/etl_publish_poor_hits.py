@@ -5,7 +5,7 @@ import json
 import argparse
 import pymongo
 from kafka import KafkaConsumer
-from util.io import next_artefact
+from utils.io import next_artefact
 from utils.models import BestControl, Password
 from utils.misc import *
 from utils.features import as_url_fields, find_sha256_hash
