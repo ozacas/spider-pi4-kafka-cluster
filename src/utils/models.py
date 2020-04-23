@@ -61,9 +61,15 @@ class JavascriptArtefact: # definition corresponds to visited kafka topic record
     size_bytes: int = 0
     origin: str = None # HTML page citing this artefact (maybe static or dynamic depending on who provides the artefact). Should always be provided if possible
 
+    def __init__(self, *args, **kwargs):
+       for k,v in kwargs.items():
+          if k == "checksum":
+              k = "md5"
+          setattr(self, k, v)
+ 
     # ensure when sorted, that list has same checksums next to each other for ingestion efficiency
     def __lt__(self, other):
-        return self.checksum < other.checksum
+        return self.md5 < other.md5
 
 @dataclass
 class CallsByCountVector:
