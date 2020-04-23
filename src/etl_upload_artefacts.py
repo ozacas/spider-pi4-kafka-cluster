@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-import os
 import json
 import argparse
-import pylru
 import socket
 import pymongo
 from collections import namedtuple
