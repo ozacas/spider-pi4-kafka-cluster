@@ -61,6 +61,10 @@ class JavascriptArtefact: # definition corresponds to visited kafka topic record
     size_bytes: int = 0
     origin: str = None # HTML page citing this artefact (maybe static or dynamic depending on who provides the artefact). Should always be provided if possible
 
+    # ensure when sorted, that list has same checksums next to each other for ingestion efficiency
+    def __lt__(self, other):
+        return self.checksum < other.checksum
+
 @dataclass
 class CallsByCountVector:
     # we dont represent all functions here, just the main ones likely to indicate something worth investigating
