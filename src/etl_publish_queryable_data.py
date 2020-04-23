@@ -5,6 +5,7 @@ import json
 import argparse
 import pymongo
 from kafka import KafkaConsumer, KafkaProducer
+from utils.io import get_function_call_vector, next_artefact
 from utils.models import BestControl, Password
 from utils.misc import *
 from utils.features import as_url_fields
@@ -44,22 +45,6 @@ def cleanup(*args):
     rm_pidfile('pid.etl.hits')
     sys.exit(0)
 
-def get_function_call_vector(db, url):
-    ret = db.count_by_function.find_one({ 'url': url })
-    return ret
-
-def next_artefact(consumer, max, verbose):
-    global origins
-    n = 0
-    for message in consumer:
-        rec = BestControl(**message.value)
-        yield rec 
-        n += 1
-        if verbose and n % 10000 == 0:
-            print("Processed {} records. Got data for {} origin hosts.".format(n, len(origins)))
-        if n >= max:
-            break
-
 def load_controls(db, verbose):
     controls = {}
     for control in db.javascript_controls.find({}, { 'literals_by_count': False }):
@@ -75,7 +60,7 @@ origins = { }
 n_unable = n_ok = 0
 save_pidfile('pid.etl.hits')
 controls = load_controls(db, args.v)
-for best_control in filter(lambda c: c.ast_dist <= args.threshold, next_artefact(consumer, args.n, args.v)):
+for best_control in filter(lambda c: c.ast_dist <= args.threshold, [BestControl(**r) for r in next_artefact(consumer, args.n, args.v)]):
     dist = best_control.ast_dist
 
     origin_fields = as_url_fields(best_control.origin_url, prefix='origin')

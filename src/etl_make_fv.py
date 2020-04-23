@@ -9,7 +9,7 @@ import pylru
 import sys
 from utils.features import analyse_script, get_script
 from datetime import datetime
-from utils.io import save_call_vector, save_ast_vector
+from utils.io import save_call_vector, save_ast_vector, next_artefact
 from utils.models import JavascriptArtefact
 from utils.misc import *
 
@@ -50,21 +50,6 @@ if not os.path.exists(args.java):
 if not os.path.exists(args.extractor):
     raise ValueError("JAR file to extract features does not exist: {}".format(args.extractor))
 
-def next_artefact(consumer, max):
-    cnt = 0
-    for msg in consumer:
-        d = msg.value
-        d['content_type'] = d['content-type']
-        if 'javascript' not in d['content_type']:
-            continue
-
-        del d['content-type']
-        yield JavascriptArtefact(**d)
-        # done enough per user request?
-        cnt += 1
-        if cnt >= max:
-            break
-
 def report_failure(producer, artefact, reason):
     d = asdict(artefact)
     d['reason'] = reason if len(reason) < 300 else "{}...".format(reason[0:300])
@@ -78,9 +63,10 @@ def save_to_kafka(producer, results):
 
 # we want only artefacts which are not cached and are JS (subject to maximum record limits)
 save_pidfile('pid.make.fv')
-uncached_js_artefacts = filter(lambda a: not a.url in cache, next_artefact(consumer, args.n))
+artefacts = [JavascriptArtefact(**r) for r in next_artefact(consumer, args.n, verbose=args.v, 
+                   filter_cb=lambda m: 'javascript' in m['content_type'])]
 
-for jsr in uncached_js_artefacts:
+for jsr in filter(lambda a: not a.url in cache, artefacts):
     # eg.  {'url': 'https://XXXX.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 
     #       'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 
     #        'md5': '4714b9a46307758a7272ecc666bc88a7', 'origin': 'XXXX' }  NB: origin may be none for old records (sadly)

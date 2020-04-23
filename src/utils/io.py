@@ -12,6 +12,10 @@ def save_ast_vector(db, jsr: JavascriptArtefact, ast_vector, js_id: str=None):
    assert '_id' not in d.keys()
    db.statements_by_count.insert_one(d)
 
+def get_function_call_vector(db, url):
+    ret = db.count_by_function.find_one({ 'url': url })
+    return ret
+
 def save_call_vector(db, jsr: JavascriptArtefact, call_vector, js_id: str=None):
    assert call_vector is not None
    d = { "js_id": js_id, "url": jsr.url, "origin": jsr.origin }

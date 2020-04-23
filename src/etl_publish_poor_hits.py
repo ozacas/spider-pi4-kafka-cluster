@@ -5,6 +5,7 @@ import json
 import argparse
 import pymongo
 from kafka import KafkaConsumer
+from util.io import next_artefact
 from utils.models import BestControl, Password
 from utils.misc import *
 from utils.features import as_url_fields, find_sha256_hash
@@ -37,25 +38,11 @@ def cleanup(*args):
     rm_pidfile('pid.etl.badhits')
     sys.exit(0)
 
-def get_function_call_vector(db, url):
-    ret = db.count_by_function.find_one({ 'url': url })
-    return ret
-
-def next_artefact(consumer, max, verbose):
-    n = 0
-    for message in consumer:
-        rec = BestControl(**message.value)
-        yield rec 
-        n += 1
-        if verbose and n % 10000 == 0:
-            print("Processed {} records. ".format(n))
-        if n >= max:
-            break
 
 setup_signals(cleanup)
 n_unable = n_ok = 0
 save_pidfile('pid.etl.badhits')
-for bad_hit in filter(lambda c: c.ast_dist > args.threshold, next_artefact(consumer, args.n, args.v)):
+for bad_hit in filter(lambda c: c.ast_dist > args.threshold, [BestControl(**r) for r in next_artefact(consumer, args.n, args.v)]):
     # bad hits are still useful:
     # 1) they may indicate a javascript family which must be added to the controls in the database
     # 2) they might suggest other ways which have to be handled by the system
