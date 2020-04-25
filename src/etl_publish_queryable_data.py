@@ -55,12 +55,16 @@ def load_controls(db, verbose):
         print("Loaded {} controls.".format(len(controls)))
     return controls
 
+def iterate(consumer, max, verbose, threshold):
+   for r in next_artefact(consumer, max, verbose, lambda v: v.ast_dist <= threshold ):
+       yield BestControl(**r)
+ 
 setup_signals(cleanup)
 origins = { }
 n_unable = n_ok = 0
 save_pidfile('pid.etl.hits')
 controls = load_controls(db, args.v)
-for best_control in filter(lambda c: c.ast_dist <= args.threshold, [BestControl(**r) for r in next_artefact(consumer, args.n, args.v)]):
+for best_control in iterate(consumer, args.n, args.v, args.threshold):
     dist = best_control.ast_dist
 
     origin_fields = as_url_fields(best_control.origin_url, prefix='origin')
