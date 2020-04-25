@@ -75,8 +75,7 @@ if __name__ == "__main__":
     my_hostname = socket.gethostname()
     print("Loading records matching {} from kafka topic".format(my_hostname))
     type = artefact_tuple()
-    batch = sorted([type(**r) for r in self.next_artefact(consumer, args.n, 
-                       filter_cb=lambda m: m.value['host'] == my_hostname and not m.value['origin'] is None)])
+    batch = sorted([type(**r) for r in next_artefact(consumer, args.n, lambda v: v['host'] == my_hostname and not v['origin'] is None)])
     print("Loaded {} records.".format(len(batch)))
     save_batch(db, batch, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v)
     rm_pidfile('pid.upload.artefacts')
