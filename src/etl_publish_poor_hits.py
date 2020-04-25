@@ -38,11 +38,14 @@ def cleanup(*args):
     rm_pidfile('pid.etl.badhits')
     sys.exit(0)
 
+def iterate(consumer, max, verbose, threshold):
+   for r in next_artefact(consumer, max, verbose, lambda v: v.ast_dist > threshold):
+       yield BestControl(**r)
 
 setup_signals(cleanup)
 n_unable = n_ok = 0
 save_pidfile('pid.etl.badhits')
-for bad_hit in filter(lambda c: c.ast_dist > args.threshold, [BestControl(**r) for r in next_artefact(consumer, args.n, args.v)]):
+for bad_hit in iterate(consumer, args.n, args.v, args.threshold):
     # bad hits are still useful:
     # 1) they may indicate a javascript family which must be added to the controls in the database
     # 2) they might suggest other ways which have to be handled by the system
