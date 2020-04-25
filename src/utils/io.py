@@ -27,8 +27,7 @@ def save_call_vector(db, jsr: JavascriptArtefact, call_vector, js_id: str=None):
 def next_artefact(iterable, max: float=float('Inf'), verbose: bool=False, filter_cb: callable=None):
     n = 0
     for message in filter(lambda m: filter_cb is None or filter_cb(m.value), iterable):
-        v = message.value
-        yield v
+        yield message.value
         n += 1
         if verbose and n % 10000 == 0:
             print("Processed {} records.".format(n))
@@ -63,7 +62,7 @@ def save_script(db, artefact, script: bytes):
 
    s = db.scripts.find_one_and_update(key, { '$set': value }, 
                                       upsert=True, 
-                                      projection={ 'code': False, '_id': True },
+                                      projection={ 'code': False },
                                       return_document=pymongo.ReturnDocument.AFTER)
    db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
 
