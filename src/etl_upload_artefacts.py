@@ -61,7 +61,7 @@ if __name__ == "__main__":
         print("Using kakfa bootstrap servers: {}".format(args.bootstrap))
         print("Saving artefacts to kafka topic: {}".format(args.to))
         print("Reading artefacts from: topic={} root={}".format(args.artefacts, args.root))
-        print("Accessing mongo DB at {}:{}".format(args.host, args.port))
+        print("Accessing mongo DB at {}:{}".format(args.db, args.port))
         if args.fail:
             print("Terminating on first error.")
 
