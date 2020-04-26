@@ -70,7 +70,7 @@ def test_save_url():
    assert args[0] == {'url': 'http://www.blah.blah/foo.js', 'last_visited': '2019-10-10', 'origin': 'http://www.blah.blah/index.html'}
    assert len(kwargs) == 0
 
-def test_save_script():
+def test_save_script_correct_checksum():
    m = Mock()
    tuple = artefact_tuple()
    # checksum corresponds to the rubbish code below...
@@ -81,3 +81,12 @@ def test_save_script():
    assert 'sha256' in ret
    assert 'md5' in ret
    assert 'size_bytes' in ret 
+
+def test_save_script_incorrect_checksum():
+   m = Mock()
+   tuple = artefact_tuple()
+   jsr = tuple(url='X', path='full/foo.js', checksum='XXX', host='pi3', origin='crap.html', when='2020-04-25')
+   with pytest.raises(ValueError):
+       ret = save_script(m, jsr, 'rubbish.code.which.does.not.match.required.checksum'.encode())
+   # mongo database must not have been updated
+   assert(len(m.method_calls) == 0)
