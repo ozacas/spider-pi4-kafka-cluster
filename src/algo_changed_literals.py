@@ -61,7 +61,7 @@ def looks_suspicious(set: Iterable[str]):
    return matched >= 2
 
 n_suspicious = n_failed = 0
-for good_hit in next_artefact(consumer, args.n, args.v, lambda v: v['ast_dist'] < 0.01 or v['function_dist'] < 0.01):
+for good_hit in next_artefact(consumer, args.n, lambda v: v['ast_dist'] < 0.01 or v['function_dist'] < 0.01, verbose=args.v):
    # ok so we have a hit with near perfect AST syntax to a control OR function calls which are also a perfect match to controls
    # but what about literal strings in the code? 
    print(good_hit)

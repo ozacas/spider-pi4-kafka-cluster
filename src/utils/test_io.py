@@ -35,16 +35,39 @@ def test_next_artefact():
    # test that no filter works as expected
    j = Junk(value={ 'ast_dist': 10.0, 'function_dist': 10.0}, crap=22)
    d = [ j ]
-   results = list(next_artefact(d, filter_cb=None))
+   results = list(next_artefact(d, 10, None))
    assert len(results) == 1
    assert results[0] == j.value
 
    # test that filtering work as expected
    j2 = Junk(value={ 'ast_dist': 0.0, 'function_dist': 0.02}, crap=99) 
    d = [ j, j2 ]
-   results = list(next_artefact(d, filter_cb=lambda v: v['ast_dist'] < 0.01 or v['function_dist'] < 0.01))
+   results = list(next_artefact(d, 10, lambda v: v['ast_dist'] < 0.01 or v['function_dist'] < 0.01))
    assert len(results) == 1
    assert results[0] == j2.value
+
+def test_next_artefact_valid_correct_arg_passing():
+   l = []
+   # first valid calling
+   results = list(next_artefact(l,  10, lambda v: True, verbose=True))
+   assert len(list(results)) == 0
+   results = list(next_artefact(l,  10, lambda v: False, verbose=False))
+   assert len(list(results)) == 0
+   l = [Junk(value={ 'ast_dist': 10.0, 'function_dist': 5.0}, crap=12)]
+   results = list(next_artefact(l,  10, lambda v: True))
+   assert len(list(results)) == 1
+   results = list(next_artefact(l,  10, lambda v: False))
+   assert len(list(results)) == 0
+
+   # and now invalid must raise a TypeError
+   with pytest.raises(TypeError):
+       results = list(next_artefact(l, lambda v: False)) # max positional argument must be float
+   with pytest.raises(TypeError):
+       results = list(next_artefact(l, 10, False)) # third positional argument must be a callable
+   with pytest.raises(TypeError):
+       results = list(next_artefact(l, 10, False, lambda v: False)) # third positional argument must be a callable
+   with pytest.raises(TypeError):
+       results = list(next_artefact(l, 10)) # no default for third positional argument
 
 def test_artefact_tuple():
    type = artefact_tuple()

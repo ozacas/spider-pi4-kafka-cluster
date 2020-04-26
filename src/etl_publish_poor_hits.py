@@ -39,7 +39,7 @@ def cleanup(*args):
     sys.exit(0)
 
 def iterate(consumer, max, verbose, threshold):
-   for r in next_artefact(consumer, max, verbose, lambda v: v.ast_dist > threshold):
+   for r in next_artefact(consumer, max, lambda v: v.ast_dist > threshold, verbose=verbose):
        yield BestControl(**r)
 
 setup_signals(cleanup)

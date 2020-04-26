@@ -65,7 +65,7 @@ def save_to_kafka(producer, results):
 save_pidfile('pid.make.fv')
 
 def iterate(consumer, max, verbose=False):
-    for r in next_artefact(consumer, max, verbose, lambda v: 'javascript' in v.get('content-type', '')):
+    for r in next_artefact(consumer, max, lambda v: 'javascript' in v.get('content-type', ''), verbose=verbose):
          yield JavascriptArtefact(**r)
 
 for jsr in filter(lambda a: not a.url in cache, iterate(consumer, args.n, args.v)):

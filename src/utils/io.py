@@ -24,7 +24,7 @@ def save_call_vector(db, jsr: JavascriptArtefact, call_vector, js_id: str=None):
    d.pop('_id', None) # BUG: FIXME -- sometimes it appears to be present, so... maybe topic has a bit of pollution during dev???
    db.count_by_function.insert_one(d)
 
-def next_artefact(iterable, max: float=float('Inf'), verbose: bool=False, filter_cb: callable=None):
+def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     n = 0
     for message in filter(lambda m: filter_cb is None or filter_cb(m.value), iterable):
         yield message.value
