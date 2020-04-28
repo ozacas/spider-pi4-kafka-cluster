@@ -1,29 +1,29 @@
-[thug-hosts]
+[thug_hosts]
 pi1
 pi2
 pi5
 
-[x86-thug-hosts]
-192.168.1.114
+[x86_thug_hosts]
+192.168.1.78
 
-[x86-thug-hosts:vars]
+[x86_thug_hosts:vars]
 ansible_python_interpreter=/usr/bin/python3.5
 
-[kafka-hosts]
+[kafka_hosts]
 pi3
 pi4
 pi5
 
-[kafka-manager]
+[kafka_manager]
 pi3
 
-[zookeeper-hosts]
+[zookeeper_hosts]
 pi3
 pi4
 pi5
 
-[mongodb-host]
+[mongodb_host]
 pi1
 
-[control-workstation]
+[control_workstation]
 192.68.1.151 ansible_connection=local

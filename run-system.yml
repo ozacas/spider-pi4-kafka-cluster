@@ -9,7 +9,7 @@
          chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.kafkaspider" # ansible wont start this cmd if this file exists
          cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RO_PASS }}" -c "{{ ROOT }}" -o log.out.kafkaspider -e log.err.kafkaspider /usr/bin/taskset -c 1,2 scrapy runspider kafkaspider.py -L INFO
-      when: SPIDER == 1
+      when: SPIDER == 1 or SPIDER == 2
 
 - name: crawl backlog of downloaded artefacts and ingest into MongoDB (program will exit once done)
   hosts: pi1 pi2
@@ -24,16 +24,16 @@
        when: SPIDER == 0 and data_root.stat.exists and data_root.stat.isdir
 
 - name: compute feature vectors and ingest into MongoDB
-  hosts: 192.168.1.114
+  hosts: pi1 x86_thug_hosts pi2
   gather_facts: no
   tasks: 
      - command: 
          chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.make.fv"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 etl_make_fv.py --dbuser rw --cache 10000
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 etl_make_fv.py --dbuser rw --cache 5000
 
 - name: process JS artefacts and assign best control (if any)
-  hosts: pi2 pi1 192.168.1.114
+  hosts: pi2 
   tasks:
      - command: 
          chdir: "{{ PID_ROOT }}"
@@ -41,7 +41,7 @@
          cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --dbuser rw --v
 
 - name: store javascript snippets embedded on HTML pages limited to only 1 CPU core
-  hosts: 192.168.1.114
+  hosts: x86_thug_hosts
   tasks:
      - command: 
          chdir: "{{ PID_ROOT }}"
