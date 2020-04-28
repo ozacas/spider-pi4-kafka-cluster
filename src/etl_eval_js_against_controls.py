@@ -8,6 +8,7 @@ import hashlib
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control, analyse_script
 from utils.models import JavascriptArtefact, JavascriptVectorSummary
+from utils.io import next_artefact
 from utils.misc import *
 from dataclasses import asdict
 
@@ -76,11 +77,9 @@ producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'
 setup_signals(cleanup)
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
-n = 0
 save_pidfile('pid.eval.controls')
-for message in consumer:
-    best_control, next_best_control = find_best_control(message.value, controls, db=db, control_index=control_magnitudes)
-    n += 1
+for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
+    best_control, next_best_control = find_best_control(m, controls, db=db, control_index=control_magnitudes)
 
     if args.v:
         print(best_control)
@@ -92,10 +91,5 @@ for message in consumer:
 
     # 2b. also send results to MongoDB for batch-oriented applications and for long-term storage
     db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
-
-    if n >= args.n:
-       if args.v:
-           print("Processed {} records.".format(n))
-       break
 
 cleanup()
