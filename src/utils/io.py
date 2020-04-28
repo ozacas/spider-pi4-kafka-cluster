@@ -3,6 +3,7 @@ from utils.models import JavascriptArtefact
 from collections import namedtuple
 import pymongo
 import hashlib
+from itertools import chain, islice
 
 def save_ast_vector(db, jsr: JavascriptArtefact, ast_vector, js_id: str=None):
    assert ast_vector is not None
@@ -67,3 +68,13 @@ def save_script(db, artefact, script: bytes):
    db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
 
    return key
+
+# https://stackoverflow.com/questions/8290397/how-to-split-an-iterable-in-constant-size-chunks
+# https://stackoverflow.com/questions/24527006/split-a-generator-into-chunks-without-pre-walking-it/24527424
+def batch(iterable, n=1000):
+    iterable = iter(iterable)
+    while True:
+        x = tuple(islice(iterable, n))
+        if not x:
+            return
+        yield x

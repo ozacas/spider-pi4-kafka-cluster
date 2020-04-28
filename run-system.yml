@@ -20,7 +20,7 @@
      - command: 
          chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.upload.artefacts"
-         cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.uploadartefacts -e log.err.uploadartefacts /usr/bin/taskset -c 1 python3 etl_upload_artefacts.py --dbuser rw --n 200000 --root "{{ DATA_ROOT }}" --artefacts "{{ ARTEFACT_TOPIC }}" --group "js2mongo-{{ inventory_hostname_short }}" --start earliest
+         cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.uploadartefacts -e log.err.uploadartefacts /usr/bin/taskset -c 1 python3 etl_upload_artefacts.py --dbuser rw --n 400000 --root "{{ DATA_ROOT }}" --artefacts "{{ ARTEFACT_TOPIC }}" --group "js2mongo-{{ inventory_hostname_short }}" --start earliest
        when: SPIDER == 0 and data_root.stat.exists and data_root.stat.isdir
 
 - name: compute feature vectors and ingest into MongoDB
@@ -30,7 +30,7 @@
      - command: 
          chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.make.fv"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 etl_make_fv.py --dbuser rw --v
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 etl_make_fv.py --dbuser rw --cache 10000
 
 - name: process JS artefacts and assign best control (if any)
   hosts: pi2 pi1

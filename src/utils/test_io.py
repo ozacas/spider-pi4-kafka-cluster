@@ -113,3 +113,16 @@ def test_save_script_incorrect_checksum():
        ret = save_script(m, jsr, 'rubbish.code.which.does.not.match.required.checksum'.encode())
    # mongo database must not have been updated
    assert(len(m.method_calls) == 0)
+
+def test_batch():
+   l = [1,2,3]
+   # must batch correctly
+   ret = list(batch(l, n=2))
+   assert ret is not None
+   assert ret[0] == (1,2,)
+   assert ret[1] == (3,)
+
+   # and also support iterables that have no __len__()
+   i = iter([1,2,3])
+   ret = list(batch(i, n=3))
+   assert ret == [(1, 2, 3)]
