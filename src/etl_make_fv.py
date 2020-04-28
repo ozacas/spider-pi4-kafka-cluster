@@ -7,6 +7,7 @@ import pymongo
 import argparse
 import pylru
 import sys
+from datetime import datetime
 from utils.features import analyse_script, get_script
 from datetime import datetime
 from utils.io import save_call_vector, save_ast_vector, next_artefact, batch
@@ -75,7 +76,10 @@ if fv_cache is None:
     print("WARNING: not using FV cache - are you sure you wanted to?")
 
 n_cached = n_analysed = n_failed = 0
-for batch in batch(filter(lambda a: not a.url in cache, iterate(consumer, args.n, verbose=args.v)), n=1000):
+# NB: we batch process to observe how long each batch takes and cache performance at regular intervals
+for batch in batch(filter(lambda a: not a.url in cache, 
+                          iterate(consumer, args.n, verbose=args.v)), n=1000):
+
     for jsr in sorted(batch, key=lambda jsr: jsr.sha256):
         # eg.  {'url': 'https://XXXX.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 
         #       'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 
@@ -120,6 +124,6 @@ for batch in batch(filter(lambda a: not a.url in cache, iterate(consumer, args.n
         results.update({ 'js_id': js_id })
         save_to_kafka(producer, results)
 
-    print("Analysed {} artefacts, {} failed, {} cached".format(n_analysed, n_failed, n_cached))
+    print("Analysed {} artefacts, {} failed, {} cached, now={}".format(n_analysed, n_failed, n_cached, str(datetime.now())))
 cleanup()
 exit(0)
