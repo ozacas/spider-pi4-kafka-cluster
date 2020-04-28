@@ -43,7 +43,6 @@ def cleanup(*args):
     rm_pidfile('pid.make.fv')
     sys.exit(0)
 
-cnt = 0    
 cache = pylru.lrucache(1000)
 setup_signals(cleanup)
 
@@ -68,8 +67,6 @@ save_pidfile('pid.make.fv')
 def iterate(consumer, max, verbose=False):
     for r in next_artefact(consumer, max, lambda v: 'javascript' in v.get('content-type', ''), verbose=verbose):
          yield JavascriptArtefact(**r)
-
-# see https://stackoverflow.com/questions/8290397/how-to-split-an-iterable-in-constant-size-chunks
 
 fv_cache = pylru.lrucache(args.cache) if args.cache > 0 else None
 if fv_cache is None:
