@@ -1,7 +1,7 @@
 
 - name: update all packages
   become: yes
-  hosts: kafka-hosts zookeeper-hosts
+  hosts: kafka_hosts zookeeper_hosts
   tasks:
     - pacman:
         update_cache: yes
@@ -11,7 +11,7 @@
 
 - name: ensure lots of open files on all kafka/zookeeper hosts
   become: yes
-  hosts: kafka-hosts zookeeper-hosts
+  hosts: all
   tasks:
     - blockinfile:
         path: /etc/security/limits.conf
@@ -21,7 +21,7 @@
       register: reboot_required
 
 - name: install required packages for kafka/zookeeper hosts
-  hosts: kafka-hosts zookeeper-hosts
+  hosts: kafka_hosts zookeeper_hosts
   become: yes
   tasks:
     - pacman:
@@ -39,7 +39,7 @@
         state: present
 
 - name: disable swap on kafka/zookeeper hosts and ensure sufficient mmap
-  hosts: kafka-hosts zookeeper-hosts
+  hosts: kafka_hosts zookeeper_hosts
   become: yes
   tasks:
     - sysctl:
@@ -72,14 +72,14 @@
 
 # if a reboot is required, do that now and wait for it to come back for the rest of the play
 - name: reboot kafka/zookeeper nodes iff required
-  hosts: kafka-hosts zookeeper-hosts
+  hosts: kafka_hosts zookeeper_hosts
   become: yes
   tasks:
     - reboot:
       when: reboot_required.changed
 
 - name: ensure kafka home directory exists with correct permissions
-  hosts: kafka-hosts
+  hosts: kafka_hosts
   become: yes
   tasks:
     - file: path=/home/kafka owner=kafka group=kafka mode='0750' state=directory
@@ -88,7 +88,7 @@
     - file: path=/data/kafka owner=kafka group=kafka recurse=yes # ensure correct ownership of existing data to correspond with service definition
           
 - name: ensure kafka/zookeeper stable software is installed under /home/kafka
-  hosts: kafka-hosts zookeeper-hosts
+  hosts: kafka_hosts zookeeper_hosts
   become: yes
   tasks:
     - unarchive:
@@ -109,7 +109,7 @@
       when: unpacked.changed
 
 - name: ensure zookeeper properties are installed
-  hosts: zookeeper-hosts
+  hosts: zookeeper_hosts
   become: yes
   vars:
     - id_list: { '192.168.1.82': '1', '192.168.1.83': '2', '192.168.1.84': '3' }
@@ -138,7 +138,7 @@
       register: zookeeper_properties
 
 - name: setup zookeeper systemd service
-  hosts: zookeeper-hosts
+  hosts: zookeeper_hosts
   become: yes
   vars:
     KAFKA_HOME: "/home/kafka/kafka"
@@ -160,7 +160,7 @@
       ignore_errors: yes # ignore service already enabled errors
 
 - name: ensure kafka properties are installed
-  hosts: kafka-hosts
+  hosts: kafka_hosts
   become: yes
   vars:
     KAFKA_HOME: "/home/kafka/kafka"
@@ -180,7 +180,7 @@
       register: kafka_properties
 
 - name: setup kafka systemd service
-  hosts: kafka-hosts
+  hosts: kafka_hosts
   become: yes
   vars: 
     KAFKA_HOME: "/home/kafka/kafka"
@@ -202,14 +202,14 @@
       ignore_errors: yes # ignore service already enabled error
 
 - name: ensure mongo user and group exists on mongo host
-  hosts: mongodb-host
+  hosts: mongodb_host
   become: yes
   tasks:
     - command: /usr/bin/useradd --user-group --shell /sbin/nologin --comment "Run mongodb only" mongo
       ignore_errors: yes
 
 - name: ensure pymongo is installed on MongoDB hosts and setup RBAC
-  hosts: mongodb-host
+  hosts: mongodb_host
   become: yes
   tasks:
     - pip: name=pymongo executable=pip3
@@ -246,7 +246,7 @@
         login_database: admin
         
 - name: setup mongo on database host for thug to store into
-  hosts: mongodb-host
+  hosts: mongodb_host
   become: yes
   vars:
     MONGO_HOME: "/data/mongodb"
@@ -301,14 +301,14 @@
       ignore_errors: yes # ignore service already enabled error 
 
 - name: ensure thug user exists on thug hosts
-  hosts: thug-hosts
+  hosts: thug_hosts
   become: yes
   tasks:
     - command: /usr/bin/useradd --shell /sbin/nologin --comment "Runs run_thug.py only" --user-group thug
       ignore_errors: yes 
 
 - name: ensure kafka group exists on kafka hosts
-  hosts: kafka-hosts
+  hosts: kafka_hosts
   become: yes
   tasks: 
     - command: /usr/bin/useradd --user-group --shell /sbin/nologin --comment "Runs kafka/zookeeper only" kafka

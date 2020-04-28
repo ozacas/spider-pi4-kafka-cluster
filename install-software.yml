@@ -1,6 +1,6 @@
 
 - name: setup data directories for crawl data, geolocation and other data files
-  hosts: thug-hosts x86-thug-hosts
+  hosts: thug_hosts x86_thug_hosts
   tasks:
      - file:
          path: /home/acas/data
@@ -15,7 +15,7 @@
 
 - name: key system requirements for thug software install
   gather_facts: no
-  hosts: x86-thug-hosts
+  hosts: x86_thug_hosts
   become: yes
   tasks:
     - apt: 
@@ -24,7 +24,7 @@
         state: present
 
 - name: ensure software is on thug hosts
-  hosts: thug-hosts x86-thug-hosts
+  hosts: thug_hosts x86_thug_hosts
   tasks:
      - file: # purge existing contents since we want a clean slate (ie. not cumulative)
          path: /home/acas/src
@@ -38,7 +38,7 @@
            - "-zz"
 
 - name: ensure pip is installed to manage python and system is up-to-date
-  hosts: kafka-hosts thug-hosts 
+  hosts: kafka_hosts thug_hosts 
   become: yes
   tasks:
      - pacman: name=python-pip state=present
@@ -54,7 +54,7 @@
      - pacman: upgrade=yes 
 
 - name: ensure libemu is installed for pygraphviz
-  hosts: thug-hosts
+  hosts: thug_hosts
   become: yes
   tasks:
      - unarchive:
@@ -64,7 +64,7 @@
          group: root
  
 - name: ensure python3 pre-reqs are installed
-  hosts: thug-hosts 
+  hosts: thug_hosts 
   become: yes
   tasks:
      - pip:
@@ -72,14 +72,14 @@
          requirements: /home/acas/src/requirements.txt
 
 - name: ensure python3 pre-reqs are install
-  hosts: x86-thug-hosts
+  hosts: x86_thug_hosts
   become: yes
   tasks:
      - pip:
          requirements: /home/acas/src/requirements.txt
 
 - name: ensure thug pip3 pre-reqs are installed
-  hosts: thug-hosts x86-thug-hosts
+  hosts: thug_hosts x86_thug_hosts
   become: yes
   tasks:
      - pip:
@@ -107,7 +107,7 @@
            - scrapy
 
 - name: install data files (geolite2 city db, AU seed URLs)
-  hosts: thug-hosts x86-thug-hosts
+  hosts: thug_hosts x86_thug_hosts
   tasks:
     - unarchive:
         src: software/GeoLite2-City_20200114.tar.gz
@@ -118,7 +118,7 @@
         mode: '0644'
 
 - name: thug file install
-  hosts: thug-hosts
+  hosts: thug_hosts
   become: yes
   tasks:
     - unarchive:
@@ -133,7 +133,7 @@
         group: root
 
 - name: ensure ld.so finds libemu
-  hosts: thug-hosts
+  hosts: thug_hosts
   become: yes
   tasks:
     - template:
@@ -148,7 +148,7 @@
 
 #  sudo ln -s /usr/lib/libboost_python38.so.1.72.0 /usr/lib/libboost_python38.so.1.71.0
 - name: boost symlink is much easier than v8 deps rebuild....
-  hosts: thug-hosts
+  hosts: thug_hosts
   become: yes
   tasks:
     - file:
@@ -160,7 +160,7 @@
         dest: /usr/lib/libboost_python38.so.1.71.0
 
 - name: ensure /etc/thug files are installed
-  hosts: thug-hosts
+  hosts: thug_hosts
   become: yes
   tasks:
     - file:
@@ -176,7 +176,7 @@
         group: root
 
 - name: ensure daemonize binary is installed into /usr/local/bin so that we can run executables without ansible handholding
-  hosts: thug-hosts
+  hosts: thug_hosts
   become: yes
   tasks:
     - copy: src=software/daemonize dest=/usr/local/bin/daemonize owner=root group=root mode='0711'

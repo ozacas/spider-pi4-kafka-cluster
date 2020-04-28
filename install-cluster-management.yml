@@ -1,12 +1,12 @@
 
 - name: install zookeeper management (port 9000) on kafka1
-  hosts: kafka-manager
+  hosts: kafka_manager
   become: yes
   tasks:
     -  pause: seconds=5
 
 - name: unpack software archive on kafka1
-  hosts: kafka-manager
+  hosts: kafka_manager
   become: yes
   tasks:
     - unarchive:
@@ -23,7 +23,7 @@
         group: root 
 
 - name: ensure kafka manager is started at boot
-  hosts: kafka-manager
+  hosts: kafka_manager
   become: yes
   tasks:
     - template:

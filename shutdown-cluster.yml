@@ -1,14 +1,14 @@
 
 - name: stop kafka manager
   become: yes
-  hosts: kafka-manager
+  hosts: kafka_manager
   gather_facts: no
   tasks:
     - systemd: name=kafka-manager state=stopped
 
 - name: stop kafka, then zookeeper
   become: yes
-  hosts: kafka-hosts
+  hosts: kafka_hosts
   gather_facts: no
   tasks:
     - systemd: name=kafka state=stopped
@@ -17,7 +17,7 @@
 
 - name: shutdown mongo
   become: yes
-  hosts: mongodb-host
+  hosts: mongodb_host
   gather_facts: no
   tasks:
     - systemd: name=mongodb state=stopped
@@ -25,7 +25,7 @@
 
 - name: poweroff cluster
   become: yes
-  hosts: kafka-hosts thug-hosts zookeeper-hosts x86-thug-hosts
+  hosts: kafka_hosts thug_hosts zookeeper_hosts x86_thug_hosts
   gather_facts: no
   tasks:
     - command: /sbin/poweroff
