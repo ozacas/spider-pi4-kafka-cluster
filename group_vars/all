@@ -1,0 +1,10 @@
+ROOT: /home/acas/src 
+PID_ROOT: /home/acas  # where the PID files are kept (dont keep in ROOT since it gets wiped with each deploy)
+MONGO_RO_PASS: XXX
+MONGO_RW_PASS: XXX
+# 0: run uploadartefats and all programs to support the pipeline, distributed over the available machines (wont kill existing processes)
+# 1: run kafkaspider, snippetspider and all programs to support the pipeline, distributed over the available machines (wont kill existing processes)
+SPIDER: 0  # must be 0 or 1 
+ARTEFACT_TOPIC: javascript-artefacts-16
+DATA_ROOT: /data/kafkaspider16
+
