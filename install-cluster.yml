@@ -9,9 +9,10 @@
         upgrade: yes
       register: reboot_required
 
-- name: ensure lots of open files on all kafka/zookeeper hosts
+- name: ensure lots of open files on all pi's
   become: yes
   hosts: all
+  gather_facts: no
   tasks:
     - blockinfile:
         path: /etc/security/limits.conf
@@ -19,6 +20,23 @@
           * hard nofile 100000
           * soft nofile 100000
       register: reboot_required
+
+- name: disable bluetooth/wifi on raspberry pi
+  become: yes
+  hosts: pi1 pi2 pi3 pi4 pi5
+  gather_facts: no
+  tasks:
+    - blockinfile:
+        path: /etc/modprobe.d/brcm-blacklist.conf
+        create: yes
+        backup: yes
+        mode: '644'
+        owner: 'root'
+        group: 'root'
+        block: |
+          blacklist brcmfmac
+          blacklist brcmutil
+      # NB: wont take effect until next reboot (that's ok for this non-essential activity)
 
 - name: install required packages for kafka/zookeeper hosts
   hosts: kafka_hosts zookeeper_hosts
@@ -54,6 +72,7 @@
 - name: ensure all kafka/zookeeper cluster nodes have same host entries
   hosts: all
   become: yes
+  gather_facts: no
   tasks: 
      - blockinfile:
          path: /etc/hosts

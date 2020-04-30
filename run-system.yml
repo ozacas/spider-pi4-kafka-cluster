@@ -12,7 +12,7 @@
       when: SPIDER == 1 or SPIDER == 2
 
 - name: crawl backlog of downloaded artefacts and ingest into MongoDB (program will exit once done)
-  hosts: pi1 pi2
+  hosts: thug_hosts
   gather_facts: no
   tasks:
      - stat: path="{{ DATA_ROOT }}"
@@ -24,7 +24,7 @@
        when: SPIDER == 0 and data_root.stat.exists and data_root.stat.isdir
 
 - name: compute feature vectors and ingest into MongoDB
-  hosts: pi1 x86_thug_hosts pi2
+  hosts: x86_thug_hosts thug_hosts 
   gather_facts: no
   tasks: 
      - command: 

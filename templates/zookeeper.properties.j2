@@ -9,13 +9,16 @@ maxClientCnxns=0
 admin.enableServer=false
 # admin.serverPort=8080
 
+# RPI4 SD cards can stall. We follow http://support-it.huawei.com/docs/en-us/fusioninsight-all/maintenance-guide/en-us_topic_0074643856.html
+# to adjust both tickTime and syncLimit to keep brokers from failing due to stalling media. Really should use better media instead....
+
 # the basic time unit in milliseconds used by ZooKeeper. It is used to do heartbeats and the minimum session timeout will be twice the tickTime.
-tickTime=2000
+tickTime=4000
 # The number of ticks that the initial synchronization phase can take
 initLimit=10
 # The number of ticks that can pass between
 # sending a request and getting an acknowledgement
-syncLimit=5
+syncLimit=10
 # zoo servers
 # these hostnames such as `zookeeper-1` come from the /etc/hosts file
 server.{{ id_list['192.168.1.82'] }}=zookeeper1:2888:3888
