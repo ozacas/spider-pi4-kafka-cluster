@@ -5,8 +5,9 @@ import json
 import argparse
 import sys
 import hashlib
+import pylru
 from kafka import KafkaConsumer, KafkaProducer
-from utils.features import find_best_control, analyse_script
+from utils.features import find_best_control, analyse_script, calculate_ast_vector
 from utils.models import JavascriptArtefact, JavascriptVectorSummary
 from utils.io import next_artefact
 from utils.misc import *
@@ -33,19 +34,22 @@ def cleanup(*args):
     global mongo
     if len(args):
         print("Ctrl-C pressed. Cleaning up...")
-    consumer.close()
-    mongo.close()
+    try:
+        consumer.close()
+        mongo.close()
+    except NameError:
+        pass # NameError occurs when using --file as consumer has not been setup since it is not required
     rm_pidfile('pid.eval.controls')
     sys.exit(0)
 
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
-controls = list(db.javascript_controls.find({}, { 'literals_by_count': False }))
-print("Loaded {} AST control vectors from MongoDB".format(len(controls)))
-# 0b. read magnitude of each vector so that we have the ability to reduce the number of comparisons performed to realistic controls
-control_magnitudes = []
-for d in list(db.javascript_controls_summary.find({}, { '_id': False })):
-    control_magnitudes.append(JavascriptVectorSummary(**d)) 
+all_controls = []
+for control in db.javascript_controls.find({}, { 'literals_by_count': False }): # dont load literal vector to save considerable memory
+    ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
+    all_controls.append((control, ast_sum, ast_vector))
+
+print("Loaded {} AST control vectors from MongoDB".format(len(all_controls)))
 
 if args.v:
    print("Reporting unique families with JS controls (please wait this may take some time):")
@@ -61,7 +65,7 @@ if args.file:
            print("Unable to extract features... aborting.")
            print(stderr)
            cleanup()
-       best_control, next_best_control = find_best_control(input_features, controls, db=db, debug=True, control_index=control_magnitudes) # index None so that all are searched
+       best_control, next_best_control = find_best_control(input_features, all_controls, db=db, debug=True) # index None so that all are searched
        print("*** WINNING CONTROL HIT")
        print(best_control)
        print("*** NEXT BEST CONTROL HIT (diff_functions and function dist not available)")
@@ -78,8 +82,9 @@ setup_signals(cleanup)
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 save_pidfile('pid.eval.controls')
+cache = pylru.lrucache(500)
 for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
-    best_control, next_best_control = find_best_control(m, controls, db=db, control_index=control_magnitudes)
+    best_control, next_best_control = find_best_control(m, all_controls, db=db)
 
     if args.v:
         print(best_control)

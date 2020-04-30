@@ -175,22 +175,18 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = 1 / common if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def find_feasible_controls(desired_sum, all_controls, control_index, debug=False, max_distance=100.0):
-   if control_index:
-       # only those controls within max_distance (either side) from the input vector AST feature sum are considered feasible,
-       # all others need not be searched. This could be tighter.
-       lb = desired_sum - max_distance
-       ub = desired_sum + max_distance
-       feasible_controls = [c.origin for c in filter(lambda c: c.sum_of_ast_features >= lb and c.sum_of_ast_features <= ub, control_index)]
-   else:
-       # every control is feasible
-       feasible_controls = [c['origin'] for c in all_controls]
-   ret = set(feasible_controls)
-   if debug:
-       print("Found {} feasible controls.\n".format(len(ret)))
-   return ret
+def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
+   if desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
+       return []
 
-def find_best_control(input_features, all_controls, ignore_i18n=True, max_distance=100.0, db=None, debug=False, control_index=None): 
+   # only those controls within max_distance (either side) from the desired feature sum (from the AST vector under test) are considered feasible
+   # all others need not be searched. This could be tighter.
+   lb = desired_sum - max_distance
+   ub = desired_sum + max_distance
+   feasible_controls = [tuple for tuple in filter(lambda t: t[1] >= lb and t[1] <= ub, controls_to_search)]
+   return feasible_controls
+
+def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False):
    second_best_control = None
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
@@ -201,29 +197,28 @@ def find_best_control(input_features, all_controls, ignore_i18n=True, max_distan
                                           sha256_matched=False, ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='')
    control_function_calls = None
 
-   if total_sum > 50:  # ignore really small vectors which dont have enough features to enable meaningful comparison
-       suitable_controls = filter(lambda c: not (ignore_i18n and '/i18n/' in c['origin']), all_controls)
-       feasible_controls = find_feasible_controls(total_sum, all_controls, control_index, debug=debug, max_distance=max_distance)
-       for control in filter(lambda c: c['origin'] in feasible_controls, suitable_controls):
-           control_url = control.get('origin')
-           # TODO FIXME... we keep calculating the AST vector for every control... should fix this, to speed search
-           control_vector, _ = calculate_ast_vector(control['statements_by_count'])
-       
-           dist = math.dist(input_vector, control_vector)
-           if dist < best_distance and dist <= max_distance:
-               if debug:
-                   print("Got good distance {} for {}".format(dist, control_url)) 
-               second_best_control = best_control
-               # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
-               best_control = BestControl(control_url=control_url, origin_url=origin_url, cited_on=cited_on,
-                                          sha256_matched=False, ast_dist=dist, function_dist=float('Inf'), diff_functions='')
-               best_distance = dist
-               control_function_calls = control['calls_by_count']
-               if dist < 0.00001:     # small distance means we can try for a hash match against control?
-                   hash_match = find_hash_match(db, input_features, best_control.control_url)
-                   break    # save time since we've likely found the best control
-   else:
-       print("WARNING: too small vector for meaningful control matching: {}".format(input_features))
+   feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance)
+   for fc_tuple in feasible_controls:
+       control, control_ast_sum, control_ast_vector = fc_tuple
+       assert isinstance(control, dict)
+       assert control_ast_sum > 0
+       assert isinstance(control_ast_vector, list)
+       control_url = control.get('origin')
+
+       dist = math.dist(input_vector, control_ast_vector)
+       if dist < best_distance and dist <= max_distance: # TODO FIXME: consider more than AST distance before determining "best" ???
+           if debug:
+               print("Got good distance {} for {}".format(dist, control_url)) 
+           second_best_control = best_control
+           # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
+           best_control = BestControl(control_url=control_url, origin_url=origin_url, cited_on=cited_on,
+                                      sha256_matched=False, ast_dist=dist, function_dist=float('Inf'), diff_functions='')
+           best_distance = dist
+           control_function_calls = control['calls_by_count']
+           if dist < 0.00001:     # small distance means we can try for a hash match against control?
+               hash_match = find_hash_match(db, input_features, best_control.control_url)
+               best_control.sha256_matched = hash_match
+               break    # save time since we've likely found the best control
  
    diff_functions = []
    function_dist = float('Inf') # NB: only computed if best_distance < max_distance as it can be quite expensive

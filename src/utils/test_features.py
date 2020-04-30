@@ -76,19 +76,7 @@ def test_analyse_script_failure(pytestconfig):
       assert "missing ; after for-loop initializer" in stderr.decode('utf-8')
 
 def test_find_feasible_controls():
-   #def find_feasible_controls(desired_sum, all_controls, control_index, debug=False, max_distance=100.0)
-   # 1. when control_index is not None...
-   control_index = [ JavascriptVectorSummary(origin='good', sum_of_ast_features=100, last_updated='', sum_of_functions=0),
-                     JavascriptVectorSummary(origin='bad', sum_of_ast_features=10, last_updated='', sum_of_functions=0) ]
-   ret = find_feasible_controls(100, None, control_index, max_distance=0.1) 
-   assert ret is not None
-   assert isinstance(ret, set)
-   assert ret == set(['good'])
-   # and quick check of distance handling...
-   ret = find_feasible_controls(100, None, control_index, max_distance=90)
-   assert ret == set(['good', 'bad'])
-
-   # 2. when control_index is None...
-   all_controls = [ {'origin': 'good' }, { 'origin': 'also good' } ]
-   ret = find_feasible_controls(100, all_controls, None)
-   assert ret == set(['good', 'also good']) 
+   #def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0)
+   all_controls = [ ({'origin': 'good' }, 100, [1, 2, 3, 94]), ({ 'origin': 'also good' }, 90, [90]) ]
+   ret = list(find_feasible_controls(100, all_controls))
+   assert len(ret) == 2
