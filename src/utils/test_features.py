@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 import pytest
-from utils.features import safe_for_mongo, as_url_fields, compute_distance, calculate_ast_vector, calc_function_dist, analyse_script
-from utils.models import JavascriptArtefact
+from utils.features import *
+from utils.models import JavascriptArtefact, JavascriptVectorSummary
 
 def test_safe_for_mongo():
    assert safe_for_mongo({ 'a': 0, '$': 1 }) == { 'a': 0, 'F$': 1 }
@@ -74,3 +74,21 @@ def test_analyse_script_failure(pytestconfig):
       json, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
       assert failed
       assert "missing ; after for-loop initializer" in stderr.decode('utf-8')
+
+def test_find_feasible_controls():
+   #def find_feasible_controls(desired_sum, all_controls, control_index, debug=False, max_distance=100.0)
+   # 1. when control_index is not None...
+   control_index = [ JavascriptVectorSummary(origin='good', sum_of_ast_features=100, last_updated='', sum_of_functions=0),
+                     JavascriptVectorSummary(origin='bad', sum_of_ast_features=10, last_updated='', sum_of_functions=0) ]
+   ret = find_feasible_controls(100, None, control_index, max_distance=0.1) 
+   assert ret is not None
+   assert isinstance(ret, set)
+   assert ret == set(['good'])
+   # and quick check of distance handling...
+   ret = find_feasible_controls(100, None, control_index, max_distance=90)
+   assert ret == set(['good', 'bad'])
+
+   # 2. when control_index is None...
+   all_controls = [ {'origin': 'good' }, { 'origin': 'also good' } ]
+   ret = find_feasible_controls(100, all_controls, None)
+   assert ret == set(['good', 'also good']) 

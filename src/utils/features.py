@@ -175,7 +175,22 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = 1 / common if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def find_best_control(input_features, controls, ignore_i18n=True, max_distance=100.0, db=None, debug=False, control_index=None): 
+def find_feasible_controls(desired_sum, all_controls, control_index, debug=False, max_distance=100.0):
+   if control_index:
+       # only those controls within max_distance (either side) from the input vector AST feature sum are considered feasible,
+       # all others need not be searched. This could be tighter.
+       lb = desired_sum - max_distance
+       ub = desired_sum + max_distance
+       feasible_controls = [c.origin for c in filter(lambda c: c.sum_of_ast_features >= lb and c.sum_of_ast_features <= ub, control_index)]
+   else:
+       # every control is feasible
+       feasible_controls = [c['origin'] for c in all_controls]
+   ret = set(feasible_controls)
+   if debug:
+       print("Found {} feasible controls.\n".format(len(ret)))
+   return ret
+
+def find_best_control(input_features, all_controls, ignore_i18n=True, max_distance=100.0, db=None, debug=False, control_index=None): 
    second_best_control = None
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
@@ -184,20 +199,14 @@ def find_best_control(input_features, controls, ignore_i18n=True, max_distance=1
    input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
                                           sha256_matched=False, ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='')
+   control_function_calls = None
 
    if total_sum > 50:  # ignore really small vectors which dont have enough features to enable meaningful comparison
-       suitable_controls = filter(lambda c: not (ignore_i18n and '/i18n/' in c['origin']), controls)
-       if control_index:
-           # only those controls within max_distance (either side) from the input vector AST feature sum are considered feasible, 
-           # all others need not be searched. This could be tighter.
-           feasible_controls = [c.origin for c in filter(lambda c: c.sum_of_ast_features >= total_sum - max_distance and c.sum_of_ast_features <= total_sum + max_distance, control_index)]
-       else:
-           # every control is feasible
-           feasible_controls = [c['origin'] for c in controls]
-       if debug:
-           print("Found {} feasible controls.\n".format(len(feasible_controls)))
+       suitable_controls = filter(lambda c: not (ignore_i18n and '/i18n/' in c['origin']), all_controls)
+       feasible_controls = find_feasible_controls(total_sum, all_controls, control_index, debug=debug, max_distance=max_distance)
        for control in filter(lambda c: c['origin'] in feasible_controls, suitable_controls):
            control_url = control.get('origin')
+           # TODO FIXME... we keep calculating the AST vector for every control... should fix this, to speed search
            control_vector, _ = calculate_ast_vector(control['statements_by_count'])
        
            dist = math.dist(input_vector, control_vector)
