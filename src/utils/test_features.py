@@ -80,3 +80,21 @@ def test_find_feasible_controls():
    all_controls = [ ({'origin': 'good' }, 100, [1, 2, 3, 94]), ({ 'origin': 'also good' }, 90, [90]) ]
    ret = list(find_feasible_controls(100, all_controls))
    assert len(ret) == 2
+
+def test_find_best_control(pytestconfig):
+   all_controls = [({'_id': '5e8919aece9013c5bcde5338', 'family': 'WordPress/WordPress', 'origin': 'https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', 'calls_by_count': {'f': 5, 'charCodeAt': 2, 'toString': 2, 'test': 3, 'getUTCMinutes': 1, 'apply': 1, 'valueOf': 2, 'getUTCDate': 1, 'walk': 2, 'String': 3, 'getUTCMonth': 1, 'join': 4, 'isFinite': 2, 'getUTCFullYear': 1, 'push': 2, 'eval': 1, 'toJSON': 1, 'replace': 5, 'quote': 3, 'call': 4, 'getUTCSeconds': 1, 'slice': 2, 'str': 4, 'getUTCHours': 1}, 'content_type': 'text/javascript', 'inline': False, 'md5': '35d899a81986173f44f9bbe686cc583c', 'provider': 'jsdelivr', 'release': '5.2.5', 'sha256': '6c16b51a66747d60a59bf985bbb77f40922eabb1d7401d1564da78ec025e65e5', 'size_bytes': 3133, 'statements_by_count': {'FunctionNode': 11, 'StringLiteral': 90, 'VariableInitializer': 23, 'Scope': 1, 'KeywordLiteral': 9, 'AstRoot': 1, 'RegExpLiteral': 6, 'Assignment': 40, 'IfStatement': 7, 'ConditionalExpression': 13, 'ThrowStatement': 2, 'Block': 11, 'SwitchStatement': 1, 'ObjectLiteral': 4, 'ObjectProperty': 9, 'InfixExpression': 117, 'ExpressionStatement': 10, 'PropertyGet': 62, 'ReturnStatement': 15, 'ForLoop': 3, 'SwitchCase': 5, 'UnaryExpression': 23, 'ForInLoop': 2, 'Name': 305, 'NumberLiteral': 19, 'ArrayLiteral': 1, 'VariableDeclaration': 7, 'NewExpression': 2, 'FunctionCall': 55, 'ElementGet': 8, 'ParenthesizedExpression': 16}, 'url': 'https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', 'variant': '5.2.5', 'when': '2020-04-20 11:27:28.952014'}, 878, [1, 40, 1, 11, 0, 0, 13, 0, 0, 8, 0, 0, 10, 2, 3, 55, 11, 7, 117, 9, 0, 0, 305, 2, 19, 4, 9, 16, 62, 6, 15, 1, 90, 5, 1, 2, 0, 23, 7, 23, 0, 0, 0, 0])]
+   # def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False)
+   js_file = "{}/src/test-javascript/json2_4.9.2.min.js".format(pytestconfig.rootdir)
+   with open(js_file, 'rb') as fp:
+       content = fp.read()
+       jsr = JavascriptArtefact(url=js_file, sha256=hashlib.sha256(content).hexdigest(),
+                                md5=hashlib.md5(content).hexdigest(), size_bytes=len(content))
+       input_features, failed, stderr = analyse_script(content, jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
+       assert not failed
+       best_control, next_best_control = find_best_control(input_features, all_controls, db=None) # db=None means no mongo hash match
+       # NB: with only 1 control in the test, next_best must be None
+       assert next_best_control.ast_dist == float('Inf')
+       assert best_control.ast_dist <= 0.0000001
+       c, c_ast_sum, c_ast_vector = all_controls[0]
+       assert best_control.control_url == c['origin']
+       assert best_control.sha256_matched == False     # due to no db specified
