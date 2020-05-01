@@ -36,7 +36,11 @@ def test_compute_ast_vector():
    assert tuple == ([10, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 18) 
    assert compute_distance(tuple[0], tuple[0]) <= 0.001
 
-def test_analyse_script(pytestconfig):
+@pytest.fixture(scope="module")
+def analyse_script_expected_results(pytestconfig):
+   return load_data("{}/src/utils/fixtures/analyse_script_expected_results.json".format(pytestconfig.rootdir)) 
+
+def test_analyse_script(pytestconfig, analyse_script_expected_results):
    testjs = "{}/src/test-javascript/banners.js".format(pytestconfig.rootdir)
    with open(testjs, "rb") as fp:
       jsr = JavascriptArtefact(url="file:{}".format(testjs), origin=None, sha256='XXX', md5='XXX')
@@ -44,16 +48,7 @@ def test_analyse_script(pytestconfig):
       assert not failed
       assert 'when' in json and isinstance(json['when'], str) and len(json['when']) > 0
       json.pop('when', None)
-      assert json == {'statements_by_count': {'StringLiteral': 32, 'VariableInitializer': 1, 'KeywordLiteral': 2, 'AstRoot': 1, 'ObjectLiteral': 2, 'ObjectProperty': 12, 'Name': 14, 'NumberLiteral': 5, 'ArrayLiteral': 9, 'VariableDeclaration': 1, 'NewExpression': 1}, 
-'url': 'file:/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/banners.js', 
-'sha256': 'XXX', 
-'md5': 'XXX', 
-'inline': False, 
-'content_type': 'text/javascript', 
-'size_bytes': 0, 
-'origin': None, 
-'calls_by_count': {}, 
-'literals_by_count': {'0': 1, '220': 1, '//www.spec-net.com.au/banners/200129_Rollashield.jpg': 1, 'https://www.rollashieldshutters.com.au/bushfire-shutters/': 1, '470': 1, '500': 1, '//www.spec-net.com.au/banners/200129_GCP-Applied-Technologies.jpg': 1, '5000': 1, 'fadeshow1': 1, 'https://gcpat.com.au/en-gb/news/blog': 1, '//www.spec-net.com.au/banners/200129_RMS.jpg': 1, '//www.spec-net.com.au/banners/200129_Tornex-Door-Systems.jpg': 1, 'auto': 1, 'https://www.spec-net.com.au/press/0120/dpp_290120/Elegant-Bathroom-Radiators-AGAVE-by-dPP-Hydronic-Heating': 1, 'https://www.rmsmarble.com/vetrazzo-slabs/': 1, '//www.spec-net.com.au/banners/200129_dPP-Hydronic-Heating.jpg': 1, 'Elegant Bathroom Radiators - AGAVE by dPP Hydronic Heating': 1, 'GCP Preprufe Plus Seamless Protection of Underground Structures': 1, 'A Gorgeous Staircase Featuring AWIS Wrought Iron Components': 1, 'Electrical Operated, Triple Glazed Roof Hatches by Gorter Hatches': 1, 'https://www.gortergroup.com/au/products/roof-hatches/rhtg-glazed.html': 1, '//www.spec-net.com.au/banners/200129_AWIS.jpg': 1, 'Handcrafted Recycled Glass Benchtops - Vetrazzo by RMS': 1, 'Single & Double Sliding Track Doors from Tornex Door Systems': 1, '//www.spec-net.com.au/banners/200205_Gorter-Hatches.jpg': 1, 'always': 1, 'https://www.tornex.com.au/': 1, 'AS3959-2009 Compliant BAL FZ Bushfire Shutters from Rollashield': 1, 'http://artisticwroughtiron.com.au/': 1}} 
+      assert json == analyse_script_expected_results
 
 def test_analyse_script_2(pytestconfig):
    testjs = "{}/src/test-javascript/fieldRequiredWhenNotAfterGoLiveValidation.js".format(pytestconfig.rootdir)
@@ -81,8 +76,15 @@ def test_find_feasible_controls():
    ret = list(find_feasible_controls(100, all_controls))
    assert len(ret) == 2
 
-def test_find_best_control(pytestconfig):
-   all_controls = [({'_id': '5e8919aece9013c5bcde5338', 'family': 'WordPress/WordPress', 'origin': 'https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', 'calls_by_count': {'f': 5, 'charCodeAt': 2, 'toString': 2, 'test': 3, 'getUTCMinutes': 1, 'apply': 1, 'valueOf': 2, 'getUTCDate': 1, 'walk': 2, 'String': 3, 'getUTCMonth': 1, 'join': 4, 'isFinite': 2, 'getUTCFullYear': 1, 'push': 2, 'eval': 1, 'toJSON': 1, 'replace': 5, 'quote': 3, 'call': 4, 'getUTCSeconds': 1, 'slice': 2, 'str': 4, 'getUTCHours': 1}, 'content_type': 'text/javascript', 'inline': False, 'md5': '35d899a81986173f44f9bbe686cc583c', 'provider': 'jsdelivr', 'release': '5.2.5', 'sha256': '6c16b51a66747d60a59bf985bbb77f40922eabb1d7401d1564da78ec025e65e5', 'size_bytes': 3133, 'statements_by_count': {'FunctionNode': 11, 'StringLiteral': 90, 'VariableInitializer': 23, 'Scope': 1, 'KeywordLiteral': 9, 'AstRoot': 1, 'RegExpLiteral': 6, 'Assignment': 40, 'IfStatement': 7, 'ConditionalExpression': 13, 'ThrowStatement': 2, 'Block': 11, 'SwitchStatement': 1, 'ObjectLiteral': 4, 'ObjectProperty': 9, 'InfixExpression': 117, 'ExpressionStatement': 10, 'PropertyGet': 62, 'ReturnStatement': 15, 'ForLoop': 3, 'SwitchCase': 5, 'UnaryExpression': 23, 'ForInLoop': 2, 'Name': 305, 'NumberLiteral': 19, 'ArrayLiteral': 1, 'VariableDeclaration': 7, 'NewExpression': 2, 'FunctionCall': 55, 'ElementGet': 8, 'ParenthesizedExpression': 16}, 'url': 'https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', 'variant': '5.2.5', 'when': '2020-04-20 11:27:28.952014'}, 878, [1, 40, 1, 11, 0, 0, 13, 0, 0, 8, 0, 0, 10, 2, 3, 55, 11, 7, 117, 9, 0, 0, 305, 2, 19, 4, 9, 16, 62, 6, 15, 1, 90, 5, 1, 2, 0, 23, 7, 23, 0, 0, 0, 0])]
+def load_data(filename):
+   with open(filename, 'rb') as fp:
+       return eval(fp.read().decode('utf-8'))
+
+@pytest.fixture(scope="module")
+def all_controls(pytestconfig):
+   return load_data("{}/src/utils/fixtures/controls.json".format(pytestconfig.rootdir))
+
+def test_find_best_control(pytestconfig, all_controls):
    # def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False)
    js_file = "{}/src/test-javascript/json2_4.9.2.min.js".format(pytestconfig.rootdir)
    with open(js_file, 'rb') as fp:
