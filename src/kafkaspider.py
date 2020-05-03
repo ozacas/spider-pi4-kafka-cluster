@@ -332,7 +332,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         return domain in self.blacklisted_domains
 
     def update_blacklist(self):
-        self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
+        self.blacklisted_domains = set(self.db.blacklisted_domains.distinct('domain'))
 
     def is_suitable_host(self, host, counts_by_host):
         ret = super().is_suitable_host(host, counts_by_host)
