@@ -47,7 +47,7 @@ for url, family, variant, version, provider in controls_to_save:
        print("Found artefact: {}".format(url))
     if not args.list:
        try: 
-           artefact = save_control(url, family, variant, version, 
+           artefact = save_control(db, url, family, variant, version, 
                                    refuse_hashes=existing_control_hashes, 
                                    provider=provider, 
                                    java=args.java, feature_extractor=args.extractor)
