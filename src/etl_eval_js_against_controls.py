@@ -47,7 +47,9 @@ def cleanup(*args):
 all_controls = []
 for control in db.javascript_controls.find({}, { 'literals_by_count': False }): # dont load literal vector to save considerable memory
     ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
-    all_controls.append((control, ast_sum, ast_vector))
+    tuple = (control, ast_sum, ast_vector)
+#    print(tuple)
+    all_controls.append(tuple)
 
 print("Loaded {} AST control vectors from MongoDB".format(len(all_controls)))
 
@@ -82,7 +84,6 @@ setup_signals(cleanup)
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 save_pidfile('pid.eval.controls')
-cache = pylru.lrucache(500)
 for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
     best_control, next_best_control = find_best_control(m, all_controls, db=db)
 
@@ -95,6 +96,7 @@ for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
     producer.send(args.to, d) 
 
     # 2b. also send results to MongoDB for batch-oriented applications and for long-term storage
+    assert 'origin_url' in d and len(d['origin_url']) > 0
     db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
 
 cleanup()
