@@ -1,9 +1,14 @@
 from utils.features import safe_for_mongo
-from utils.models import JavascriptArtefact
+from utils.models import JavascriptArtefact, JavascriptVectorSummary
 from collections import namedtuple
+from dataclasses import asdict
+from datetime import datetime
 import pymongo
 import hashlib
+import requests
+from bson.binary import Binary
 from itertools import chain, islice
+from utils.features import analyse_script, calculate_ast_vector
 
 def save_ast_vector(db, jsr: JavascriptArtefact, ast_vector, js_id: str=None):
    assert ast_vector is not None
@@ -78,3 +83,42 @@ def batch(iterable, n=1000):
         if not x:
             return
         yield x
+
+def save_control(db, url, family, version, variant, force=False, refuse_hashes=None, provider='', java='/usr/bin/java', feature_extractor=None, content=None):
+   """
+   Update all control related data. Note callers must supply refuse_hashes (empty set) or an error will result
+
+   Returns JavascriptArtefact representing control which has had its state updated into MongoDB
+   """
+   if content is None:
+      resp = requests.get(url)
+      if resp.status_code != 200:
+          raise ValueError("Failed to fetch [{}] {}".format(resp.status_code, url))
+      content = resp.content
+
+   jsr = JavascriptArtefact(when=str(datetime.utcnow()), sha256=hashlib.sha256(content).hexdigest(),
+                             md5 = hashlib.md5(content).hexdigest(), url=url,
+                             inline=False, content_type='text/javascript', size_bytes=len(content))
+   if not force and jsr.sha256 in refuse_hashes:
+       print("Refusing to update existing control as dupe: {}".format(jsr))
+       return jsr
+
+   ret, failed, stderr = analyse_script(content, jsr, java=java, feature_extractor=feature_extractor)
+   if failed:
+       raise ValueError('Could not analyse script {}'.format(jsr.url))
+   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider })
+   #print(ret)
+   # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
+   resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family },
+                                                     { "$set": ret }, upsert=True)
+   db.javascript_control_code.find_one_and_update({ 'origin': url },
+                                                     { "$set": { 'origin': url, 'code': Binary(content),
+                                                       "last_updated": jsr.when } }, upsert=True)
+
+   vector, total_sum = calculate_ast_vector(ret['statements_by_count'])
+   sum_of_function_calls = sum(ret['calls_by_count'].values())
+   sum_of_literals = sum(ret['literals_by_count'].values())
+   vs = JavascriptVectorSummary(origin=url, sum_of_ast_features=total_sum,
+                                 sum_of_functions=sum_of_function_calls, sum_of_literals=sum_of_literals, last_updated=jsr.when)
+   db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
+   return jsr
