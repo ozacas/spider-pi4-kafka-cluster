@@ -94,9 +94,16 @@ def test_find_best_control(pytestconfig, all_controls):
        input_features, failed, stderr = analyse_script(content, jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
        assert not failed
        best_control, next_best_control = find_best_control(input_features, all_controls, db=None) # db=None means no mongo hash match
-       # NB: with only 1 control in the test, next_best must be None
+# EXPECTED RESULTS:
+#BestControl(control_url='https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=0.0, function_dist=0.0, diff_functions='', cited_on=None)
+#BestControl(control_url='', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=inf, function_dist=inf, diff_functions='', cited_on=None)
+
+       # NB: with only 1 control in the test, next_best must have infinite distances
        assert next_best_control.ast_dist == float('Inf')
+       assert next_best_control.function_dist == float('Inf')
        assert best_control.ast_dist <= 0.0000001
+       assert best_control.function_dist <= 0.000001
+      
        c, c_ast_sum, c_ast_vector = all_controls[0]
        assert best_control.control_url == c['origin']
        assert best_control.sha256_matched == False     # due to no db specified

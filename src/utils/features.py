@@ -211,20 +211,20 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                print("Got good distance {} for {}".format(dist, control_url)) 
            second_best_control = best_control
            # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
-           best_control = BestControl(control_url=control_url, origin_url=origin_url, cited_on=cited_on,
-                                      sha256_matched=False, ast_dist=dist, function_dist=float('Inf'), diff_functions='')
+           call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], 
+                                                          control['calls_by_count'])
+           best_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
+                                      origin_url=origin_url, # JS at spidered site 
+                                      cited_on=cited_on,   # HTML page that cited the origin JS
+                                      sha256_matched=False, 
+                                      ast_dist=dist, 
+                                      function_dist=call_dist, 
+                                      diff_functions=' '.join(diff_functions))
            best_distance = dist
-           control_function_calls = control['calls_by_count']
+
            if dist < 0.00001:     # small distance means we can try for a hash match against control?
                hash_match = find_hash_match(db, input_features, best_control.control_url)
                best_control.sha256_matched = hash_match
                break    # save time since we've likely found the best control
  
-   diff_functions = []
-   function_dist = float('Inf') # NB: only computed if best_distance < max_distance as it can be quite expensive
-   if best_distance < max_distance:
-       function_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control_function_calls)
-       best_control.function_dist = function_dist
-       best_control.diff_functions = ' '.join(diff_functions)
-
    return (best_control, second_best_control)
