@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 import pytest
-from utils.models import Password, JavascriptArtefact
+from utils.models import Password, JavascriptArtefact, BestControl
 
 def test_password_env(monkeypatch):
     monkeypatch.setenv("PASSWORD", "foobarbaz")
@@ -33,3 +33,16 @@ def test_artefact_model():
     j1 = JavascriptArtefact(md5='111', url=None, sha256='') 
     l = [j3, j9, j1]
     assert sorted(l) == [j1, j3, j9]
+
+def test_best_control():
+    bc1 = BestControl(origin_url='XXX', control_url='YYY', ast_dist=1.0, function_dist=1.5, sha256_matched=False, diff_functions='parseJSON runAJAX')
+    assert bc1.origin_url == 'XXX'
+    assert bc1.control_url == 'YYY'
+    assert bc1.ast_dist == pytest.approx(1.0)
+    assert bc1.function_dist == pytest.approx(1.5)
+    assert not bc1.sha256_matched
+    assert bc1.diff_functions == 'parseJSON runAJAX' 
+    assert bc1.origin_js_id is None
+    assert bc1.cited_on is None
+
+
