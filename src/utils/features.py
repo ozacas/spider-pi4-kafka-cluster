@@ -192,6 +192,9 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
    origin_js_id=input_features.get("js_id", None), # ensure we can find the script directly without URL lookup
+   if isinstance(origin_js_id, tuple): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
+       origin_js_id = origin_js_id[0]
+   assert isinstance(origin_js_id, str) or origin_js_id is None # check POST-CONDITION
    hash_match = False
    input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
