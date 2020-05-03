@@ -191,10 +191,13 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
+   origin_js_id=input_features.get("js_id", None), # ensure we can find the script directly without URL lookup
    hash_match = False
    input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
-                                          sha256_matched=False, ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='')
+                              sha256_matched=False, 
+                              ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='',
+                              origin_js_id=origin_js_id)
    control_function_calls = None
 
    feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance)
@@ -215,6 +218,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                                                           control['calls_by_count'])
            best_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
+                                      origin_js_id=origin_js_id,
                                       cited_on=cited_on,   # HTML page that cited the origin JS
                                       sha256_matched=False, 
                                       ast_dist=dist, 
