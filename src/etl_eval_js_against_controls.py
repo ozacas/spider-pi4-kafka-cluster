@@ -97,6 +97,20 @@ for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
 
     # 2b. also send results to MongoDB for batch-oriented applications and for long-term storage
     assert 'origin_url' in d and len(d['origin_url']) > 0
+    assert isinstance(d['origin_js_id'], str) or d['origin_js_id'] is None
     db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
+
+    # 3. finally if the next_best_control looks just as good (or better than) the best control then we ALSO report it...
+    if next_best_control is None:
+        continue
+
+    best_mult = best_control.ast_dist * best_control.function_dist
+    next_best_mult = next_best_control.ast_dist * next_best_control.function_dist
+    if next_best_mult <= best_mult and (next_best_mult < 50.0): # only report good hits though... otherwise poor hits will generate lots of false positives
+        print("NOTE: next best control looks as good as best control")
+        print(next_best_control) 
+        print(best_control)
+        d = asdict(next_best_control)
+        producer.send(args.to, d)
 
 cleanup()
