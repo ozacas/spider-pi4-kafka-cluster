@@ -57,7 +57,12 @@ def load_controls(db, verbose):
 
 def iterate(consumer, max, verbose, threshold):
    for r in next_artefact(consumer, max, lambda v: v['ast_dist'] <= threshold, verbose=verbose):
-       yield BestControl(**r)
+       try:
+          yield BestControl(**r)
+       except TypeError:
+          # BUGFIX coming from input topic data: assume r['origin_js_id'] was persisted (in error) as a tuple or list...
+          r['origin_js_id'] = r['origin_js_id'][0]
+          yield BestControl(**r)
  
 setup_signals(cleanup)
 origins = { }
