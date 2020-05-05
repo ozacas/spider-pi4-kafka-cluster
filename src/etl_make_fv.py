@@ -96,6 +96,8 @@ for batch in batch(filter(lambda a: not a.url in cache,
             # need to update some fields as the cached copy is not the same...
             results = tmp.copy()
             results.update({ 'url': jsr.url, 'origin': jsr.origin })
+            # falsely "update" the cache to ensure it is rewarded for being hit ie. becomes MRU
+            fv_cache[key] = (tmp, js_id)
             # FALLTHRU
         else:
             # 3. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
