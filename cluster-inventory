@@ -3,7 +3,7 @@ pi1
 pi2
 
 [x86_thug_hosts]
-192.168.1.78
+192.168.1.7
 
 [x86_thug_hosts:vars]
 ansible_python_interpreter=/usr/bin/python3.5
