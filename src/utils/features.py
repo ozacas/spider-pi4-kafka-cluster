@@ -192,7 +192,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
    origin_js_id=input_features.get("js_id", None), # ensure we can find the script directly without URL lookup
-   if isinstance(origin_js_id, tuple): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
+   if isinstance(origin_js_id, tuple) or isinstance(origin_js_id, list): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
        origin_js_id = origin_js_id[0]
    assert isinstance(origin_js_id, str) or origin_js_id is None # check POST-CONDITION
    hash_match = False
@@ -215,11 +215,10 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
        if dist < best_distance and dist <= max_distance: # TODO FIXME: consider more than AST distance before determining "best" ???
            if debug:
                print("Got good distance {} for {}".format(dist, control_url)) 
-           second_best_control = best_control
            # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
            call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], 
                                                           control['calls_by_count'])
-           best_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
+           new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
                                       origin_js_id=origin_js_id,
                                       cited_on=cited_on,   # HTML page that cited the origin JS
@@ -227,11 +226,22 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                                       ast_dist=dist, 
                                       function_dist=call_dist, 
                                       diff_functions=' '.join(diff_functions))
-           best_distance = dist
+           # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
+           #     (with accidental ast hits) as the number of controls in the database increases
+           prod = (dist * call_dist)
+           if prod < 50.0 and prod > (best_control.ast_dist * best_control.function_dist):
+               if second_best_control.ast_dist * second_best_control.function_dist > prod:
+                   print("NOTE: improved second_best control")
+                   second_best_control = new_control
+               # NB: dont update best_* since we dont consider this hit a replacement for current best_control
+           else: 
+               second_best_control = best_control
+               best_control = new_control
+               best_distance = dist
 
-           if dist < 0.00001:     # small distance means we can try for a hash match against control?
-               hash_match = find_hash_match(db, input_features, best_control.control_url)
-               best_control.sha256_matched = hash_match
-               break    # save time since we've likely found the best control
+               if dist < 0.00001:     # small distance means we can try for a hash match against control?
+                   hash_match = find_hash_match(db, input_features, best_control.control_url)
+                   best_control.sha256_matched = hash_match
+                   break    # save time since we've likely found the best control
  
    return (best_control, second_best_control)
