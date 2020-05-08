@@ -2,7 +2,7 @@
 import pytest
 import mock
 from utils.models import JavascriptArtefact
-from etl_make_fv import report_failure
+from etl_make_fv import report_failure, save_to_kafka
 
 def test_report_failure():
     producer = mock.Mock()
@@ -17,8 +17,25 @@ def test_report_failure():
     assert 'when' in d
     assert isinstance(d['when'], str) and len(d['when']) > 10 # FIXME... stronger test... ?
     d.pop('when', None)
-    expected_results = {'url': 'XXX', 'sha256': 'affb', 'md5': 'affc', 'inline': False, 'content_type': 'text/javascript', 'size_bytes': 33, 'origin': None, 'reason': 'reason=hello world'}
+    expected_results = { 'url': 'XXX', 'sha256': 'affb', 'md5': 'affc', 'inline': False, 
+                         'content_type': 'text/javascript', 'size_bytes': 33, 'origin': None, 
+                         'reason': 'reason=hello world'}
     assert d == expected_results
 
 def test_send_to_kafka():
-    pass
+   # 1. check incorrect input raises an error
+   producer = mock.Mock()
+   with pytest.raises(AssertionError):
+       save_to_kafka(producer, {}, to='analysis-results')
+   with pytest.raises(AssertionError):
+       save_to_kafka(producer, { '_id': 'must not be present in input' }, to='analysis-results')
+
+   # 2. check correct input is handled correctly
+   results = { 'js_id': 'XXX' }
+   save_to_kafka(producer, results, to='analysis-results')
+   assert len(producer.method_calls) == 1
+   name, args, kwargs = producer.method_calls[0]
+   assert name == 'send'
+   assert len(args) == 2
+   assert args[0] == 'analysis-results'
+   assert args[1] == results
