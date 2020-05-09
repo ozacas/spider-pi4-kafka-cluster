@@ -233,9 +233,19 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None): # ori
                           "max_function_dist": { "$max": "$function_dist" },
                     }},
           ])
+   # eg. {'_id': {'control_url': 'XXX/assets/js/lib/jquery.maskedinput.min.js', 
+   #         'origin_url': 'XXX/gravityforms/js/jquery.maskedinput.min.js'}, 
+   # 'changed_functions': ['b', 'charAt', 'test', 'log', 'String', 'call', 'trigger', 'T', 'u', 'S', 'setTimeout', 'm', 'caret', 
+   #  'proxy', 'd', 'get', 'f', 'R', 's', 'c', 'A', 'h', 'v', 'k'], 
+   #  'min_ast': 16.431676725154983, 'max_ast': 16.431676725154983, 'min_function_dist': 0.5006882315714638, 'max_function_dist': 0.5006882315714638}
+   headers = ['control_url', 'origin_url', 'changed_functions', 'min_ast_dist', 'min_function_dist']
+   print('\t'.join(headers))
    for hit in hits:
-       print(hit)
-   
+       id = hit.get('_id')
+       data = [ id.get('control_url'), id.get('origin_url'), 
+                str(sorted(hit.get('changed_functions'))),
+                str(hit.get('min_ast')), str(hit.get('min_function_dist')) ]
+       print('\t'.join(data)) 
 
 def list_controls(db, pretty=False):
    headers =  ['control_url', 'provider', 'family', 'release', 'size_bytes', 'sha256', 'md5', 'total_calls', 'total_literals', 'total_ast' ]
