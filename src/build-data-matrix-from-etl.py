@@ -126,13 +126,13 @@ def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, m
                  },
                  { "$project": {
                       "_id": 0,
-                      "sha256": "_id",
+                      "sha256": "$_id",
                       "unique_js": 1,
                       "sites":   1,
                       "n_sites": { "$size": "$sites" },
                       "n_unique_js": { "$size": "$unique_js" },
                  } } ,
-                 { "$sort": { "sha256": 1, "n_sites": -1, "unique_js": -1 } }
+                 { "$sort": { "n_sites": -1, "n_unique_js": -1 } }
     ], allowDiskUse=True)
  
     existing_controls = set( db.javascript_controls.distinct('sha256') )  # dont report clusters for which we have an existing control (based on sha256)
