@@ -163,7 +163,13 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
                       { "_id": "$control_url", 
                         "set": { "$addToSet": "$cited_on_host" } 
                       } 
-                 } 
+                 },
+                 { "$project": {
+                       "control_url": "$_id",
+                       "hosts": "$set",
+                       "n_hosts": { "$size": "$set" } },
+                 },
+                 { "$sort": { "n_hosts": -1, "control_url": 1 } }
     ], allowDiskUse=True)
 
     if pretty:
@@ -174,9 +180,9 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
             headers.append('site_set')
         print('\t'.join(headers))
         for rec in result:
-            l = [rec['_id'], str(len(rec['set']))]
+            l = [rec['control_url'], str(rec.get('n_hosts'))]
             if want_set:
-                l.append(','.join(rec['set']))
+                l.append(','.join(rec['hosts']))
             print('\t'.join(l))
 
 def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=False):
@@ -231,8 +237,8 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None): # ori
    if cntrl is None:
        raise ValueError('No control matching: {}'.format(control_url))
    hits = db.etl_hits.aggregate([ 
-                    { "$match": { "$or": [ { "ast_dist": { "$lt": threshold } }, { "function_dist": { "$lt": threshold } } ] } },
                     { "$match": { "control_url": control_url } },
+                    { "$match": { "$or": [ { "ast_dist": { "$lt": threshold } }, { "function_dist": { "$lt": threshold } } ] } },
                     { "$group": { 
                           "_id": { "control_url": "$control_url", "origin_url": "$origin_url" },
                           "changed_functions": { "$addToSet": "$diff_function" },
@@ -241,19 +247,26 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None): # ori
                           "min_function_dist": { "$min": "$function_dist" },
                           "max_function_dist": { "$max": "$function_dist" },
                     }},
+                    { "$project": {
+                          "_id": 0,
+                          "control_url": "$_id.control_url",
+                          "origin_url": "$_id.origin_url",
+                          "min_ast": "$min_ast",
+                          "max_ast": "$max_ast",
+                          "min_fdist": "$min_function_dist",
+                          "max_fdist": "$max_function_dist",
+                          "changed_functions": 1
+                    }},
+                    { "$sort": { "min_ast": 1, "min_fdist": 1 } }
           ])
-   # eg. {'_id': {'control_url': 'XXX/assets/js/lib/jquery.maskedinput.min.js', 
-   #         'origin_url': 'XXX/gravityforms/js/jquery.maskedinput.min.js'}, 
-   # 'changed_functions': ['b', 'charAt', 'test', 'log', 'String', 'call', 'trigger', 'T', 'u', 'S', 'setTimeout', 'm', 'caret', 
-   #  'proxy', 'd', 'get', 'f', 'R', 's', 'c', 'A', 'h', 'v', 'k'], 
-   #  'min_ast': 16.431676725154983, 'max_ast': 16.431676725154983, 'min_function_dist': 0.5006882315714638, 'max_function_dist': 0.5006882315714638}
    headers = ['control_url', 'origin_url', 'changed_functions', 'min_ast_dist', 'min_function_dist']
    print('\t'.join(headers))
    for hit in hits:
-       id = hit.get('_id')
-       data = [ id.get('control_url'), id.get('origin_url'), 
-                str(sorted(hit.get('changed_functions'))),
-                str(hit.get('min_ast')), str(hit.get('min_function_dist')) ]
+       data = [ hit.get('control_url'), 
+                hit.get('origin_url'), 
+                ','.join(sorted(hit.get('changed_functions'))), 
+                str(hit.get('min_ast')), 
+                str(hit.get('min_fdist'))]
        print('\t'.join(data)) 
 
 def list_controls(db, pretty=False):
