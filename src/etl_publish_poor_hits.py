@@ -15,7 +15,8 @@ a = argparse.ArgumentParser(description="Reconcile poor hits into non-normalised
 add_kafka_arguments(a, consumer=True, default_from='javascript-artefact-control-results', default_group='etl-bad-hits')
 add_mongo_arguments(a, default_access="read-write")
 add_debug_arguments(a)
-a.add_argument("--threshold", help="Only report hits with ast_distance greater than this [50.0]", type=float, default=50.0)
+default_threshold = 50.0
+a.add_argument("--threshold", help="Only report hits with ast_distance greater than this [{}]".format(default_threshold), type=float, default=default_threshold)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, 
@@ -39,7 +40,7 @@ def cleanup(*args):
     sys.exit(0)
 
 def iterate(consumer, max, verbose, threshold):
-   for r in next_artefact(consumer, max, lambda v: v.ast_dist > threshold, verbose=verbose):
+   for r in next_artefact(consumer, max, lambda v: v['ast_dist'] > threshold, verbose=verbose):
        yield BestControl(**r)
 
 setup_signals(cleanup)
