@@ -124,7 +124,15 @@ def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, m
                         "sites": { "$addToSet": "$cited_on_host" } 
                       }
                  },
-                 { "$sort": { "_id": 1, "unique_js": -1 } }
+                 { "$project": {
+                      "_id": 0,
+                      "sha256": "_id",
+                      "unique_js": 1,
+                      "sites":   1,
+                      "n_sites": { "$size": "$sites" },
+                      "n_unique_js": { "$size": "$unique_js" },
+                 } } ,
+                 { "$sort": { "sha256": 1, "n_sites": -1, "unique_js": -1 } }
     ], allowDiskUse=True)
  
     existing_controls = set( db.javascript_controls.distinct('sha256') )  # dont report clusters for which we have an existing control (based on sha256)
@@ -137,11 +145,12 @@ def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, m
             headers.append("cited_on")
             headers.append("first_origin_url")
         print('\t'.join(headers))
-        for rec in filter(lambda v: v['_id'] not in existing_controls, result):
-             n_sites = len(rec.get('sites'))
+        for rec in filter(lambda v: v['sha256'] not in existing_controls, result):
+             n_sites = rec.get('n_sites')
+             n_js = rec.get("n_unique_js")
              if n_sites < min_sites:
                  continue
-             l = [rec['_id'], str(len(rec.get('unique_js'))), str(n_sites)]
+             l = [rec['sha256'], str(n_js), str(n_sites)]
              if want_set:
                  l.append(' '.join(rec.get('sites')))
                  l.append(rec.get('unique_js')[0])
