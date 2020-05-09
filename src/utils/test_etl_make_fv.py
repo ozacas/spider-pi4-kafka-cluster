@@ -2,7 +2,7 @@
 import pytest
 import mock
 from utils.models import JavascriptArtefact
-from etl_make_fv import report_failure, save_to_kafka
+from etl_make_fv import report_failure, save_to_kafka, iterate
 
 def test_report_failure():
     producer = mock.Mock()
@@ -39,3 +39,18 @@ def test_send_to_kafka():
    assert len(args) == 2
    assert args[0] == 'analysis-results'
    assert args[1] == results
+
+def test_iterate():
+   m1 = mock.Mock()
+   m1.value = { 'content-type': 'text/javascript', 'url': 'http://blah.blah/...', 'sha256': 'XXX', 'md5': 'YYY', 'inline': False }
+   m2 = mock.Mock()
+   m2.value = { 'content-type': 'application/json' }
+   consumer = [ m1, m2 ]
+                
+   ret = list(iterate(consumer, 2, verbose=False))
+   assert len(ret) == 1  # only text/javascript is to be returned
+   assert isinstance(ret[0], JavascriptArtefact)
+   assert ret[0].url == 'http://blah.blah/...'
+   assert ret[0].sha256 == 'XXX'
+   assert ret[0].md5 == 'YYY'
+   assert not ret[0].inline 

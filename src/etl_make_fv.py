@@ -26,12 +26,11 @@ add_debug_arguments(a)
 a.add_argument("--cache", help="Cache feature vectors to not re-calculate frequently seen JS (int specifies max cache entries, 0 disabled) [0]", type=int, default=0)
 
 def cleanup(*args, exit_status=0):
-    global consumer
-    global mongo
+    global items_to_close
     if len(args):
         print("Ctrl-C pressed. Cleaning up...")
-    consumer.close()
-    mongo.close()
+    for c in items_to_close:
+        c.close()
     rm_pidfile('pid.make.fv')
     exit(exit_status)
 
@@ -52,9 +51,7 @@ def iterate(consumer, max, verbose=False):
 def main(args, consumer=None, producer=None, db=None, cache=None):
    if args.v:
        print(args)
-   global consumer # needed so cleanup() can access them
-   global mongo    # ditto
-
+   global items_to_close # needed so cleanup() can access them
    if consumer is None:
        consumer = KafkaConsumer(args.consume_from, 
                             bootstrap_servers=args.bootstrap, 
@@ -70,6 +67,7 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
        db = mongo[args.dbname]
    if cache is None:
        cache = pylru.lrucache(1000)
+   items_to_close = [ mongo, consumer ] # TODO... FIXME: initialise for cleanup() -- ugly as sin!
    setup_signals(cleanup)
 
    if not os.path.exists(args.java):
