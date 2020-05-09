@@ -67,7 +67,7 @@ if args.file:
            print("Unable to extract features... aborting.")
            print(stderr)
            cleanup()
-       best_control, next_best_control = find_best_control(input_features, all_controls, db=db, debug=True) # index None so that all are searched
+       best_control, next_best_control = find_best_control(input_features, all_controls, db=db, max_distance=1000.0, debug=True) 
        print("*** WINNING CONTROL HIT")
        print(best_control)
        print("*** NEXT BEST CONTROL HIT")
