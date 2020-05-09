@@ -5,6 +5,7 @@ import requests
 import logging
 import argparse
 import tempfile
+from bson.objectid import ObjectId
 from subprocess import run
 from utils.features import find_script 
 from utils.misc import add_mongo_arguments, add_debug_arguments
@@ -39,7 +40,9 @@ with tempfile.TemporaryDirectory() as tdir:
        fp.write(resp.content)
    script, url_id = find_script(db, args.url)
    if not script:
-       raise Exception("Unable to find {} in database!".format(args.url))
+       script = db.scripts.find_one({ '_id': ObjectId(result.get('origin_js_id')) })
+       if script is None:
+           raise Exception("Unable to find {} in database!".format(args.url))
    with open('{}/artefact.js'.format(tdir), 'wb+') as fp:
        fp.write(script.get('code'))
    # 2. beautify them (ie. reduce minimisation to ensure consistent representation for diff'ing etc.)
