@@ -175,18 +175,26 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = 1 / common if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def calculate_literal_distance(db, control: BestControl, origin_literals):
+def calculate_literal_distance(db, hit: BestControl, origin_literals):
    if db is None:
        return -1.0 # indicate that calculation is not available
 
    # vector length is len of union of literals encountered in either vector. Count will differentiate.
-   control_literals_doc = db.javascript_controls.find_one({ 'origin': control.control_url })
+   control_literals_doc = db.javascript_controls.find_one({ 'origin': hit.control_url })
    assert control_literals_doc is not None # should not happen as it means control has been deleted??? maybe bad io???
    control_literals = control_literals_doc.get('literals_by_count')
  
-   features = set(control_literals.keys()).union(origin_literals.keys())
+   features = list(set(control_literals.keys()).union(origin_literals.keys())) # use list() to ensure traversal order doesnt change, although probably unlikely...
+   #print(hit.control_url)
+   #print(hit.origin_url)
+   #print(features)
    v1, control_sum = calculate_vector(control_literals, features)
    v2, origin_sum = calculate_vector(origin_literals, features)
+   #print(v1)
+   #print(v2)
+   assert len(v1) == len(v2)
+   assert control_sum >= 0
+   assert origin_sum >= 0
    return math.dist(v1, v2)
 
 def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
@@ -201,7 +209,6 @@ def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
    return feasible_controls
 
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False):
-   second_best_control = None
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
@@ -216,6 +223,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                               ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='',
                               origin_js_id=origin_js_id)
    control_function_calls = None
+   second_best_control = None
 
    feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance)
    for fc_tuple in feasible_controls:
@@ -244,8 +252,8 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
            # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
            #     (with accidental ast hits) as the number of controls in the database increases
            if best_control.is_better(new_control):
-               if second_best_control.dist_prod() > new_control.dist_prod():
-                   print("NOTE: improved second_best control")
+               if second_best_control is None or second_best_control.dist_prod() > new_control.dist_prod():
+                   #print("NOTE: improved second_best control")
                    second_best_control = new_control
                # NB: dont update best_* since we dont consider this hit a replacement for current best_control
            else: 
@@ -263,7 +271,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
        lv_origin = input_features.get('literals_by_count')
        if best_control.dist_prod() < 50.0:
            best_control.literal_dist = calculate_literal_distance(db, best_control, lv_origin)
-       if second_best_control.dist_prod() < 50.0:
+       if second_best_control is not None and second_best_control.dist_prod() < 50.0:
            second_best_control.literal_dist = calculate_literal_distance(db, second_best_control, lv_origin)
    else:
        print("WARNING: literal vector not available in input features")
