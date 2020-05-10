@@ -45,4 +45,7 @@ def test_best_control():
     assert bc1.origin_js_id is None
     assert bc1.cited_on is None
 
-
+    bc2 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=10.0, function_dist=1.5, sha256_matched=False, diff_functions='a b c')
+    assert bc1.is_better(bc2)
+    assert not bc2.is_better(bc1)
+    assert bc1.dist_prod() < bc2.dist_prod() and pytest.approx(bc1.dist_prod(), 1.5)

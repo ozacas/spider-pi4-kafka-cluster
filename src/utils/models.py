@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Optional
+from enforce_typing import enforce_types
 import getpass
 import os
 
@@ -20,6 +22,7 @@ class Password:
     def __str__(self):
         return self.value
 
+@enforce_types
 @dataclass
 class PageStats:
    url: str
@@ -42,6 +45,7 @@ class DownloadFailure:
    http_status: int # eg. 404 
    when: str # UTC timestamp
 
+@enforce_types
 @dataclass
 class JavascriptLocation:
    country: str # NB: first non AU/US/na country reported only
@@ -50,6 +54,7 @@ class JavascriptLocation:
    when: str
    ip: str # NB: first IP associated with the script host only
 
+@enforce_types
 @dataclass
 class JavascriptArtefact: # definition corresponds to visited kafka topic record schema
     url: str
@@ -88,6 +93,7 @@ class ThugLog:
     when: str # UTC timestamp
     thug_analysis_id: str # objectId (ie. foreign key) into thug mongoDB with JSON and other logging
 
+@enforce_types
 @dataclass
 class BestControl:
     control_url: str        # chosen control URL with best ast_dist (from CDNJS typically)
@@ -96,8 +102,17 @@ class BestControl:
     ast_dist: float         # AST syntax tree feature distance between origin and control? (0 means same features in JS code)
     function_dist: float    # function call feature distance between origin and control (lower means fewer differences, not comparable across JS families)
     diff_functions: str     # functions which do not have the same count between control and origin
-    cited_on: str = None    # include HTML page which cited this origin_url (useful for ETL)
-    origin_js_id: str = None# objectid referring into db.script collection (only recent records have this set)
+    cited_on: Optional[str] = None    # include HTML page which cited this origin_url (useful for ETL)
+    origin_js_id: Optional[str] = None# objectid referring into db.script collection (only recent records have this set)
+
+    def dist_prod(self):
+        return self.ast_dist * self.function_dist
+
+    def is_better(self, other):
+        other_prod = other.dist_prod()
+        if other_prod > 50.0:
+            return True       # return True since other is a poor hit ie. self is better
+        return self.dist_prod() < other_prod
 
 @dataclass
 class FeatureVector:
@@ -151,6 +166,7 @@ class FeatureVector:
     ElementGet: int = 0
     Name: int = 0
 
+@enforce_types
 @dataclass 
 class JavascriptVectorSummary:
     origin: str                 # control CDN url
