@@ -104,9 +104,9 @@ for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
     if next_best_control is None:
         continue
 
-    best_mult = best_control.ast_dist * best_control.function_dist
-    next_best_mult = next_best_control.ast_dist * next_best_control.function_dist
-    if next_best_mult <= best_mult and (next_best_mult < 50.0): # only report good hits though... otherwise poor hits will generate lots of false positives
+    best_mult = best_control.dist_prod()
+    next_best_mult = next_best_control.dist_prod()
+    if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
         print("NOTE: next best control looks as good as best control")
         print(next_best_control) 
         print(best_control)
