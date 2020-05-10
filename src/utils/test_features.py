@@ -103,7 +103,9 @@ def test_find_best_control(pytestconfig, all_controls):
        assert next_best_control.function_dist == float('Inf')
        assert best_control.ast_dist <= 0.0000001
        assert best_control.function_dist <= 0.000001
-      
+       assert pytest.approx(best_control.literal_dist, -1.0)
+       assert pytest.approx(next_best_control.literal_dist, -1.0)
+
        c, c_ast_sum, c_ast_vector = all_controls[0]
        assert best_control.control_url == c['origin']
        assert best_control.sha256_matched == False     # due to no db specified

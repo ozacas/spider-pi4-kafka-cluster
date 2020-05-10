@@ -44,6 +44,7 @@ def test_best_control():
     assert bc1.diff_functions == 'parseJSON runAJAX' 
     assert bc1.origin_js_id is None
     assert bc1.cited_on is None
+    assert pytest.approx(bc1.literal_dist, -1.0)
 
     bc2 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=10.0, function_dist=1.5, sha256_matched=False, diff_functions='a b c')
     assert bc1.is_better(bc2)

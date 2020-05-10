@@ -175,6 +175,20 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = 1 / common if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
+def calculate_literal_distance(db, control: BestControl, origin_literals):
+   if db is None:
+       return -1.0 # indicate that calculation is not available
+
+   # vector length is len of union of literals encountered in either vector. Count will differentiate.
+   control_literals_doc = db.javascript_controls.find_one({ 'origin': control.control_url })
+   assert control_literals_doc is not None # should not happen as it means control has been deleted??? maybe bad io???
+   control_literals = control_literals_doc.get('literals_by_count')
+ 
+   features = set(control_literals.keys()).union(origin_literals.keys())
+   v1, control_sum = calculate_vector(control_literals, features)
+   v2, origin_sum = calculate_vector(origin_literals, features)
+   return math.dist(v1, v2)
+
 def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
    if desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
        return []
@@ -226,11 +240,11 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                                       ast_dist=dist, 
                                       function_dist=call_dist, 
                                       diff_functions=' '.join(diff_functions))
+
            # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
            #     (with accidental ast hits) as the number of controls in the database increases
-           prod = (dist * call_dist)
-           if prod < 50.0 and prod > (best_control.ast_dist * best_control.function_dist):
-               if second_best_control.ast_dist * second_best_control.function_dist > prod:
+           if best_control.is_better(new_control):
+               if second_best_control.dist_prod() > new_control.dist_prod():
                    print("NOTE: improved second_best control")
                    second_best_control = new_control
                # NB: dont update best_* since we dont consider this hit a replacement for current best_control
@@ -243,5 +257,14 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                    hash_match = find_hash_match(db, input_features, best_control.control_url)
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control
- 
+
+   # HACK TODO FIXME: obtain the literal vector from kafka as its not stored in Mongo (perf.)
+   if 'literals_by_count' in input_features:
+       lv_origin = input_features.get('literals_by_count')
+       if best_control.dist_prod() < 50.0:
+           best_control.literal_dist = calculate_literal_distance(db, best_control, lv_origin)
+       if second_best_control.dist_prod() < 50.0:
+           second_best_control.literal_dist = calculate_literal_distance(db, second_best_control, lv_origin)
+   else:
+       print("WARNING: literal vector not available in input features")
    return (best_control, second_best_control)

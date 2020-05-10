@@ -104,6 +104,7 @@ class BestControl:
     diff_functions: str     # functions which do not have the same count between control and origin
     cited_on: Optional[str] = None    # include HTML page which cited this origin_url (useful for ETL)
     origin_js_id: Optional[str] = None# objectid referring into db.script collection (only recent records have this set)
+    literal_dist: float = -1.0 # if negative, denotes not computed. Otherwise represents similarity score between control and origin (includes union of all control and origin literals)
 
     def dist_prod(self):
         return self.ast_dist * self.function_dist
