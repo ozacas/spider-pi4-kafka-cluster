@@ -25,14 +25,16 @@ add_extractor_arguments(a)
 add_debug_arguments(a)
 a.add_argument("--cache", help="Cache feature vectors to not re-calculate frequently seen JS (int specifies max cache entries, 0 disabled) [0]", type=int, default=0)
 
-def cleanup(*args, exit_status=0):
-    global items_to_close
-    if len(args):
-        print("Ctrl-C pressed. Cleaning up...")
+terminate = False
+def signal_handler(num, frame):
+    global terminate
+    print("Control-C pressed. Terminating... may take a while for current batch to complete")
+    terminate = True
+
+def cleanup(items_to_close, pidfile='pid.make.fv'):
     for c in items_to_close:
         c.close()
-    rm_pidfile('pid.make.fv')
-    exit(exit_status)
+    rm_pidfile(pidfile)
 
 def report_failure(producer, artefact, reason):
     d = asdict(artefact)
@@ -49,9 +51,9 @@ def iterate(consumer, max, verbose=False):
        yield JavascriptArtefact(**r)
 
 def main(args, consumer=None, producer=None, db=None, cache=None):
+   global terminate
    if args.v:
        print(args)
-   global items_to_close # needed so cleanup() can access them
    if consumer is None:
        consumer = KafkaConsumer(args.consume_from, 
                             bootstrap_servers=args.bootstrap, 
@@ -67,8 +69,6 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
        db = mongo[args.dbname]
    if cache is None:
        cache = pylru.lrucache(1000)
-   items_to_close = [ mongo, consumer ] # TODO... FIXME: initialise for cleanup() -- ugly as sin!
-   setup_signals(cleanup)
 
    if not os.path.exists(args.java):
       raise ValueError("Java executable does not exist: {}".format(args.java))
@@ -130,10 +130,15 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
            results.update({ 'js_id': js_id })
            save_to_kafka(producer, results, to=args.to)
 
+       if terminate:
+           break # NOT REACHED
+
    print("Analysed {} artefacts, {} failed, {} cached, now={}".format(n_analysed, n_failed, n_cached, str(datetime.now())))
+   cleanup([mongo, consumer])
    return 0
 
 if __name__ == "__main__":
    save_pidfile('pid.make.fv')
+   setup_signals(signal_handler)
    status = main(a.parse_args())
-   cleanup(exit_status=status)
+   exit(status)
