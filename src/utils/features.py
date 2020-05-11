@@ -112,8 +112,11 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
 
 def compute_distance(v1, v2, short_vector_penalty=True):
    svp = 1.0
-   if short_vector_penalty and len(v1) < 15:
-       svp = 20.0 / len(v1)
+   denom = len(v1) 
+   if denom == 0:
+      denom = 1
+   if short_vector_penalty and denom < 15:
+      svp = 20.0 / denom
    return math.dist(v1, v2) * svp
 
 def calculate_ast_vector(d):
@@ -195,7 +198,7 @@ def calculate_literal_distance(db, hit: BestControl, origin_literals):
    assert len(v1) == len(v2)
    assert control_sum >= 0
    assert origin_sum >= 0
-   return math.dist(v1, v2)
+   return compute_distance(v1, v2, short_vector_penalty=True)
 
 def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
    if desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
