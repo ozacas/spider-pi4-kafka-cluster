@@ -17,6 +17,9 @@ def test_compute_distance():
    assert compute_distance([112, 33], [99, 12]) >= 246.98
    dist = compute_distance([112, 33], [99, 12], short_vector_penalty=False)
    assert dist >= 24.6981 and dist <= 24.6982
+   # test zero length vectors (needed as literal vectors may be empty)
+   dist = compute_distance([], [], short_vector_penalty=True) 
+   assert pytest.approx(dist, 0.0)
 
 def test_compute_function_dist():
    a = { "foo": 3, "bar": 7, "baz": 1 }
