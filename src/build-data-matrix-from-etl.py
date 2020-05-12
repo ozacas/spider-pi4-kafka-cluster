@@ -3,6 +3,7 @@ import pymongo
 import sys
 import argparse
 from dataclasses import dataclass, field
+from collections import namedtuple
 from typing import List
 from statistics import mean
 from utils.misc import *
@@ -159,30 +160,48 @@ def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, m
 def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
     result = db.etl_hits.aggregate([ 
                  { "$match": { "$or": [ { "ast_dist": { "$lt": threshold } }, { "function_dist": { "$lt": threshold } } ] } },
-                 { "$group": 
-                      { "_id": "$control_url", 
-                        "set": { "$addToSet": "$cited_on_host" } 
+                 { "$group": { 
+                        "_id": "$control_url", 
+                        "set": { "$addToSet": "$cited_on_host" },
+                        "min_ast_dist": { "$min": "$ast_dist" },
+                        "max_ast_dist": { "$max": "$ast_dist" },
+                        "min_function_dist": { "$min": "$function_dist" },
+                        "max_function_dist": { "$max": "$function_dist" },
+                        "min_literal_dist": { "$min": "$literal_dist" },
+                        "max_literal_dist": { "$max": "$literal_dist" },
                       } 
                  },
                  { "$project": {
+                       "_id": 0,
                        "control_url": "$_id",
                        "hosts": "$set",
-                       "n_hosts": { "$size": "$set" } },
-                 },
-                 { "$sort": { "n_hosts": -1, "control_url": 1 } }
+                       "n_hosts": { "$size": "$set" },
+                       "min_ast_dist": 1,
+                       "max_ast_dist": 1,
+                       "min_function_dist": 1,
+                       "max_function_dist": 1,
+                       "min_literal_dist": 1,
+                       "max_literal_dist": 1
+                 }},
+                 { "$sort": { "n_hosts": -1, "control_url": 1,  "max_ast_dist": -1 } }
     ], allowDiskUse=True)
 
     if pretty:
         dump_pretty(result.find())
     else:
-        headers = ['control_url', 'n_sites']
+        headers = ['control_url', 'n_sites', 'min_ast_dist', 'max_ast_dist', 'min_function_dist', 'max_function_dist', 'min_literal_dist', 'max_literal_dist']
         if want_set:
             headers.append('site_set')
         print('\t'.join(headers))
+        nt = namedtuple('Record', 'control_url n_hosts min_ast_dist max_ast_dist min_function_dist max_function_dist min_literal_dist max_literal_dist hosts')
         for rec in result:
-            l = [rec['control_url'], str(rec.get('n_hosts'))]
+            t = nt(**rec)
+            l = [t.control_url, str(t.n_hosts), 
+                 str(t.min_ast_dist), str(t.max_ast_dist), 
+                 str(t.min_function_dist), str(t.max_function_dist), 
+                 str(t.min_literal_dist), str(t.max_literal_dist)]
             if want_set:
-                l.append(','.join(rec['hosts']))
+                l.append(','.join(t.hosts))
             print('\t'.join(l))
 
 def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=False):
