@@ -22,20 +22,28 @@ args = a.parse_args()
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
 db = mongo[args.dbname]
 
-def save_control(filename, control_url):
+def save_control(db, filename, control_url):
    script = db.javascript_control_code.find_one({ 'origin': control_url }) 
    if script is None:
        raise ValueError('Unable to fetch code for {}'.format(control_url))
    with open(filename, 'wb+') as fp:
        fp.write(script.get('code'))
 
-def save_script(filename, artefact_url):
-   script, url_id = find_script(db, artefact_url)
+def save_script(db, filename, artefact_url, js_id=None):
+   assert db is not None
+   assert isinstance(filename, str) and len(filename) > 0
+
+   script, url_id = find_script(db, artefact_url, debug=True)
    if script is None:
-       script = db.scripts.find_one({ '_id': ObjectId(result.get('origin_js_id')) })
+       print("Could not locate {} in database! Now try object id...".format(artefact_url))
+       script = db.scripts.find_one({ '_id': ObjectId(js_id) })
        if script is None:
-           raise ValueError("Unable to find {} in database!".format(artefact_url))
+           raise ValueError("Failed objectid lookup: {}!".format(js_id))
+       else:
+           print("Found {} in scripts collection".format(js_id))
        # else FALLTHRU...
+   else:
+       print("Found {} in scripts collection.".format(artefact_url))
    with open(filename, 'wb+') as fp:
        fp.write(script.get('code'))
    
@@ -53,9 +61,9 @@ with tempfile.TemporaryDirectory() as tdir:
 
    # 1. prepare the artefacts into a temporary directory
    control_fname = '{}/control.js'.format(tdir)
-   save_control(control_fname, control_url)
+   save_control(db, control_fname, control_url)
    artefact_fname = '{}/artefact.js'.format(tdir)
-   save_script(artefact_fname, args.url)
+   save_script(db, artefact_fname, args.url, js_id=result.get('origin_js_id'))
 
    # 2. beautify them (ie. reduce minimisation to ensure consistent representation for diff'ing etc.)
    bs1 = "{}/1.js".format(tdir)

@@ -50,17 +50,24 @@ def as_url_fields(url, prefix=''):
     d[prefix+'path'] = up.path
     return d
 
-def find_script(db, url, want_code=True):
+def find_script(db, url, want_code=True, debug=False):
+   # TODO FIXME BUG: which version of url do we want to find... poor atm!
    if db:
        # 1 lookup url
        url_id = db.urls.find_one({ 'url': url })
+       if debug:
+           print(url_id)
        if url_id:
             # 2. lookup script_url to find the script_id (TODO FIXME: control which spider'ed version is retrieved from the DB????)
-            want_code_settings = {} if want_code else { 'code': 0 }
-            ret = db.script_url.find_one({ 'url_id': url_id.get('_id') }, want_code_settings)
+            ret = db.script_url.find_one({ 'url_id': url_id.get('_id') })
+            if debug:
+                print(ret)
             if ret:
                # 3. ok, now we can get the script document to return the hash
-               return (db.scripts.find_one({ '_id': ret.get('script') }), url_id)
+               script_doc = db.scripts.find_one({ '_id': ret.get('script') }, { 'code': 1 if want_code else 0 }) 
+               if debug:
+                   print(script_doc)
+               return (script_doc, url_id)
    return (None, None)
  
 def find_sha256_hash(db, url):

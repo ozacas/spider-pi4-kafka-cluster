@@ -1,6 +1,9 @@
 #!/usr/bin/python3
 import pytest
+import mock
 from utils.features import *
+from bson.objectid import ObjectId
+from datetime import datetime
 from utils.models import JavascriptArtefact, JavascriptVectorSummary
 
 def test_safe_for_mongo():
@@ -112,3 +115,17 @@ def test_find_best_control(pytestconfig, all_controls):
        c, c_ast_sum, c_ast_vector = all_controls[0]
        assert best_control.control_url == c['origin']
        assert best_control.sha256_matched == False     # due to no db specified
+
+def test_find_script():
+   db = mock.Mock()
+   db.urls = mock.Mock()
+   db.script_url = mock.Mock()
+   db.scripts = mock.Mock()
+   u = 'https://claritycommunications.com.au/wp-content/plugins/woocommerce/assets/js/jquery-blockui/jquery.blockUI.min.js?ver=2.70' 
+   db.urls.find_one.return_value = {'_id': ObjectId('5e3c8f2b11c568eb4f2766de'), 'url': u, 'last_visited': datetime(2020, 2, 29, 5, 50, 25, 182000)}
+   db.script_url.find_one.return_value =  {'_id': ObjectId('5e3c8f2b744c6d2310443a55'), 'url_id': ObjectId('5e3c8f2b11c568eb4f2766de'), 'script': ObjectId('5e38ff5ebef5d2ec18b15038')}
+   db.scripts.find_one.return_value = ({ '_id': 'expected' }, { 'url_id': 'real' })
+
+   ret = find_script(db, u, debug=True, want_code=False)
+   assert ret == (db.scripts.find_one.return_value, db.urls.find_one.return_value)
+
