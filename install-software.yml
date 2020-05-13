@@ -1,12 +1,14 @@
 
 - name: run unit tests before pushing software
   hosts: localhost
+  gather_facts: no
   tasks: 
     - local_action: command tox
   any_errors_fatal: true
 
 - name: setup data directories for crawl data, geolocation and other data files
   hosts: thug_hosts x86_thug_hosts
+  gather_facts: no
   tasks:
      - file:
          path: /home/acas/data
