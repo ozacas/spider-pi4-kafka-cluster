@@ -7,7 +7,7 @@ from utils.misc import add_mongo_arguments, add_extractor_arguments, add_debug_a
 from utils.io import save_control
 
 a = argparse.ArgumentParser(description="Insert control artefact features into MongoDB using artefacts from CDN providers")
-add_mongo_arguments(a, default_access="read-write")
+add_mongo_arguments(a, default_access="read-write", default_user='rw')
 a.add_argument("--family", help="Name of WordPress plugin eg. contact-form-7", type=str, required=True)
 a.add_argument("--local", help="Local checked-out SVN plugin copy for scanning for JS artefacts", type=str, required=True)
 a.add_argument("--variant", help="Only update artefacts with the specified string in their name eg. min.js", type=str, default=None)

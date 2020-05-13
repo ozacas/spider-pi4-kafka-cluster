@@ -50,7 +50,7 @@ def add_extractor_arguments(args, default_extractor="/home/acas/src/extract-feat
                       type=str, 
                       default=default_extractor)
 
-def add_mongo_arguments(args, default_host='pi1', default_port=27017, default_db='au_js', default_access='read-only'):
+def add_mongo_arguments(args, default_host='pi1', default_port=27017, default_db='au_js', default_access='read-only', default_user=None):
    args.add_argument("--db", 
                      help="Mongo host/ip to save to [{}]".format(default_host), 
                      type=str, default=default_host)
@@ -60,10 +60,14 @@ def add_mongo_arguments(args, default_host='pi1', default_port=27017, default_db
    args.add_argument("--dbname", 
                      help="Name on mongo DB to access [{}]".format(default_db), 
                      type=str, default=default_db)
-   args.add_argument("--dbuser", 
-                     help="MongoDB RBAC username to use ({} access required)".format(default_access), 
-                     type=str, 
-                     required=True)
+   dict_args = { 'help': "MongoDB RBAC username to use ({} access required) [{}]".format(default_access, default_user),
+                 'type': str,
+                 'required': True 
+               }
+   if default_user is not None:
+       dict_args.pop('required', None)
+       dict_args.update({ 'default': default_user })
+   args.add_argument("--dbuser", **dict_args)
    args.add_argument("--dbpassword", 
                      help="MongoDB password for user (prompted if not supplied)", type=Password, default=Password.DEFAULT)
 

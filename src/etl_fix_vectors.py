@@ -9,7 +9,7 @@ from utils.misc import *
 
 a = argparse.ArgumentParser(description="Temporary script to fix up incorrect layout of two mongo collections")
 add_kafka_arguments(a, consumer=True)
-add_mongo_arguments(a, default_access="read-write")
+add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_debug_arguments(a)
 args = a.parse_args()
 

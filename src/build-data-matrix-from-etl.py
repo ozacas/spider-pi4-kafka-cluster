@@ -158,6 +158,10 @@ def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, m
              print('\t'.join(l))
 
 def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
+    control2bytes = { k.get('origin'): k.get('size_bytes') for k in 
+                         db.javascript_controls.find({}, 
+                                                     { 'statements_by_count': 0, 'calls_by_count': 0, 'literals_by_count': 0 })}
+
     result = db.etl_hits.aggregate([ 
                  { "$match": { "$or": [ { "ast_dist": { "$lt": threshold } }, { "function_dist": { "$lt": threshold } } ] } },
                  { "$group": { 
@@ -189,15 +193,15 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
     if pretty:
         dump_pretty(result.find())
     else:
-        headers = ['control_url', 'n_sites', 'min_ast_dist', 'max_ast_dist', 'min_function_dist', 'max_function_dist', 'min_literal_dist', 'max_literal_dist']
+        headers = ['control_url', 'control_bytes', 'n_sites', 'min_ast_dist', 'max_ast_dist', 'min_function_dist', 'max_function_dist', 'min_literal_dist', 'max_literal_dist']
         if want_set:
             headers.append('site_set')
         print('\t'.join(headers))
         nt = namedtuple('Record', 'control_url n_hosts min_ast_dist max_ast_dist min_function_dist max_function_dist min_literal_dist max_literal_dist hosts')
         for rec in result:
             t = nt(**rec)
-            l = [t.control_url, str(t.n_hosts), 
-                 str(t.min_ast_dist), str(t.max_ast_dist), 
+            l = [t.control_url, str(control2bytes.get(t.control_url)), 
+                 str(t.n_hosts), str(t.min_ast_dist), str(t.max_ast_dist), 
                  str(t.min_function_dist), str(t.max_function_dist), 
                  str(t.min_literal_dist), str(t.max_literal_dist)]
             if want_set:
@@ -251,7 +255,7 @@ def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=Fals
                 l.append(' '.join(page_counts[host]))
             print('\t'.join(l))
 
-def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None): # origin must be specified or ValueError
+def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None, max_dist_prod=100.0): # origin must be specified or ValueError
    cntrl = db.javascript_controls.find_one({ 'origin': control_url })
    if cntrl is None:
        raise ValueError('No control matching: {}'.format(control_url))
@@ -265,6 +269,8 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None): # ori
                           "max_ast": { "$max": "$ast_dist" },
                           "min_function_dist": { "$min": "$function_dist" },
                           "max_function_dist": { "$max": "$function_dist" },
+                          "min_literal_dist":  { "$min": "$literal_dist" },
+                          "max_literal_dist":  { "$max": "$literal_dist" },
                     }},
                     { "$project": {
                           "_id": 0,
@@ -274,18 +280,25 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None): # ori
                           "max_ast": "$max_ast",
                           "min_fdist": "$min_function_dist",
                           "max_fdist": "$max_function_dist",
+                          "min_ldist": "$min_literal_dist",
+                          "max_ldist": "$max_literal_dist",
                           "changed_functions": 1
                     }},
                     { "$sort": { "min_ast": 1, "min_fdist": 1 } }
           ])
-   headers = ['control_url', 'origin_url', 'changed_functions', 'min_ast_dist', 'min_function_dist']
+   headers = ['control_url', 'origin_url', 'changed_functions', 'min_ast_dist', 'min_function_dist', 'min_ldist']
    print('\t'.join(headers))
    for hit in hits:
+       if hit.get('min_ast') * hit.get('min_fdist') > max_dist_prod: # usually bad hits have this characteristic. May lose skimmers, but hopefully not
+           continue
+
        data = [ hit.get('control_url'), 
                 hit.get('origin_url'), 
                 ','.join(sorted(hit.get('changed_functions'))), 
                 str(hit.get('min_ast')), 
-                str(hit.get('min_fdist'))]
+                str(hit.get('min_fdist')),
+                str(hit.get('min_ldist')),
+               ]
        print('\t'.join(data)) 
 
 def list_controls(db, pretty=False):
@@ -307,7 +320,7 @@ def list_controls(db, pretty=False):
       print('\t'.join(l))
 
 a = argparse.ArgumentParser(description="Process results for a given query onto stdout for ingestion in data analysis pipeline")
-add_mongo_arguments(a)
+add_mongo_arguments(a, default_user='ro') # running queries is basically always read-only role
 add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
 a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities', 'list_controls', 'control_hits'])

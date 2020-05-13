@@ -9,7 +9,7 @@ from utils.cdn import CDNJS, JSDelivr
 from utils.io import save_control
 
 a = argparse.ArgumentParser(description="Insert control artefact features into MongoDB using artefacts from CDN providers")
-add_mongo_arguments(a, default_access="read-write")
+add_mongo_arguments(a, default_access="read-write", default_user='rw')
 a.add_argument("--family", help="Name of JS family eg. jquery (ignored iff --update)", type=str)
 a.add_argument("--release", help="Name of release eg. 1.10.3a", type=str, default=None)
 a.add_argument("--variant", help="Only save artefacts which match variant designation eg. minimised [None]", type=str, default=None)

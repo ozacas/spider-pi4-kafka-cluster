@@ -20,7 +20,7 @@ add_kafka_arguments(a,
                     default_from='analysis-results',
                     default_group='vet-features', 
                     default_to="javascript-artefact-control-results")
-add_mongo_arguments(a, default_access="read-write")
+add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
 add_debug_arguments(a)
 a.add_argument("--file", help="Debug specified file and exit []", type=str, default=None)

@@ -10,7 +10,7 @@ from utils.io import *
 from utils.misc import *
 
 a = argparse.ArgumentParser(description="Due to a bug in find_best_control() some sha256 hash matches were incorrect. Recalculate them to fix it.")
-add_mongo_arguments(a, default_access="read-write")
+add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_debug_arguments(a)
 a.add_argument("--n", help="Process no more than N records [Inf]", type=float, default=float('Inf'))
 args = a.parse_args()

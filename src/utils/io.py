@@ -99,6 +99,10 @@ def save_control(db, url, family, version, variant, force=False, refuse_hashes=N
    jsr = JavascriptArtefact(when=str(datetime.utcnow()), sha256=hashlib.sha256(content).hexdigest(),
                              md5 = hashlib.md5(content).hexdigest(), url=url,
                              inline=False, content_type='text/javascript', size_bytes=len(content))
+   if jsr.size_bytes < 1000:
+       print("Refusing artefact as too small to enable meaningful vector comparison: {}".format(jsr))
+       return jsr
+
    if not force and jsr.sha256 in refuse_hashes:
        print("Refusing to update existing control as dupe: {}".format(jsr))
        return jsr

@@ -12,3 +12,4 @@ def test_as_priority():
    up = urlparse('https://www.google.com')
    t2 = as_priority('https://www.google.com', up)
    assert t2 is not None and t2 == pri
+
