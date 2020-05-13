@@ -87,14 +87,19 @@ def get_script(db, artefact):
    return (js.get(u'code'), str(js.get('_id'))) if js else (None, None)
 
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
-   # save code to a file
-   tmpfile = NamedTemporaryFile(delete=False)
-   tmpfile.write(js)
-   tmpfile.close()
+   if isinstance(js, bytes):
+       # save code to a file
+       tmpfile = NamedTemporaryFile(delete=False)
+       tmpfile.write(js)
+       tmpfile.close()
+       fname = tmpfile.name
+   else:
+       fname = js
+       tmpfile = None
 
    url = jsr.url
    # save to file and run extract-features.jar to identify the javascript features
-   process = subprocess.run([java, "-jar", feature_extractor, tmpfile.name, url], capture_output=True)
+   process = subprocess.run([java, "-jar", feature_extractor, fname, url], capture_output=True)
    
    # turn process stdout into something we can save
    ret = None
@@ -113,7 +118,8 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
        # FALLTHRU
 
    # cleanup
-   os.unlink(tmpfile.name)
+   if tmpfile is not None:
+       os.unlink(tmpfile.name)
 
    return (ret, process.returncode != 0, process.stderr)  # JSON (iff successful else None), failed (boolean), stderr capture
 
