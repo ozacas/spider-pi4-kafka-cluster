@@ -88,6 +88,9 @@ for best_control in iterate(consumer, args.n, args.v, args.threshold):
         # FALLTHRU
 
     u = best_control.control_url
+    if not u in controls:
+        continue   # control no longer in database? ok, skip further work
+
     fv_control = controls[u].get('calls_by_count')
     d.update(origin_fields)
 
