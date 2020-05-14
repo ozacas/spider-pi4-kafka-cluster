@@ -24,6 +24,7 @@ add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
 add_debug_arguments(a)
 a.add_argument("--file", help="Debug specified file and exit []", type=str, default=None)
+a.add_argument("--min-size", help="Skip all controls less than X bytes [1500]", type=int, default=1500)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
@@ -45,13 +46,13 @@ def cleanup(*args):
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
 all_controls = []
-for control in db.javascript_controls.find({}, { 'literals_by_count': False }): # dont load literal vector to save considerable memory
+for control in db.javascript_controls.find({ "size_bytes": { "$gte": args.min_size } }, { 'literals_by_count': False }): # dont load literal vector to save considerable memory
     ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
     tuple = (control, ast_sum, ast_vector)
 #    print(tuple)
     all_controls.append(tuple)
 
-print("Loaded {} AST control vectors from MongoDB".format(len(all_controls)))
+print("Loaded {} AST control vectors from MongoDB, each at least {} bytes".format(len(all_controls), args.min_size))
 
 if args.v:
    print("Reporting unique families with JS controls (please wait this may take some time):")
