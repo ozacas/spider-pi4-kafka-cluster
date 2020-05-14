@@ -20,7 +20,7 @@ add_kafka_arguments(a,
                     default_from='visited',
                     default_group='javascript-analysis',
                     default_to='analysis-results')
-add_mongo_arguments(a, default_access="read-write")
+add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
 add_debug_arguments(a)
 a.add_argument("--cache", help="Cache feature vectors to not re-calculate frequently seen JS (int specifies max cache entries, 0 disabled) [0]", type=int, default=0)
