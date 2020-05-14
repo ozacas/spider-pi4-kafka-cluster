@@ -88,7 +88,7 @@ save_pidfile('pid.eval.controls')
 for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
     best_control, next_best_control = find_best_control(m, all_controls, db=db)
 
-    if args.v:
+    if args.v and len(best_control.control_url) > 0:  # only report hits in verbose mode, to make for easier investigation
         print(best_control)
 
     d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
