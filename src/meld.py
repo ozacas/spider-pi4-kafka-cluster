@@ -13,7 +13,7 @@ from utils.models import JavascriptArtefact
 from datetime import datetime
 
 a = argparse.ArgumentParser(description="Run meld on the chosen URL as its best control, after JS beatification (optional)")
-add_mongo_arguments(a)
+add_mongo_arguments(a, default_access='read-only', default_user='ro')
 add_debug_arguments(a)
 a.add_argument("--url", help="URL of Javascript to investigate (code fetched from DB, not internet)", type=str, required=True)
 a.add_argument("--diff", help="Diff program to run [/usr/bin/meld]", type=str, default="/usr/bin/meld")
