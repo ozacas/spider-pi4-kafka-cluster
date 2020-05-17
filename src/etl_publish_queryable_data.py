@@ -18,7 +18,7 @@ add_kafka_arguments(a,
                     default_from='javascript-artefact-control-results',
                     default_group='etl-hits',
                     default_to='etl-good-hits')
-add_mongo_arguments(a, default_access="read-write")
+add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
 add_debug_arguments(a)
 a.add_argument("--threshold", help="Ignore hits with ast_distance greater than this [50.0]", type=float, default=50.0)
