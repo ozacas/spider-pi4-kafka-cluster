@@ -5,7 +5,7 @@ import json
 import argparse
 import sys
 import hashlib
-from utils.features import analyse_script, calculate_ast_vector, calculate_vector
+from utils.features import analyse_script, calculate_ast_vector, calculate_vector, compute_distance, calc_function_dist
 from utils.models import JavascriptArtefact
 from scipy import spatial
 
@@ -40,6 +40,7 @@ euclidean_dist = math.dist(nv1, nv2)
 cosine_dist = spatial.distance.cosine(nv1, nv2)
 print("Euclidean distance for AST vector: "+str(euclidean_dist))
 print("Cosine distance for AST vector: "+str(cosine_dist))
+print("Computed distance is: "+str(compute_distance(nv1, nv2)))
 fn1 = set(ret1["calls_by_count"].keys())
 fn2 = set(ret2["calls_by_count"].keys())
 all_fns = fn1.union(fn2)
@@ -50,4 +51,13 @@ if args.v:
     print("Function Vector 2"+str(nv2))
 print("Euclidean distance for Function Call vector: "+str(math.dist(nv1, nv2)))
 print("Cosine distance for Function Call vector: "+str(spatial.distance.cosine(nv1, nv2)))
+print("Computed distance for function call vector: "+str(calc_function_dist(ret1['calls_by_count'], ret2['calls_by_count'])))
+all_literals = set(ret1['literals_by_count']).union(set(ret2['literals_by_count']))
+nv1, sum5 = calculate_vector(ret1['literals_by_count'], feature_names=all_literals)
+nv2, sum6 = calculate_vector(ret2['literals_by_count'], feature_names=all_literals)
+if args.v:
+     print("Literal vector 1"+str(nv1))
+     print("Literal vector 2"+str(nv2))
+print("Euclidean distance for literal vector: "+str(compute_distance(nv1, nv2)))
+
 exit(0)

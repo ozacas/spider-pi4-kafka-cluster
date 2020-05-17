@@ -28,13 +28,21 @@ def test_compute_function_dist():
    a = { "foo": 3, "bar": 7, "baz": 1 }
    b = { "crud": 20, "foo": 3, "bar": 7 }
    dist, diff_functions = calc_function_dist(a, b)
-   assert dist >= 10.01 and dist <= 10.02 
+   assert dist == pytest.approx(dist, 20.025)
    assert sorted(diff_functions) == ['baz', 'crud']
    a = { "tmp": 1 }
    b = { "tmp": 2 }
    dist, diff_functions = calc_function_dist(a, b)
    assert dist > 0.0
    assert diff_functions == ['tmp']
+   
+def test_compute_function_dist_2():
+   # real world example
+   a = { k: v for k,v in zip([i for i in 'abcdefghijklmnop'], [0, 1, 0, 0, 1, 1, 1, 2, 0, 1, 0, 0, 0, 1, 4]) }
+   b = { k: v for k,v in zip([i for i in 'abcdefghijklmnop'], [1, 0, 1, 1, 1, 0, 0, 2, 1, 0, 1, 2, 3, 0, 4]) }
+   dist, diff_functions = calc_function_dist(a, b)
+   assert dist == pytest.approx(19.18332)
+   assert set(diff_functions) == set(['n', 'd', 'j', 'c', 'm', 'l', 'i', 'b', 'k', 'g', 'f', 'a'])
 
 def test_compute_ast_vector():
    d = { "ArrayLiteral": 10, "Assignment": 7, "AstRoot": 1 }

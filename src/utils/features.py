@@ -188,7 +188,7 @@ def calc_function_dist(origin_calls, control_calls):
            diff_functions.append(key)
        else:
            common += 1 
-   commonality_factor = 1 / common if common > 0 else 10 
+   commonality_factor = (1 / common) * (len(vec1)-common) if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
 def calculate_literal_distance(db, hit: BestControl, origin_literals):
