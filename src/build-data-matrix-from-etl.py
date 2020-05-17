@@ -289,7 +289,7 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None, max_di
    headers = ['control_url', 'origin_url', 'changed_functions', 'min_ast_dist', 'min_function_dist', 'min_ldist']
    print('\t'.join(headers))
    for hit in hits:
-       if hit.get('min_ast') * hit.get('min_fdist') > max_dist_prod: # usually bad hits have this characteristic. May lose skimmers, but hopefully not
+       if hit.get('min_ast') * hit.get('min_fdist') * hit.get('min_ldist') > max_dist_prod: # usually bad hits have this characteristic
            continue
 
        data = [ hit.get('control_url'), 
