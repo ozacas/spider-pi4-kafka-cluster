@@ -44,6 +44,18 @@ def test_compute_function_dist_2():
    assert dist == pytest.approx(19.18332)
    assert set(diff_functions) == set(['n', 'd', 'j', 'c', 'm', 'l', 'i', 'b', 'k', 'g', 'f', 'a'])
 
+def test_calculate_literal_dist():
+   hit = mock.Mock()
+   hit.control_url = 'http://XXX' 
+   db = mock.Mock()
+   db.javascript_controls.find_one.return_value = { 'literals_by_count': { 'a': 1, 'b': 2 } }
+   ret = calculate_literal_distance(db, hit, { 'a': 2, 'b': 2 })
+   assert isinstance(ret, tuple)
+   assert ret[0] == pytest.approx(10.0)
+   assert ret[1] == 0
+   assert ret[2] == 0
+   assert ret[3] == ['a']
+
 def test_compute_ast_vector():
    d = { "ArrayLiteral": 10, "Assignment": 7, "AstRoot": 1 }
    tuple = calculate_ast_vector(d) 

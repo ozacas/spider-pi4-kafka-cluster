@@ -105,9 +105,29 @@ class BestControl:
     cited_on: Optional[str] = None    # include HTML page which cited this origin_url (useful for ETL)
     origin_js_id: Optional[str] = None# objectid referring into db.script collection (only recent records have this set)
     literal_dist: float = -1.0 # if negative, denotes not computed. Otherwise represents similarity score between control and origin (includes union of all control and origin literals)
+    xref: str = None        # ObjectId into db.vet_against_control collection for this hit
+    literals_not_in_control: int = -1 # literals present in origin but not in control (computed by find_best_control())
+    literals_not_in_origin: int = -1  # literals present in control but not found also in origin (ditto)
+    n_diff_literals: int = -1         # literals which are present in both, but not found the same number of times
 
     def dist_prod(self):
-        return self.ast_dist * self.function_dist
+       return self.ast_dist * self.function_dist
+
+    def diff_functions_as_list(self):
+       if len(self.diff_functions) < 1:
+           return []
+       return self.diff_functions.split(' ')
+
+    def is_good_hit(self):
+       n_diff = self.diff_functions.count(' ') 
+       dist = self.ast_dist
+       if (dist < 10.0 or (dist < 20.0 and n_diff < 10)) and (dist > 0.0 and self.function_dist > 0.0):
+           return True
+       # in case the literal distance cannot be computed, say False. Should not happen anymore.
+       if self.literal_dist < 0.0:
+           return False
+       # NB: experience suggests that reasonable hits will have 3 dists < 100.0 (TODO FIXME: does this include all skimmers???)      
+       return self.dist_prod() * self.literal_dist < 100.0
 
     def is_better(self, other):
         other_prod = other.dist_prod()

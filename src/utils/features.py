@@ -193,7 +193,7 @@ def calc_function_dist(origin_calls, control_calls):
 
 def calculate_literal_distance(db, hit: BestControl, origin_literals):
    if db is None:
-       return -1.0 # indicate that calculation is not available
+       return (-1.0, 0, 0, []) # indicate that calculation is not available
 
    # vector length is len of union of literals encountered in either vector. Count will differentiate.
    control_literals_doc = db.javascript_controls.find_one({ 'origin': hit.control_url })
@@ -211,7 +211,17 @@ def calculate_literal_distance(db, hit: BestControl, origin_literals):
    assert len(v1) == len(v2)
    assert control_sum >= 0
    assert origin_sum >= 0
-   return compute_distance(v1, v2, short_vector_penalty=True)
+   
+   literals_not_in_origin = set(control_literals.keys()).difference(origin_literals.keys())
+   literals_not_in_control = set(origin_literals.keys()).difference(control_literals.keys())
+   diff_literals = [lit for lit in features if control_literals.get(lit, 0) != origin_literals.get(lit, 0)]
+   t = (
+         compute_distance(v1, v2, short_vector_penalty=True),
+         len(literals_not_in_origin),
+         len(literals_not_in_control),
+         diff_literals
+       )
+   return t
 
 def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
    if desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
@@ -286,9 +296,16 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    if 'literals_by_count' in input_features:
        lv_origin = input_features.get('literals_by_count')
        if best_control.dist_prod() < 50.0:
-           best_control.literal_dist = calculate_literal_distance(db, best_control, lv_origin)
+           bc = best_control
+           t = calculate_literal_distance(db, bc, lv_origin)
+           assert isinstance(t, tuple)
+           bc.literal_dist, bc.literals_not_in_origin, bc.literals_not_in_control, diff_literals = t
+           bc.n_diff_literals = len(diff_literals)
        if second_best_control is not None and second_best_control.dist_prod() < 50.0:
-           second_best_control.literal_dist = calculate_literal_distance(db, second_best_control, lv_origin)
+           sbc = second_best_control
+           t = calculate_literal_distance(db, sbc, lv_origin)
+           sbc.literal_dist, sbc.literals_not_in_origin, sbc.literals_not_in_control, diff_literals = t
+           sbc.n_diff_literals = len(diff_literals)
    else:
        print("WARNING: literal vector not available in input features")
    return (best_control, second_best_control)

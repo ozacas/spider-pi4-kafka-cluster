@@ -18,7 +18,7 @@ add_kafka_arguments(a,
                     consumer=True,
                     producer=True, # and save to a topic
                     default_from='analysis-results',
-                    default_group='vet-features', 
+                    default_group='etl-eval-js-against-controls', 
                     default_to="javascript-artefact-control-results")
 add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
@@ -85,21 +85,34 @@ setup_signals(cleanup)
 
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 save_pidfile('pid.eval.controls')
+print("Creating origin_url index in vet_against_control collection... please wait")
+db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING )], unique=True)
+print("Index creation complete.")
 for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
     best_control, next_best_control = find_best_control(m, all_controls, db=db)
 
-    if args.v and len(best_control.control_url) > 0:  # only report hits in verbose mode, to make for easier investigation
-        print(best_control)
-
     d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
 
-    # 2a. send results to kafka topic for streaming applications
-    producer.send(args.to, d) 
-
-    # 2b. also send results to MongoDB for batch-oriented applications and for long-term storage
+    # 2a. also send results to MongoDB for batch-oriented applications and for long-term storage
     assert 'origin_url' in d and len(d['origin_url']) > 0
     assert isinstance(d['origin_js_id'], str) or d['origin_js_id'] is None
-    db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, { "$set": d}, upsert=True)
+    ret = db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, 
+                                                     { "$set": d}, 
+                                                     upsert=True, 
+                                                     return_document=pymongo.ReturnDocument.AFTER)
+
+    # 2b. send results to kafka topic for streaming applications
+    assert ret is not None and '_id' in ret
+    xref = str(ret.get('_id'))
+    assert xref is not None
+    d['xref'] = xref
+    best_control.xref = xref
+    if next_best_control:
+        next_best_control.xref = xref
+    producer.send(args.to, d) 
+
+    if args.v and len(best_control.control_url) > 0:  # only report hits in verbose mode, to make for easier investigation
+        print(best_control)
 
     # 3. finally if the next_best_control looks just as good (or better than) the best control then we ALSO report it...
     if next_best_control is None:
@@ -112,6 +125,7 @@ for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
         print(next_best_control) 
         print(best_control)
         d = asdict(next_best_control)
+        d['xref'] = xref
         producer.send(args.to, d)
 
 cleanup()
