@@ -36,7 +36,7 @@ def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
         yield message.value
         n += 1
         if verbose and n % 10000 == 0:
-            print("Processed {} records.".format(n))
+            print("Processed {} records. {}".format(n, str(datetime.utcnow())))
         if n >= max:
             break
 
