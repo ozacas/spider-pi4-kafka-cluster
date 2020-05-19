@@ -127,7 +127,7 @@ def save_control(db, url, family, version, variant, force=False, refuse_hashes=N
    db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
    return jsr
 
-def load_controls(db, min_size=1500, literals_by_count=False):
+def load_controls(db, min_size=1500, literals_by_count=False, verbose=False):
    all_controls = []
    for control in db.javascript_controls.find(
                       { "size_bytes": { "$gte": min_size } }, 
@@ -136,4 +136,6 @@ def load_controls(db, min_size=1500, literals_by_count=False):
        tuple = (control, ast_sum, ast_vector)
 #      print(tuple)
        all_controls.append(tuple)
+   if verbose:
+       print("Loaded {} controls, each at least {} bytes".format(len(all_controls), min_size))
    return all_controls
