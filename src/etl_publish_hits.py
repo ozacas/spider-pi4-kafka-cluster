@@ -67,13 +67,16 @@ def iterate(consumer, max, verbose, threshold):
  
 setup_signals(cleanup)
 origins = { }
-n_unable = n_ok = 0
+n_unable = n_ok = n_bad = 0
 save_pidfile('pid.etl.hits')
 controls = load_controls(db, args.v)
 for hit in iterate(consumer, args.n, args.v, args.threshold):
     dist = hit.ast_dist
     assert dist >= 0.0
-    assert hit.xref is not None and len(hit.xref) > 0
+    # ignore old-style hits which are missing key values (only a few left)
+    if hit.xref is None or len(hit.xref) == 0: 
+       n_bad += 1
+       continue
 
     origin_fields = as_url_fields(hit.origin_url, prefix='origin')
     host = origin_fields.get('origin_host')
@@ -106,6 +109,9 @@ for hit in iterate(consumer, args.n, args.v, args.threshold):
         dc = d.copy()
         dc.pop('_id', None)
         dc['diff_functions'] = hit.diff_functions_as_list()
+        if dc['cited_on_host'] is None:   # some buggy records - rare
+            print("Bad data - skipping... {}".format(dc)) 
+            continue
         producer.send('etl-good-hits', dc)
 
         # finally report each differentially called function as a separate record 
@@ -121,4 +127,5 @@ for hit in iterate(consumer, args.n, args.v, args.threshold):
 if args.v:
     print("Unable to retrieve FV for {} URLs".format(n_unable))
     print("Found {} FV's without problem".format(n_ok))
+    print("{} records had missing fields which were ignored.".format(n_bad))
 cleanup()
