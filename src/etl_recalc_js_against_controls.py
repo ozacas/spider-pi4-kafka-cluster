@@ -44,8 +44,21 @@ save_pidfile('pid.recalc.controls')
 n_failed = n = 0
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 
+# 1. TODO FIXME: this isnt quite right, since if the best control changes as a result of recalc - this will no longer delete as args.control will have changed
+print("Removing existing ETL hits for {}".format(args.control))
+db.etl_hits.delete_many({ 'control_url': args.control })
+
+print("Now recalculating ETL hits for {}".format(args.control))
 for hit in db.vet_against_control.find({ "control_url": args.control }):
-    ret = db.scripts.find_one({ '_id': ObjectId(hit.get('origin_js_id')) })
+    if hit.get('cited_on') is None:
+        print("Bad data - skipping... {}".format(hit))
+        continue
+
+    js_id = ObjectId(hit.get('origin_js_id'))
+    ret = db.scripts.find_one({ '_id': js_id })
+    if ret is None:  # should not happen... but if it does...
+        print("Unable to locate {} is db.scripts... skipping".format(js_id))
+        continue
     content = ret.get('code') 
     jsr = JavascriptArtefact(url=hit.get('origin_url'), sha256=hashlib.sha256(content).hexdigest(), md5=hashlib.md5(content).hexdigest(), inline=False)
     m, failed, stderr = analyse_script(content, jsr, java=args.java, feature_extractor=args.extractor)
@@ -53,10 +66,13 @@ for hit in db.vet_against_control.find({ "control_url": args.control }):
        n_failed += 1
        continue
     n += 1
+    m.update({ 'origin': hit.get('cited_on') })
     best_control, next_best_control = find_best_control(m, all_controls, db=db)
     d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
 
     # 2a. also send results to MongoDB for batch-oriented applications and for long-term storage
+    # POST-CONDITIONS which MUST be maintained are checked before pushing to topic
+    assert 'cited_on' in d and len(d['cited_on']) > 0
     assert 'origin_url' in d and len(d['origin_url']) > 0
     assert isinstance(d['origin_js_id'], str) or d['origin_js_id'] is None
     ret = db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, 
