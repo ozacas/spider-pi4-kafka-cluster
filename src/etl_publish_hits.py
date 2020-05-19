@@ -5,7 +5,7 @@ import json
 import argparse
 import pymongo
 from kafka import KafkaConsumer, KafkaProducer
-from utils.io import get_function_call_vector, next_artefact
+from utils.io import get_function_call_vector, next_artefact, load_controls
 from utils.models import BestControl, Password
 from utils.misc import *
 from utils.features import as_url_fields
@@ -46,16 +46,6 @@ def cleanup(*args):
     rm_pidfile('pid.etl.hits')
     sys.exit(0)
 
-def load_controls(db, verbose):
-    controls = {}
-    for control in db.javascript_controls.find({}, { 'literals_by_count': False }):
-        #print(control)
-        url = control.get('origin')
-        controls[url] = control
-    if args.v:
-        print("Loaded {} controls.".format(len(controls)))
-    return controls
-
 def iterate(consumer, max, verbose, threshold):
    for r in next_artefact(consumer, max, lambda v: v['ast_dist'] <= threshold, verbose=verbose):
        try:
@@ -69,7 +59,14 @@ setup_signals(cleanup)
 origins = { }
 n_unable = n_ok = n_bad = 0
 save_pidfile('pid.etl.hits')
-controls = load_controls(db, args.v)
+all_controls = {}
+for t in load_controls(db, literals_by_count=False, verbose=args.v):
+    assert isinstance(t, tuple)
+    assert len(t) == 3
+    assert isinstance(t[0], dict)
+    assert 'origin' in t[0]
+    all_controls[t[0].get('origin')] = t[0]
+
 for hit in iterate(consumer, args.n, args.v, args.threshold):
     dist = hit.ast_dist
     assert dist >= 0.0
@@ -94,15 +91,16 @@ for hit in iterate(consumer, args.n, args.v, args.threshold):
         # FALLTHRU
 
     u = hit.control_url
-    if not u in controls:
+    if not u in all_controls:
+        print("Could not find {} in all controls".format(u))
         continue   # control no longer in database? ok, skip further work
 
-    fv_control = controls[u].get('calls_by_count')
+    fv_control = all_controls[u].get('calls_by_count')
     d.update(origin_fields)
 
     # cited_on URL (aka. HTML page) iff specified
     d.update(as_url_fields(hit.cited_on, prefix='cited_on'))
-    d['control_family'] = controls[u].get('family')
+    d['control_family'] = all_controls[u].get('family')
 
     # good hits get sent to the suspicious analysis pipeline
     if hit.is_good_hit():
