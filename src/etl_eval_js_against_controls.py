@@ -9,7 +9,7 @@ import pylru
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control, analyse_script, calculate_ast_vector
 from utils.models import JavascriptArtefact, JavascriptVectorSummary
-from utils.io import next_artefact
+from utils.io import next_artefact, load_controls
 from utils.misc import *
 from dataclasses import asdict
 
@@ -45,13 +45,7 @@ def cleanup(*args):
 
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
-all_controls = []
-for control in db.javascript_controls.find({ "size_bytes": { "$gte": args.min_size } }, { 'literals_by_count': False }): # dont load literal vector to save considerable memory
-    ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
-    tuple = (control, ast_sum, ast_vector)
-#    print(tuple)
-    all_controls.append(tuple)
-
+all_controls = load_controls(db, min_size=args.min_size, literals_by_count=False)
 print("Loaded {} AST control vectors from MongoDB, each at least {} bytes".format(len(all_controls), args.min_size))
 
 if args.v:
@@ -92,6 +86,7 @@ for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
     best_control, next_best_control = find_best_control(m, all_controls, db=db)
 
     d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
+    assert 'cited_on' in d.keys() and len(d['cited_on']) > 0
 
     # 2a. also send results to MongoDB for batch-oriented applications and for long-term storage
     assert 'origin_url' in d and len(d['origin_url']) > 0

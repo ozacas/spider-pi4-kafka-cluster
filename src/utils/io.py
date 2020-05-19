@@ -126,3 +126,14 @@ def save_control(db, url, family, version, variant, force=False, refuse_hashes=N
                                  sum_of_functions=sum_of_function_calls, sum_of_literals=sum_of_literals, last_updated=jsr.when)
    db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
    return jsr
+
+def load_controls(db, min_size=1500, literals_by_count=False):
+   all_controls = []
+   for control in db.javascript_controls.find(
+                      { "size_bytes": { "$gte": min_size } }, 
+                      { 'literals_by_count': literals_by_count }):             # dont load literal vector to save considerable memory
+       ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
+       tuple = (control, ast_sum, ast_vector)
+#      print(tuple)
+       all_controls.append(tuple)
+   return all_controls
