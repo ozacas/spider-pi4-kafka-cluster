@@ -20,6 +20,7 @@ add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_debug_arguments(a)
 add_extractor_arguments(a)
 a.add_argument('--control', help='Update all hits for specified control URL [None]', type=str, required=True)
+a.add_argument('--delete-existing', help='Remove existing ETL hits before all else', action='store_true', default=False)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
@@ -45,10 +46,13 @@ n_failed = n = n_sent = 0
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 
 # 1. TODO FIXME: this isnt quite right, since if the best control changes as a result of recalc - this will no longer delete as args.control will have changed
-print("Removing existing ETL hits for {}".format(args.control))
-result = db.etl_hits.delete_many({ 'control_url': args.control })
-print("Now recalculating ETL hits for {}".format(args.control))
+if args.delete_existing:
+    print("Removing existing ETL hits for {}".format(args.control))
+    result = db.etl_hits.delete_many({ 'control_url': args.control })
+print("Recalculating ETL hits for {}".format(args.control))
 for hit in db.vet_against_control.find({ "control_url": args.control }):
+    n += 1
+
     if hit.get('cited_on') is None:
         print("Bad data - skipping... {}".format(hit))
         continue
@@ -64,13 +68,16 @@ for hit in db.vet_against_control.find({ "control_url": args.control }):
         print("Unable to locate {} is db.scripts... skipping".format(js_id))
         continue
     content = ret.get('code') 
-    jsr = JavascriptArtefact(url=hit.get('origin_url'), sha256=hashlib.sha256(content).hexdigest(), md5=hashlib.md5(content).hexdigest(), inline=False)
+    jsr = JavascriptArtefact(url=hit.get('origin_url'), 
+                             sha256=hashlib.sha256(content).hexdigest(), 
+                             md5=hashlib.md5(content).hexdigest(), 
+                             inline=False)
     m, failed, stderr = analyse_script(content, jsr, java=args.java, feature_extractor=args.extractor)
     if failed:
        n_failed += 1
        continue
-    n += 1
-    m.update({ 'origin': hit.get('cited_on') })
+    m.update({ 'origin': hit.get('cited_on'), 'js_id': js_id })
+    assert 'js_id' in m and len(m['js_id']) > 0  # PRE-CONDITION: ensure hits have origin_js_id field set
     best_control, next_best_control = find_best_control(m, all_controls, db=db)
     d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
 
