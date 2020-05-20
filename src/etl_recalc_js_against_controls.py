@@ -41,21 +41,25 @@ def cleanup(*args):
 
 all_controls = load_controls(db)
 save_pidfile('pid.recalc.controls')
-n_failed = n = 0
+n_failed = n = n_sent = 0
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 
 # 1. TODO FIXME: this isnt quite right, since if the best control changes as a result of recalc - this will no longer delete as args.control will have changed
 print("Removing existing ETL hits for {}".format(args.control))
-db.etl_hits.delete_many({ 'control_url': args.control })
-
+result = db.etl_hits.delete_many({ 'control_url': args.control })
 print("Now recalculating ETL hits for {}".format(args.control))
 for hit in db.vet_against_control.find({ "control_url": args.control }):
     if hit.get('cited_on') is None:
         print("Bad data - skipping... {}".format(hit))
         continue
 
-    js_id = ObjectId(hit.get('origin_js_id'))
-    ret = db.scripts.find_one({ '_id': js_id })
+    assert 'origin_js_id' in hit
+    js_id = hit.get('origin_js_id')
+    if js_id is None:
+        print("Bad data - no origin_js_id... skipping".format(hit)) 
+        continue
+
+    ret = db.scripts.find_one({ '_id': ObjectId(js_id) })
     if ret is None:  # should not happen... but if it does...
         print("Unable to locate {} is db.scripts... skipping".format(js_id))
         continue
@@ -88,6 +92,7 @@ for hit in db.vet_against_control.find({ "control_url": args.control }):
     best_control.xref = xref
     if next_best_control:
         next_best_control.xref = xref
+    n_sent += 1
     producer.send(args.to, d) 
 
     if args.v and len(best_control.control_url) > 0:  # only report hits in verbose mode, to make for easier investigation
@@ -106,6 +111,8 @@ for hit in db.vet_against_control.find({ "control_url": args.control }):
         d = asdict(next_best_control)
         d['xref'] = xref
         producer.send(args.to, d)
+        n_sent += 1 
 
 print("Failed to analyse {} scripts, successfully processed {} hits".format(n_failed, n))
+print("Reported {} hits to {} topic.".format(n_sent, args.to))
 cleanup()
