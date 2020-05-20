@@ -49,6 +49,8 @@ producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'
 if args.delete_existing:
     print("Removing existing ETL hits for {}".format(args.control))
     result = db.etl_hits.delete_many({ 'control_url': args.control })
+    print("{} hits deleted.".format(result.deleted_count))
+
 print("Recalculating ETL hits for {}".format(args.control))
 for hit in db.vet_against_control.find({ "control_url": args.control }):
     n += 1
