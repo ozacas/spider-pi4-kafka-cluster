@@ -237,8 +237,8 @@ def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False):
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
-   cited_on = input_features.get('origin', None) # report owning HTML page also if possible (useful for data analysis)
-   origin_js_id=input_features.get("js_id", None), # ensure we can find the script directly without URL lookup
+   cited_on = input_features.get('origin', None)     # report owning HTML page also if possible (useful for data analysis)
+   origin_js_id = input_features.get("js_id", None)  # ensure we can find the script directly without URL lookup
    if isinstance(origin_js_id, tuple) or isinstance(origin_js_id, list): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
        origin_js_id = origin_js_id[0]
    assert isinstance(origin_js_id, str) or origin_js_id is None # check POST-CONDITION
@@ -248,7 +248,6 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                               sha256_matched=False, 
                               ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='',
                               origin_js_id=origin_js_id)
-   control_function_calls = None
    second_best_control = None
 
    feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance)
@@ -269,7 +268,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
                                       origin_js_id=origin_js_id,
-                                      cited_on=cited_on,   # HTML page that cited the origin JS
+                                      cited_on=cited_on,
                                       sha256_matched=False, 
                                       ast_dist=dist, 
                                       function_dist=call_dist, 
