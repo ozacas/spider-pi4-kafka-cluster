@@ -20,7 +20,7 @@ def main(input_topic, output_topic, bootstrap_servers='kafka1:9092', auto_offset
         if url in cache or len(url) > 200 or 'anu.edu.au' in up.hostname:
             continue
         d.update(up._asdict())
-        d.update({ 'priority' : as_priority(url, up) })
+        d.update({ 'priority' : as_priority(up) })
         if d.get('priority') <= max_priority:
             producer.send(output_topic, d, key=up.hostname.encode('utf-8'))
             sent = sent + 1

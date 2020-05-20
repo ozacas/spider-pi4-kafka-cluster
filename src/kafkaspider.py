@@ -44,23 +44,6 @@ class KafkaSpiderMixin(object):
 
         return message.value.get('url')
 
-    def is_blacklisted(self, domain):
-        return False # overriden in subclass
-
-    def is_recently_crawled(self, url, up):
-        return False # overridden in subclass
-
-    def is_suitable(self, url, kafka_message=None, check_priority=True):
-        up = urlparse(url)
-        if self.is_recently_crawled(url, up):
-           return False
-        if up.hostname and self.is_blacklisted(up.hostname.lower()):
-           return False
-        # check priority when crawling as we dont need everything crawled...
-        if check_priority and as_priority(url, up) > 4:
-           return False
-        return True
-
     def errback(self, failure):
         url = failure.request.url
         up = urlparse(url)
@@ -73,68 +56,89 @@ class KafkaSpiderMixin(object):
         Returns a request to be scheduled.
         :rtype: str or None
         """
-        valid = False
-        skipped = 0
-        while not valid:
-           message = next(self.consumer)
+        for message in self.consumer: 
            url = self.process_kafka_message(message)
-           if url is None:
-               return None
-           # we implement the blacklist on the dequeue side so that we can blacklist as the crawl proceeds. Not enough to just blacklist on the enqueue side
-           if self.is_suitable(url, kafka_message=message): # pass message so that is_suitable() can look at content_type or whatever from kafka topic chosen by spider
-               valid = True  # no more iterations
-           else:
-               #self.logger.info("Skipping undesirable URL: {}".format(url))
-               skipped += 1
+           yield url 
 
-        #self.logger.info("Obtained kafka url: {}".format(url))
-        return (url, skipped)
-
-    def is_suitable_host(self, host, counts_by_host):
-        # we must provide this as a method so that the snippetspider can override to ignore this logic, which is not relevant to it
-        if not host in counts_by_host:
-             counts_by_host[host] = 1
-        else:
-             counts_by_host[host] += 1
-             if counts_by_host[host] <= 10: 
-                  pass # FALLTHRU
-             else:
-                  return False
-
-        # do not crawl if LRU says we've got more than twenty already...
-        if host in self.recent_sites and self.recent_sites[host] > 20:
+    def is_congested_batch(self, up):
+        host = up.hostname
+        if host is None: # may happen for mailto:, tel: and other URL schemes
+            return True  # falsely say that the host is congested, want to get rid of bad urls...
+        lru = self.congested_batch
+        assert lru is not None
+        if not host in lru:
+             lru[host] = 1
              return False
+        else:
+             lru[host] += 1
+             return lru[host] > 10
 
-        return True
+    def is_recently_crawled(self, up):
+        # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say 
+        # no to future urls from the same host until it is evicted from the LRU cache
+        host = up.hostname
+        n_seen = self.penalise(host, penalty=0) # NB: penalty=0 so that we dont side-effect self.recent_sites[host]
+        if n_seen > self.settings.get('LRU_MAX_PAGES_PER_SITE'):
+             return True # only eviction from the LRU cache will permit host again
+        return False
+
+    def is_long_term_banned(self, up):
+        assert up is not None
+        return up.hostname in self.overrepresented_hosts
+
+    def in_recent_sites(self, up):
+        # do not crawl if LRU says we've seen more than twenty pages (incl. penalties) already...
+        assert up is not None
+        host = up.hostname
+        return host in self.recent_sites and self.recent_sites[host] > 20
+
+    def is_blacklisted(self, up):
+        assert up.hostname is not None
+        ret = up.hostname in self.blacklisted_domains
+        return ret
+
+    def unsuitable_priority(self, up):
+        assert up is not None
+        return as_priority(up) > 4
+  
+    def is_suitable(self, url, stats=None):
+        if url is None or not (url.startswith("http://") or url.startswith("https://")) or url in self.recent_cache:
+            if stats:
+               stats['url_rejected'] += 1
+            return False
+        up = urlparse(url)
+        if up.hostname is None:
+            print("WARNING: got bad URL {}".format(url))
+            return False
+        for k, cb in self.host_rejection_criteria.items():
+            if cb(up):
+               if stats:
+                  stats[k] += 1
+               return False
+        return True 
 
     def schedule_next_request(self, batch_size=400):
         """Schedules a request if available"""
-        found = 0
-        non_random = 0
-        skipped_total = 0
         batch = set()
-        counts_by_host = { }
-        while found < batch_size:
-            url, skipped = self.kafka_next()
-            skipped_total += skipped
-            if url: 
-                if not url in batch: # else ignore it, since it is a dupe from kafka
-                    up = urlparse(url)
-                    host = up.hostname
-                    if self.is_suitable_host(host, counts_by_host):
-                        batch.add(url)
-                        req = scrapy.Request(url, callback=self.parse, errback=self.errback) # NB: let scrapy scheduler filter dupes should they happen (eg. across batches) 
-                        self.crawler.engine.crawl(req, spider=self)
-                        found += 1
-                    else: 
-                        #self.logger.info("Ignoring due to non-random ingest for {}".format(url))
-                        non_random += 1
-                        pass
-            else: # no request?
-                break
+        self.congested_batch = pylru.lrucache(500) # new instance every batch ie. very short-term memory for now
 
-        self.logger.info("Skipped {} URLs as undesirable, {} URLs as too many in a single batch to the same site".format(skipped_total, non_random))
-        self.logger.info("Got batch of {} URLs to crawl".format(found))
+        url_rejection_criteria = [lambda u: u is None, lambda u: u in batch, lambda: u in self.recent_cache]
+
+        stats = { 'url_rejected': 0, 'host_blacklisted': 0, 'host_recently_crawled': 0, 'found': 0,
+                  'host_recent_sites': 0, 'host_congested_batch': 0, 'host_bad_priority': 0, 'host_long_term_ban': 0 }
+
+        while stats['found'] < batch_size:
+            url = next(self.kafka_next())
+            if url in batch:
+                continue
+            failed = not self.is_suitable(url, stats=stats)
+            if not failed:
+                batch.add(url)
+                req = scrapy.Request(url, callback=self.parse, errback=self.errback) # NB: let scrapy filter dupes should they happen (eg. across batches) 
+                self.crawler.engine.crawl(req, spider=self)
+                stats['found'] += 1
+
+        self.logger.info("URL batch statistics: {}".format(stats))
 
     def spider_idle(self):
         """Schedules a request if available, otherwise waits."""
@@ -186,6 +190,12 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # populate recent_sites from previous run on this host
        self.init_recent_sites(self.recent_sites, bs)
        self.init_completed = True
+       self.host_rejection_criteria = { 'host_blacklisted': self.is_blacklisted, 
+                                        'host_recently_crawled': self.is_recently_crawled, 
+                                        'host_recent_sites': self.in_recent_sites, 
+                                        'host_congested_batch': self.is_congested_batch, 
+                                        'host_bad_priority': self.unsuitable_priority,
+                                        'host_long_term_ban': self.is_long_term_banned }
        # populate the over-represented sites (~1 month visitation blacklist)
        self.overrepresented_hosts = self.init_overrepresented_hosts(self.disinterest_topic, bs)
        # write a PID file so that ansible wont start duplicates on this host
@@ -289,17 +299,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
             else:
                 return 0
 
-    def is_recently_crawled(self, url, up):
-        # recently fetched the URL?
-        if url in self.recent_cache:
-             return True
-        # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say no to future urls from the same host until it is evicted from the LRU cache
-        host = up.hostname
-        n_seen = self.penalise(host, penalty=0) # NB: penalty=0 so that we dont side-effect self.recent_sites[host]
-        if n_seen > self.settings.get('LRU_MAX_PAGES_PER_SITE'):
-             return True # only eviction from the LRU cache will permit host again
-        return False
-
     def followup_pages(self, producer, url_iterable, max=100):
         """
            URLs which are on an australian IP are sent to kafka
@@ -311,7 +310,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         topic = self.settings.get('ONEURL_KAFKA_URL_TOPIC')
         for u in url_iterable:
            up = urlparse(u)
-           priority = as_priority(u, up)
+           priority = as_priority(up)
            if priority > 5:
                producer.send('rejected-urls', { 'url': u, 'reason': 'low priority' })
                rejected = rejected + 1
@@ -328,17 +327,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         self.logger.debug("Sent {} URLs to kafka. Rejected {} low priority URLs. {} not AU.".format(sent, rejected, not_au))
         return sent
 
-    def is_blacklisted(self, domain):
-        return domain in self.blacklisted_domains
 
     def update_blacklist(self):
         self.blacklisted_domains = set(self.db.blacklisted_domains.distinct('domain'))
-
-    def is_suitable_host(self, host, counts_by_host):
-        ret = super().is_suitable_host(host, counts_by_host)
-        if ret and host in self.overrepresented_hosts:
-           return False
-        return ret
 
     def parse(self, response):
         status = response.status
@@ -408,7 +399,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            n = 0
            concat = ''
            for u in abs_src_urls:
-               if not u in self.js_cache and self.is_suitable(u, check_priority=False):
+               if not u in self.js_cache and self.is_suitable(u):
                    item = FileItem(origin=url, file_urls=[u])
                    ret.append(item) # will trigger FilesPipeline to fetch it with priority and persist to local storage
                    self.js_cache[u] = 1 # dont fetch this JS again for at least 500 JS url's....
