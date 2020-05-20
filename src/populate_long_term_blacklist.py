@@ -14,6 +14,7 @@ add_kafka_arguments(a,
                     default_group='populate-long-term-blacklist',
                     default_to='kafkaspider-long-term-disinterest')
 add_debug_arguments(a)
+a.add_argument("--dry-run", help="Dry-run, dont send to kafka topic [False]", action="store_true", default=False)
 args = a.parse_args()
 
 consumer = KafkaConsumer(args.consume_from, consumer_timeout_ms=10 * 1000,
@@ -41,13 +42,15 @@ for message in consumer:
 
 print("Saving sites with more than 100 pages to long-term disinterest list....")
 n_added = 0
+do_it = not args.dry_run
 for host, n_seen in sites.items():
    # eg. {"hostname":"www.qld.gov.au","n_pages":139,"date":"04/09/2020"}
    if n_seen > 100:
        d = { 'hostname': host, 'n_pages': n_seen, 'date': str(datetime.utcnow().strftime("%m/%d/%Y")) }
        if args.v:
            print(d)
-       producer.send(args.to, d)
+       if do_it:
+           producer.send(args.to, d)
        n_added += 1
 
 print("Added {} entries to long-term blacklist (processed total {} records).".format(n_added, n))
