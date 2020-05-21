@@ -143,7 +143,7 @@ class KafkaSpiderMixin(object):
 
     def is_suitable(self, url, stats=None, rejection_criteria=None):
         if url is None or not (url.startswith("http://") or url.startswith("https://")) or url in self.recent_cache:
-            if stats:
+            if stats is not None:
                stats['url_rejected'] += 1
             return False
         up = urlparse(url)
@@ -154,10 +154,11 @@ class KafkaSpiderMixin(object):
             rejection_criteria = self.host_rejection_criteria
       
         for t in rejection_criteria:
-            assert isinstance(t, tuple) and len(t) == 2
+            assert isinstance(t, tuple) 
+            assert len(t) == 2
             k, cb = t
             if cb(up):
-               if stats:
+               if stats is not None:
                   stats[k] += 1
                return False
         return True 
@@ -173,7 +174,6 @@ class KafkaSpiderMixin(object):
             url = next(self.kafka_next())
             ok = self.is_suitable(url, stats=stats)
             if ok:
-                batch.add(url)
                 req = scrapy.Request(url, callback=self.parse, errback=self.errback) # NB: let scrapy filter dupes should they happen (eg. across batches) 
                 self.crawler.engine.crawl(req, spider=self)
                 stats['found'] += 1
