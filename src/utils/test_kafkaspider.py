@@ -83,8 +83,13 @@ def test_is_suitable():
     with pytest.raises(KeyError):
         ret = stub.is_suitable('https://www.google.com', stats=stats, rejection_criteria=[('phony_reject', stub.phoney_reject)]) 
 
+    # but this is ok...
     stats['phony_reject'] = 22
     assert stub.is_suitable('https://www.google.com', stats=stats, rejection_criteria=[('phony_reject', stub.phoney_reject)]) == False
     assert stats == { 'phony_reject': 23 } 
 
-    
+    # test rejections of the url (as opposed to the parse of the url) 
+    assert stub.is_suitable(None, rejection_criteria=[]) == False
+    assert stub.is_suitable('mailto:blah@blah.blah') == False
+    stub.recent_cache = set([ 'https://silly.url' ])
+    assert stub.is_suitable('https://silly.url', rejection_criteria=[]) == False
