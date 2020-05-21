@@ -105,6 +105,8 @@ class KafkaSpiderMixin(object):
         return host in self.recent_sites and self.recent_sites[host] > 20
 
     def penalise(self, host, penalty=1):
+        assert isinstance(host, str) # check that people dont accidentally pass ParseResult() for this fn
+
         if penalty != 0: # do not side-effect self.recent_sites if penalty is 0 to avoid premature eviction during highly duplicated kafka ingest
             if not host in self.recent_sites:
                  self.recent_sites[host] = 0
