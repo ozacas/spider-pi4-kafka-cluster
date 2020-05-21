@@ -71,7 +71,7 @@ class KafkaSpiderMixin(object):
              return False
         else:
              lru[host] += 1
-             return lru[host] > 10
+             return lru[host] > 10 # no more than 10 pages per batch to one hostname
 
     def is_recently_crawled(self, up):
         # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say 
@@ -100,8 +100,16 @@ class KafkaSpiderMixin(object):
     def unsuitable_priority(self, up):
         assert up is not None
         return as_priority(up) > 4
-  
-    def is_suitable(self, url, stats=None):
+
+    def is_outside_au(self, up):
+        assert self.au_locator is not None
+        host = up.hostname
+        assert host is not None
+        # avoid expensive geo lookup if we can, by assuming '.au' implies inside AU. Seems ok for the most part.
+        ok = host.endswith('.au') or self.au_locator.is_au(host)
+        return not ok
+
+    def is_suitable(self, url, stats=None, rejection_criteria=None):
         if url is None or not (url.startswith("http://") or url.startswith("https://")) or url in self.recent_cache:
             if stats:
                stats['url_rejected'] += 1
@@ -110,7 +118,12 @@ class KafkaSpiderMixin(object):
         if up.hostname is None:
             print("WARNING: got bad URL {}".format(url))
             return False
-        for k, cb in self.host_rejection_criteria.items():
+        if rejection_criteria is None:
+            rejection_criteria = self.host_rejection_criteria
+      
+        for t in rejection_criteria:
+            assert isinstance(t, tuple) and len(t) == 2
+            k, cb = t
             if cb(up):
                if stats:
                   stats[k] += 1
@@ -124,15 +137,15 @@ class KafkaSpiderMixin(object):
 
         url_rejection_criteria = [lambda u: u is None, lambda u: u in batch, lambda: u in self.recent_cache]
 
-        stats = { 'url_rejected': 0, 'host_blacklisted': 0, 'host_recently_crawled': 0, 'found': 0,
-                  'host_recent_sites': 0, 'host_congested_batch': 0, 'host_bad_priority': 0, 'host_long_term_ban': 0 }
+        stats = { t[0]: 0 for t in self.host_rejection_criteria } 
+        stats.update({ 'url_rejected': 0, 'found': 0 })
 
         while stats['found'] < batch_size:
             url = next(self.kafka_next())
             if url in batch:
                 continue
-            failed = not self.is_suitable(url, stats=stats)
-            if not failed:
+            ok = self.is_suitable(url, stats=stats)
+            if ok:
                 batch.add(url)
                 req = scrapy.Request(url, callback=self.parse, errback=self.errback) # NB: let scrapy filter dupes should they happen (eg. across batches) 
                 self.crawler.engine.crawl(req, spider=self)
@@ -190,12 +203,13 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # populate recent_sites from previous run on this host
        self.init_recent_sites(self.recent_sites, bs)
        self.init_completed = True
-       self.host_rejection_criteria = { 'host_blacklisted': self.is_blacklisted, 
-                                        'host_recently_crawled': self.is_recently_crawled, 
-                                        'host_recent_sites': self.in_recent_sites, 
-                                        'host_congested_batch': self.is_congested_batch, 
-                                        'host_bad_priority': self.unsuitable_priority,
-                                        'host_long_term_ban': self.is_long_term_banned }
+       self.host_rejection_criteria = ( ('host_blacklisted', self.is_blacklisted), 
+                                        ('host_recently_crawled', self.is_recently_crawled), 
+                                        ('host_recent_sites', self.in_recent_sites), 
+                                        ('host_congested_batch', self.is_congested_batch), 
+                                        ('host_long_term_ban', self.is_long_term_banned),
+                                        ('host_bad_priority', self.unsuitable_priority),
+                                        ('host_not_au', self.is_outside_au) )
        # populate the over-represented sites (~1 month visitation blacklist)
        self.overrepresented_hosts = self.init_overrepresented_hosts(self.disinterest_topic, bs)
        # write a PID file so that ansible wont start duplicates on this host
@@ -308,23 +322,19 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         not_au = 0
         # the more pages are in the LRU cache for the site
         topic = self.settings.get('ONEURL_KAFKA_URL_TOPIC')
+        stats = { t[0]: 0 for t in self.host_rejection_criteria }
+        stats.update({ 'found': 0, 'url_rejected': 0 })
+
         for u in url_iterable:
-           up = urlparse(u)
-           priority = as_priority(up)
-           if priority > 5:
-               producer.send('rejected-urls', { 'url': u, 'reason': 'low priority' })
-               rejected = rejected + 1
-           elif self.au_locator.is_au(up.hostname):
+           if self.is_suitable(u, stats=stats):
+               up = urlparse(u)
                up = up._replace(fragment='')   # remove all fragments from spidering
                url = urlunparse(up)            # search for fragment-free URL
                producer.send(topic, { 'url': url }, key=up.hostname.encode('utf-8'))
                sent += 1
                if sent > max: 
                    break
-           else:
-               producer.send('rejected-urls', { 'url': u, 'reason': 'not an AU IP address' })
-               not_au = not_au + 1
-        self.logger.debug("Sent {} URLs to kafka. Rejected {} low priority URLs. {} not AU.".format(sent, rejected, not_au))
+        self.logger.debug("Sent {} URLs to kafka. Rejections: {}".format(sent, stats))
         return sent
 
 
@@ -398,8 +408,10 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            abs_src_urls = [urljoin(url, src) for src in src_urls]
            n = 0
            concat = ''
+           js_rejection_criteria = ( )  # NB: much smaller rejection list for JS, note no AU rejection
+
            for u in abs_src_urls:
-               if not u in self.js_cache and self.is_suitable(u):
+               if not u in self.js_cache and self.is_suitable(u, rejection_criteria=js_rejection_criteria):
                    item = FileItem(origin=url, file_urls=[u])
                    ret.append(item) # will trigger FilesPipeline to fetch it with priority and persist to local storage
                    self.js_cache[u] = 1 # dont fetch this JS again for at least 500 JS url's....
