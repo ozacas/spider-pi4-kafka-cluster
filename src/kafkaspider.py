@@ -61,6 +61,10 @@ class KafkaSpiderMixin(object):
            yield url 
 
     def is_congested_batch(self, up):
+        """
+        Returns True if the parsed url instance reflects a URL which we have too many of in the current batch. False otherwise.
+        KafkaSpider fetches a maximum of 10 pages per host in a given batch (which lasts a few minutes typically)
+        """
         host = up.hostname
         if host is None: # may happen for mailto:, tel: and other URL schemes
             return True  # falsely say that the host is congested, want to get rid of bad urls...
@@ -74,8 +78,10 @@ class KafkaSpiderMixin(object):
              return lru[host] > 10 # no more than 10 pages per batch to one hostname
 
     def is_recently_crawled(self, up):
-        # LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say 
-        # no to future urls from the same host until it is evicted from the LRU cache
+        """
+        LRU bar: if one of the last 100 sites and we've fetched 100 pages, we say 
+        no to future urls from the same host until it is evicted from the LRU cache. Returns True if so, False otherwise.
+        """
         host = up.hostname
         n_seen = self.penalise(host, penalty=0) # NB: penalty=0 so that we dont side-effect self.recent_sites[host]
         if n_seen > self.settings.get('LRU_MAX_PAGES_PER_SITE'):
@@ -83,16 +89,24 @@ class KafkaSpiderMixin(object):
         return False
 
     def is_long_term_banned(self, up):
+        """
+        Parsed host present in the long-term disinterest topic? If so, we've hit it enough for the next 3 months. Returns True if so, False otherwise.
+        """
         assert up is not None
         return up.hostname in self.overrepresented_hosts
 
     def in_recent_sites(self, up):
-        # do not crawl if LRU says we've seen more than twenty pages (incl. penalties) already...
+        """
+        Return True (ie. do not crawl) if LRU says we've seen more than twenty pages (incl. penalties) already...
+        """
         assert up is not None
         host = up.hostname
         return host in self.recent_sites and self.recent_sites[host] > 20
 
     def is_blacklisted(self, up):
+        """
+        Return True if specified host appears to be blacklisted ie. not to be crawled under any circumstances, ever. False otherwise.
+        """
         assert up.hostname is not None
         ret = up.hostname in self.blacklisted_domains
         return ret
@@ -102,6 +116,9 @@ class KafkaSpiderMixin(object):
         return as_priority(up) > 4
 
     def is_outside_au(self, up):
+        """
+        Return False if parsed hostname ends with '.au' or geolocated to Australian network. Otherwise True
+        """
         assert self.au_locator is not None
         host = up.hostname
         assert host is not None
@@ -380,7 +397,9 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                 else:
                      internal_hrefs.add(u)
            ps.n_external = len(external_hrefs)
-           n = self.followup_pages(self.producer, filter(lambda u: self.is_suitable(u), external_hrefs), max=max) 
+           # NB: we dont reject based on current crawling state since it will be a long-time before these URLs get visited (months)
+           limited = filter(lambda t: t[0] in set(['host_recently_crawled', 'host_recent_sites', 'host_congested_batch']), self.host_rejection_criteria)
+           n = self.followup_pages(self.producer, filter(lambda u: self.is_suitable(u, rejection_criteria=limited), external_hrefs), max=max) 
            ps.n_external_accepted = n
            left = max - n
            if left < 0:
@@ -393,7 +412,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                # since we are sampling, try to make sure its a random sample to avoid navigation bias
                irefs = list(internal_hrefs)
                random.shuffle(irefs) 
-               n = self.followup_pages(self.producer, filter(lambda u: not u in self.internal_cache and self.is_suitable(u), irefs), max=left)
+               n = self.followup_pages(self.producer, filter(lambda u: not u in self.internal_cache and 
+                                            self.is_suitable(u, rejection_criteria=limited), irefs), max=left)
                ps.n_internal_accepted = n
                for i in range(n):
                    self.internal_cache[irefs[i]] = 1 # dont follow this internal link again in the short-term
