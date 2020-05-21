@@ -12,7 +12,15 @@ class CongestBatchStub(KafkaSpiderMixin):
 class PenaliseStub(KafkaSpiderMixin):
     def __init__(self, *args, **kwargs):
         self.recent_sites = {}
-        
+       
+class RecentCrawlStub(PenaliseStub):
+    def __init__(self, *args, **kwargs):
+        super().__init__() 
+        self.settings = { 'LRU_MAX_PAGES_PER_SITE': 10 }
+
+class OutsideAuStub(KafkaSpiderMixin):
+    au_locator = mock.Mock()
+
 def test_is_congested_batch():
     stub = CongestBatchStub()
     up = urlparse('mailto:blah@blah.blah.com')
@@ -31,3 +39,27 @@ def test_penalise():
     ret = stub.penalise('www.google.com', penalty=2)
     assert ret == 4
     assert stub.recent_sites == { 'www.google.com': 4, 'www.blah.blah': 1 }
+
+def test_is_recently_crawled():
+    stub = RecentCrawlStub()
+    assert not stub.is_recently_crawled(urlparse('https://www.google.com'))
+
+    for i in range(12):
+         up = urlparse('http://www.google.com')
+         stub.penalise(up.hostname) # NB: pretend we have visited the page
+         ret = stub.is_recently_crawled(up)
+         if i < 10:
+            assert not ret
+         else:
+            assert ret 
+
+    assert stub.recent_sites == { 'www.google.com': 12 } 
+
+def test_is_outside_au():
+    stub = OutsideAuStub()
+    # 1. if a host ends with .au - it is considered in-scope (no geo performed as performance win)
+    assert not stub.is_outside_au(urlparse('http://blah.blah.com.au')) and len(stub.au_locator.method_calls) == 0
+
+    # 2. if we need to geo, ie. not .AU then it must match the expected...
+    stub.au_locator.is_au.return_value = False
+    assert stub.is_outside_au(urlparse('http://blah.blah.com'))
