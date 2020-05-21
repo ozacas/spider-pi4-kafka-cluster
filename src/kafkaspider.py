@@ -164,18 +164,13 @@ class KafkaSpiderMixin(object):
 
     def schedule_next_request(self, batch_size=400):
         """Schedules a request if available"""
-        batch = set()
         self.congested_batch = pylru.lrucache(500) # new instance every batch ie. very short-term memory for now
-
-        url_rejection_criteria = [lambda u: u is None, lambda u: u in batch, lambda: u in self.recent_cache]
 
         stats = { t[0]: 0 for t in self.host_rejection_criteria } 
         stats.update({ 'url_rejected': 0, 'found': 0 })
 
         while stats['found'] < batch_size:
             url = next(self.kafka_next())
-            if url in batch:
-                continue
             ok = self.is_suitable(url, stats=stats)
             if ok:
                 batch.add(url)
