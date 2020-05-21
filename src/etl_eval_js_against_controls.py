@@ -101,7 +101,7 @@ for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
     assert xref is not None
     d['xref'] = xref
     best_control.xref = xref
-    if next_best_control:
+    if next_best_control is not None:
         next_best_control.xref = xref
     producer.send(args.to, d) 
 

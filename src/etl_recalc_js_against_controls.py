@@ -99,7 +99,7 @@ for hit in db.vet_against_control.find({ "control_url": args.control }):
     assert xref is not None
     d['xref'] = xref
     best_control.xref = xref
-    if next_best_control:
+    if next_best_control is not None:
         next_best_control.xref = xref
     n_sent += 1
     producer.send(args.to, d) 
