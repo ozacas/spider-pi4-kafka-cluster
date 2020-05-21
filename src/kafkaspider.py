@@ -65,6 +65,7 @@ class KafkaSpiderMixin(object):
         Returns True if the parsed url instance reflects a URL which we have too many of in the current batch. False otherwise.
         KafkaSpider fetches a maximum of 10 pages per host in a given batch (which lasts a few minutes typically)
         """
+        assert up is not None
         host = up.hostname
         if host is None: # may happen for mailto:, tel: and other URL schemes
             return True  # falsely say that the host is congested, want to get rid of bad urls...
@@ -102,6 +103,18 @@ class KafkaSpiderMixin(object):
         assert up is not None
         host = up.hostname
         return host in self.recent_sites and self.recent_sites[host] > 20
+
+    def penalise(self, host, penalty=1):
+        if penalty != 0: # do not side-effect self.recent_sites if penalty is 0 to avoid premature eviction during highly duplicated kafka ingest
+            if not host in self.recent_sites:
+                 self.recent_sites[host] = 0
+            self.recent_sites[host] += penalty
+            return self.recent_sites[host]
+        else:
+            if host in self.recent_sites:
+                return self.recent_sites[host]
+            else:
+                return 0
 
     def is_blacklisted(self, up):
         """
@@ -317,18 +330,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         t.start(300) # every 5 minutes
         #reactor.run()  # spider will do this for us, so no need...
         return spider
-
-    def penalise(self, host, penalty=1):
-        if penalty != 0: # do not side-effect self.recent_sites if penalty is 0 to avoid premature eviction during highly duplicated kafka ingest
-            if not host in self.recent_sites:
-                 self.recent_sites[host] = 0
-            self.recent_sites[host] += penalty
-            return self.recent_sites[host]
-        else:
-            if host in self.recent_sites:
-                return self.recent_sites[host]
-            else:
-                return 0
 
     def followup_pages(self, producer, url_iterable, max=100):
         """
