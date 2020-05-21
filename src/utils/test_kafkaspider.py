@@ -18,6 +18,12 @@ class RecentCrawlStub(PenaliseStub):
         super().__init__() 
         self.settings = { 'LRU_MAX_PAGES_PER_SITE': 10 }
 
+class SuitableStub(KafkaSpiderMixin):
+    recent_cache = {}
+
+    def phoney_reject(self, up):
+        return True # NB: true means reject the url
+ 
 class OutsideAuStub(KafkaSpiderMixin):
     au_locator = mock.Mock()
 
@@ -63,3 +69,22 @@ def test_is_outside_au():
     # 2. if we need to geo, ie. not .AU then it must match the expected...
     stub.au_locator.is_au.return_value = False
     assert stub.is_outside_au(urlparse('http://blah.blah.com'))
+
+def test_is_suitable():
+    stub = SuitableStub()
+    #   def is_suitable(self, url, stats=None, rejection_criteria=None):
+    assert stub.is_suitable('https://www.google.com', rejection_criteria=()) 
+
+    stats = {}
+    assert stub.is_suitable('https://www.google.com', stats=stats, rejection_criteria=[])
+    assert stats == {}
+
+    # must raise since 'phony_reject' is not a valid key in stats
+    with pytest.raises(KeyError):
+        ret = stub.is_suitable('https://www.google.com', stats=stats, rejection_criteria=[('phony_reject', stub.phoney_reject)]) 
+
+    stats['phony_reject'] = 22
+    assert stub.is_suitable('https://www.google.com', stats=stats, rejection_criteria=[('phony_reject', stub.phoney_reject)]) == False
+    assert stats == { 'phony_reject': 23 } 
+
+    
