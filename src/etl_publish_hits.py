@@ -119,6 +119,8 @@ for hit in iterate(consumer, args.n, args.v, args.threshold):
             d['actual_calls'] = fv_origin.get(fn, None)
             dc = d.copy()  # NB: dont give the same instance to pymongo each call
             assert 'xref' in dc.keys()
+            assert 'literals_not_in_control' in dc.keys()
+            assert 'literals_not_in_origin' in dc.keys()
             db.etl_hits.insert_one(dc)
              
 
