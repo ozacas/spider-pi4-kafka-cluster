@@ -134,7 +134,7 @@ def load_controls(db, min_size=1500, literals_by_count=False, verbose=False):
                       { 'literals_by_count': literals_by_count }):             # dont load literal vector to save considerable memory
        ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
        tuple = (control, ast_sum, ast_vector)
-#      print(tuple)
+#       print(tuple)
        all_controls.append(tuple)
    if verbose:
        print("Loaded {} controls, each at least {} bytes".format(len(all_controls), min_size))

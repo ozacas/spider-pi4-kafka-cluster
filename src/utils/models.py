@@ -111,7 +111,12 @@ class BestControl:
     n_diff_literals: int = -1         # literals which are present in both, but not found the same number of times
 
     def dist_prod(self):
-       return self.ast_dist * self.function_dist
+       """ 
+       If one vector distance is zero, that is not enough to be sure its not a false positive. So we require two distances to be zero before we do that here.
+       We compute the distance product as (ast_dist + function_dist) * (function_dist + literal_dist)
+       """
+       assert self.literal_dist >= 0.0 # reject calls if model not initialised fully
+       return (self.ast_dist + self.function_dist) * (self.function_dist + self.literal_dist)
 
     def diff_functions_as_list(self):
        if len(self.diff_functions) < 1:
@@ -126,8 +131,10 @@ class BestControl:
        # in case the literal distance cannot be computed, say False. Should not happen anymore.
        if self.literal_dist < 0.0:
            return False
-       # NB: experience suggests that reasonable hits will have 3 dists < 100.0 (TODO FIXME: does this include all skimmers???)      
-       return self.dist_prod() * self.literal_dist < 100.0
+       # NB: experience suggests that reasonable hits will have 3 dists < 200.0 (TODO FIXME: does this include all skimmers???)      
+       if self.dist_prod() < 150.0:
+           return True
+       return False
 
     def is_better(self, other):
         other_prod = other.dist_prod()

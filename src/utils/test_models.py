@@ -35,7 +35,7 @@ def test_artefact_model():
     assert sorted(l) == [j1, j3, j9]
 
 def test_best_control():
-    bc1 = BestControl(origin_url='XXX', control_url='YYY', ast_dist=1.0, function_dist=1.5, sha256_matched=False, diff_functions='parseJSON runAJAX')
+    bc1 = BestControl(origin_url='XXX', control_url='YYY', literal_dist=0.0, ast_dist=1.0, function_dist=1.5, sha256_matched=False, diff_functions='parseJSON runAJAX')
     assert bc1.origin_url == 'XXX'
     assert bc1.control_url == 'YYY'
     assert bc1.ast_dist == pytest.approx(1.0)
@@ -47,7 +47,7 @@ def test_best_control():
     assert pytest.approx(bc1.literal_dist, -1.0)
     assert bc1.is_good_hit()
 
-    bc2 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=10.0, function_dist=1.5, sha256_matched=False, diff_functions='a b c')
+    bc2 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=10.0, function_dist=1.5, literal_dist=0.0, sha256_matched=False, diff_functions='a b c')
     assert bc1.is_better(bc2)
     assert not bc2.is_better(bc1)
     assert bc1.dist_prod() < bc2.dist_prod() and pytest.approx(bc1.dist_prod(), 1.5)

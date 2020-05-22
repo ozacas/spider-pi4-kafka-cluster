@@ -246,7 +246,10 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
                               sha256_matched=False, 
-                              ast_dist=float('Inf'), function_dist=float('Inf'), diff_functions='',
+                              ast_dist=float('Inf'), 
+                              function_dist=float('Inf'), 
+                              literal_dist=0.0,
+                              diff_functions='',
                               origin_js_id=origin_js_id)
    second_best_control = None
 
@@ -272,6 +275,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                                       sha256_matched=False, 
                                       ast_dist=dist, 
                                       function_dist=call_dist, 
+                                      literal_dist=0.0,
                                       diff_functions=' '.join(diff_functions))
 
            # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
@@ -294,13 +298,14 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    # HACK TODO FIXME: obtain the literal vector from kafka as its not stored in Mongo (perf.)
    if 'literals_by_count' in input_features:
        lv_origin = input_features.get('literals_by_count')
-       if best_control.dist_prod() < 50.0:
+       # NB: cannot use dist_prod() here since we havent initialised all the {ast,literal,function}_dist fields yet...
+       if best_control.ast_dist * best_control.function_dist < 50.0:
            bc = best_control
            t = calculate_literal_distance(db, bc, lv_origin)
            assert isinstance(t, tuple)
            bc.literal_dist, bc.literals_not_in_origin, bc.literals_not_in_control, diff_literals = t
            bc.n_diff_literals = len(diff_literals)
-       if second_best_control is not None and second_best_control.dist_prod() < 50.0:
+       if second_best_control is not None and second_best_control.ast_dist * second_best_control.function_dist < 50.0:
            sbc = second_best_control
            t = calculate_literal_distance(db, sbc, lv_origin)
            sbc.literal_dist, sbc.literals_not_in_origin, sbc.literals_not_in_control, diff_literals = t
