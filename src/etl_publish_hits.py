@@ -110,6 +110,8 @@ for hit in iterate(consumer, args.n, args.v, args.threshold):
         if dc['cited_on_host'] is None:   # some buggy records - rare
             print("Bad data - skipping... {}".format(dc)) 
             continue
+        if args.v:
+            print(dc)
         producer.send('etl-good-hits', dc)
 
         # finally report each differentially called function as a separate record 
