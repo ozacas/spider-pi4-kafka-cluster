@@ -396,7 +396,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                      internal_hrefs.add(u)
            ps.n_external = len(external_hrefs)
            # NB: we dont reject based on current crawling state since it will be a long-time before these URLs get visited (months)
-           limited = filter(lambda t: t[0] in set(['host_recently_crawled', 'host_recent_sites', 'host_congested_batch']), self.host_rejection_criteria)
+           limited = filter(lambda t: t[0] in set(['host_recently_crawled', 'host_recent_sites']), self.host_rejection_criteria)
            n = self.followup_pages(self.producer, filter(lambda u: self.is_suitable(u, rejection_criteria=limited), external_hrefs), max=max) 
            ps.n_external_accepted = n
            left = max - n
@@ -419,7 +419,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                ps.n_internal_accepted = 0
       
            self.logger.info("Followed {} external and {} internal links on {}".format(ps.n_external_accepted, ps.n_internal_accepted, url))
-
            # spider over the JS content... 
            src_urls = response.xpath('//script/@src').extract()
            # ensure relative script src's are absolute... for the spider to follow now
