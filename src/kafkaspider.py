@@ -142,6 +142,7 @@ class KafkaSpiderMixin(object):
         return not ok
 
     def is_suitable(self, url, stats=None, rejection_criteria=None):
+        assert isinstance(url, str) or url is None
         if url is None or not (url.startswith("http://") or url.startswith("https://")) or url in self.recent_cache:
             if stats is not None:
                stats['url_rejected'] += 1
@@ -328,7 +329,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         #reactor.run()  # spider will do this for us, so no need...
         return spider
 
-    def followup_pages(self, producer, url_iterable, max=100):
+    def followup_pages(self, producer, url_iterable, rejection_criteria, max=100):
         """
            URLs which are on an australian IP are sent to kafka
         """
@@ -340,15 +341,14 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
         stats = { t[0]: 0 for t in self.host_rejection_criteria }
         stats.update({ 'found': 0, 'url_rejected': 0 })
 
-        for u in url_iterable:
-           if self.is_suitable(u, stats=stats):
-               up = urlparse(u)
-               up = up._replace(fragment='')   # remove all fragments from spidering
-               url = urlunparse(up)            # search for fragment-free URL
-               producer.send(topic, { 'url': url }, key=up.hostname.encode('utf-8'))
-               sent += 1
-               if sent > max: 
-                   break
+        for u in filter(lambda u: self.is_suitable(u, stats=stats, rejection_criteria=rejection_criteria), url_iterable):
+            up = urlparse(u)
+            up = up._replace(fragment='')   # remove all fragments from spidering
+            url = urlunparse(up)            # search for fragment-free URL
+            producer.send(topic, { 'url': url }, key=up.hostname.encode('utf-8'))
+            sent += 1
+            if sent > max: 
+                break
         self.logger.debug("Sent {} URLs to kafka. Rejections: {}".format(sent, stats))
         return sent
 
@@ -397,7 +397,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            ps.n_external = len(external_hrefs)
            # NB: we dont reject based on current crawling state since it will be a long-time before these URLs get visited (months)
            limited = filter(lambda t: t[0] in set(['host_recently_crawled', 'host_recent_sites']), self.host_rejection_criteria)
-           n = self.followup_pages(self.producer, filter(lambda u: self.is_suitable(u, rejection_criteria=limited), external_hrefs), max=max) 
+           n = self.followup_pages(self.producer, external_hrefs, limited, max=max) 
            ps.n_external_accepted = n
            left = max - n
            if left < 0:
@@ -410,8 +410,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
                # since we are sampling, try to make sure its a random sample to avoid navigation bias
                irefs = list(internal_hrefs)
                random.shuffle(irefs) 
-               n = self.followup_pages(self.producer, filter(lambda u: not u in self.internal_cache and 
-                                            self.is_suitable(u, rejection_criteria=limited), irefs), max=left)
+               n = self.followup_pages(self.producer, filter(lambda u: not u in self.internal_cache, irefs), limited, max=left)
                ps.n_internal_accepted = n
                for i in range(n):
                    self.internal_cache[irefs[i]] = 1 # dont follow this internal link again in the short-term
