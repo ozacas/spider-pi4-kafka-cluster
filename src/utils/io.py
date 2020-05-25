@@ -90,6 +90,9 @@ def save_control(db, url, family, version, variant, force=False, refuse_hashes=N
 
    Returns JavascriptArtefact representing control which has had its state updated into MongoDB
    """
+   assert url is not None
+   assert family is not None
+   assert version is not None
    if content is None:
       resp = requests.get(url)
       if resp.status_code != 200:
@@ -109,7 +112,7 @@ def save_control(db, url, family, version, variant, force=False, refuse_hashes=N
 
    ret, failed, stderr = analyse_script(content, jsr, java=java, feature_extractor=feature_extractor)
    if failed:
-       raise ValueError('Could not analyse script {}'.format(jsr.url))
+       raise ValueError('Could not analyse script {} - {}'.format(jsr.url, stderr))
    ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider })
    #print(ret)
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
