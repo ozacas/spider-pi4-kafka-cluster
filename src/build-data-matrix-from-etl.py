@@ -353,18 +353,24 @@ def dump_hosts(db, pretty=False, threshold=50.0):
            "_id": { "host": "$cited_on_host" },
            "controls": { "$addToSet": "$control_url" },
            "pages": { "$addToSet": "$cited_on" },
+           "max_diff_literals": { "$max": "$n_diff_literals" },
+           "diff_functions": { "$addToSet": "$diff_function" },
       }},
       { "$project": {
            "host": "$_id.host",
            "n_controls": { "$size": "$controls" },
            "n_pages": { "$size": "$pages" },
+           "max_diff_literals": 1,
+           "n_diff_functions": { "$size": "$diff_functions" },
       }},
-      { "$sort": { "host": 1, "n_controls": -1 } },
+      { "$sort": { "host": 1, "n_controls": -1, "max_diff_literals": -1 } },
    ], allowDiskUse=True)
 
-   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited']))
+   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 'n_diff_functions']))
    for hit in hits:
-       print('\t'.join([hit.get('host'), str(hit.get('n_controls')), str(hit.get('n_pages'))]))
+       print('\t'.join([hit.get('host'), str(hit.get('n_controls')), 
+                        str(hit.get('n_pages')), 
+                        str(hit.get('max_diff_literals')), str(hit.get('n_diff_functions')) ]))
 
 def dump_host(db, hostspec, pretty=False, threshold=50.0):
    regexp = '.*{}.*'.format(hostspec.replace('.', '\.'))
