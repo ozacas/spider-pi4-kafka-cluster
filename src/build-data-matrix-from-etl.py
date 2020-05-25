@@ -87,7 +87,7 @@ def dump_rare_diff_functions(db, pretty=False, threshold=20.0):
          obj = result[fp.control_family]
          fp.n_sites_for_family = obj.get('n_sites')
          fp.n_pages_for_family = obj.get('n_pages')
-         assert fp.n_pages_for_family > 0
+         assert fp.n_pages_for_family > 0 and fp.n_sites_for_family <= fp.n_pages_for_family
          rare_site = (fp.n_sites / fp.n_sites_for_family) < 0.05
          rare_page = (fp.n_pages / fp.n_pages_for_family) < 0.05
          rare = rare_site or rare_page
@@ -268,13 +268,14 @@ def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=Fals
                 l.append(' '.join(page_counts[host]))
             print('\t'.join(l))
 
-def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_dist_prod=100.0): # origin must be specified or ValueError
+def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_dist_prod=200.0): # origin must be specified or ValueError
    cntrl = db.javascript_controls.find_one({ 'origin': control_url })
    if cntrl is None:
        raise ValueError('No control matching: {}'.format(control_url))
    hits = db.etl_hits.aggregate([ 
                     { "$match": { "control_url": control_url } },
-                    { "$match": { "$or": [ { "ast_dist": { "$lt": threshold } }, { "function_dist": { "$lt": threshold } } ] } },
+                    { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
+                    { "$match": { "dist_prod": { "$lt": threshold } } },
                     { "$group": { 
                           "_id": { "control_url": "$control_url", "origin_url": "$origin_url" },
                           "changed_functions": { "$addToSet": "$diff_function" },
@@ -344,13 +345,55 @@ def list_controls(db, pretty=False):
            c.get('md5'), str(total_calls), str(total_literals), str(total_ast)]
       print('\t'.join(l))
 
+def dump_hosts(db, pretty=False, threshold=50.0):
+   hits = db.etl_hits.aggregate([
+      { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
+      { "$match": { "dist_prod": { "$lt": threshold } } },
+      { "$group": {
+           "_id": { "host": "$cited_on_host" },
+           "controls": { "$addToSet": "$control_url" },
+           "pages": { "$addToSet": "$cited_on" },
+      }},
+      { "$project": {
+           "host": "$_id.host",
+           "n_controls": { "$size": "$controls" },
+           "n_pages": { "$size": "$pages" },
+      }},
+   ], allowDiskUse=True)
+
+   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited']))
+   for hit in hits:
+       print('\t'.join([hit.get('host'), str(hit.get('n_controls')), str(hit.get('n_pages'))]))
+
+def dump_host(db, hostspec, pretty=False, threshold=50.0):
+   regexp = '.*{}.*'.format(hostspec.replace('.', '\.'))
+   hits = db.etl_hits.aggregate([
+      { "$addFields": {  "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] }}},
+      { "$match": { "dist_prod": { "$lt": threshold }}},
+      { "$match": { "cited_on_host": { "$regex": regexp } } },
+      { "$group": { "_id": { "xref": "$xref" },
+                    "hit": { "$first": "$$ROOT" },
+      }},
+   ])
+   first = True
+   for hit in hits:
+       h = hit.get('hit')
+       if first:
+           first = False
+           fields = list(filter(lambda k: not k in ['_id'], sorted(h.keys())))
+           print('\t'.join(fields))
+       v = []
+       for k in fields:
+           v.append(str(h.get(k, None)))
+       print('\t'.join(v))
+ 
 a = argparse.ArgumentParser(description="Process results for a given query onto stdout for ingestion in data analysis pipeline")
 add_mongo_arguments(a, default_user='ro') # running queries is basically always read-only role
 add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
-a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities', 'list_controls', 'control_hits'])
+a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities', 'list_controls', 'control_hits', 'hosts', 'host'])
 a.add_argument("--extra", help="Parameter for query", type=str)
-a.add_argument("--threshold", help="Maximum distance to permit [20.0]", type=float, default=20.0)
+a.add_argument("--threshold", help="Maximum distance to permit [50.0]", type=float, default=50.0)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
@@ -369,4 +412,8 @@ elif args.query == "list_controls":
     list_controls(db, pretty=args.pretty)
 elif args.query == "control_hits":
     dump_control_hits(db, pretty=args.pretty, control_url=args.extra)
+elif args.query == "hosts":
+    dump_hosts(db, pretty=args.pretty, threshold=args.threshold)
+elif args.query == "host": # host to dump is supplied in args.extra (partial matching is performed) eg. blah.com.au will match <anything>blah.com.au
+    dump_host(db, args.extra, pretty=args.pretty, threshold=args.threshold)
 exit(0)
