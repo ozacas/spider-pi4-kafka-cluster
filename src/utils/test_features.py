@@ -37,17 +37,16 @@ def test_compute_function_dist():
    assert diff_functions == ['tmp']
 
 def test_compute_function_dist_3():
-   # check symettry
+   # enforce symettry and correct anonymous function calculation
    a = { "N/A": 1 }
    b = { }
    dist1, diff_fn1 = calc_function_dist(a, b)
-   print(dist1)
-   assert pytest.approx(dist1, 10.0)
+   assert pytest.approx(dist1, 10.0) # since the short penalty max'es out at ten
    assert diff_fn1 == ['N/A']
    dist2, diff_fn2 = calc_function_dist(b, a)
    assert dist2 > 0.0
    assert diff_fn2 == ['N/A']
-   assert pytest.approx(dist1, dist2)
+   assert pytest.approx(dist1, dist2) # must be the same distance for (b, a) as (a, b)
    
 def test_compute_function_dist_2():
    # real world example
