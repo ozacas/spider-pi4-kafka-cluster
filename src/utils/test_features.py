@@ -47,7 +47,10 @@ def test_compute_function_dist_3():
    assert dist2 > 0.0
    assert diff_fn2 == ['N/A']
    assert pytest.approx(dist1, dist2) # must be the same distance for (b, a) as (a, b)
-   
+
+   # empty vectors are infinitely distant - since no available evidence
+   assert calc_function_dist({}, {}) == (float('Inf'), [])
+
 def test_compute_function_dist_2():
    # real world example
    a = { k: v for k,v in zip([i for i in 'abcdefghijklmnop'], [0, 1, 0, 0, 1, 1, 1, 2, 0, 1, 0, 0, 0, 1, 4]) }
