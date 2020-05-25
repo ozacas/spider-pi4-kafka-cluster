@@ -359,6 +359,7 @@ def dump_hosts(db, pretty=False, threshold=50.0):
            "n_controls": { "$size": "$controls" },
            "n_pages": { "$size": "$pages" },
       }},
+      { "$sort": { "host": 1, "n_controls": -1 } },
    ], allowDiskUse=True)
 
    print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited']))
@@ -374,6 +375,7 @@ def dump_host(db, hostspec, pretty=False, threshold=50.0):
       { "$group": { "_id": { "xref": "$xref" },
                     "hit": { "$first": "$$ROOT" },
       }},
+      { "$sort": { "dist_prod": 1 } },
    ])
    first = True
    for hit in hits:
