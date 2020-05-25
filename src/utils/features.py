@@ -234,6 +234,10 @@ def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
    feasible_controls = [tuple for tuple in filter(lambda t: t[1] >= lb and t[1] <= ub, controls_to_search)]
    return feasible_controls
 
+def encoded_literals(literals_to_encode):
+   encoded_literals = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
+   return ','.join(encoded_literals)
+
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False):
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
@@ -261,19 +265,20 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
        assert isinstance(control_ast_vector, list)
        control_url = control.get('origin')
 
-       dist = math.dist(input_vector, control_ast_vector)
-       if dist < best_distance and dist <= max_distance: # TODO FIXME: consider more than AST distance before determining "best" ???
+       ast_dist = math.dist(input_vector, control_ast_vector)
+       # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
+       call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], 
+                                                      control['calls_by_count'])
+       new_dist = ast_dist * call_dist
+       if new_dist < best_distance and new_dist <= max_distance: 
            if debug:
-               print("Got good distance {} for {}".format(dist, control_url)) 
-           # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
-           call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], 
-                                                          control['calls_by_count'])
+               print("Got good distance {} for {} (was {}, max={})".format(new_dist, control_url, best_distance, max_distance)) 
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
                                       origin_js_id=origin_js_id,
                                       cited_on=cited_on,
                                       sha256_matched=False, 
-                                      ast_dist=dist, 
+                                      ast_dist=ast_dist, 
                                       function_dist=call_dist, 
                                       literal_dist=0.0,
                                       diff_functions=' '.join(diff_functions))
@@ -286,11 +291,11 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                    second_best_control = new_control
                # NB: dont update best_* since we dont consider this hit a replacement for current best_control
            else: 
+               best_distance = new_dist
                second_best_control = best_control
                best_control = new_control
-               best_distance = dist
 
-               if dist < 0.00001:     # small distance means we can try for a hash match against control?
+               if ast_dist < 0.00001:     # small distance means we can try for a hash match against control?
                    hash_match = find_hash_match(db, input_features, best_control.control_url)
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control
@@ -305,11 +310,13 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
            assert isinstance(t, tuple)
            bc.literal_dist, bc.literals_not_in_origin, bc.literals_not_in_control, diff_literals = t
            bc.n_diff_literals = len(diff_literals)
+           bc.diff_literals = encoded_literals(diff_literals)
        if second_best_control is not None and second_best_control.ast_dist * second_best_control.function_dist < 50.0:
            sbc = second_best_control
            t = calculate_literal_distance(db, sbc, lv_origin)
            sbc.literal_dist, sbc.literals_not_in_origin, sbc.literals_not_in_control, diff_literals = t
            sbc.n_diff_literals = len(diff_literals)
+           sbc.diff_literals = encoded_literals(diff_literals) 
    else:
        print("WARNING: literal vector not available in input features")
    return (best_control, second_best_control)

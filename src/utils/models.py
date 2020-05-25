@@ -109,6 +109,7 @@ class BestControl:
     literals_not_in_control: int = -1 # literals present in origin but not in control (computed by find_best_control())
     literals_not_in_origin: int = -1  # literals present in control but not found also in origin (ditto)
     n_diff_literals: int = -1         # literals which are present in both, but not found the same number of times
+    diff_literals: str = ''           # comma separated literals (if literal contains a comma it will be entity encoded, max 200 chars per literal)
 
     def dist_prod(self):
        """ 
