@@ -178,8 +178,9 @@ def calc_function_dist(origin_calls, control_calls):
    diff_functions = []
    common = 0
    for key in fns:
-       if key == 'N/A':  # ignore this for calculation for distance
-          continue
+       # anonymous calls have a key == 'N/A' so do we include them in the calc?
+       #if key == 'N/A':  # ignore this for calculation for distance
+       #   continue
        a = origin_calls.get(key, 0)
        b = control_calls.get(key, 0)
        vec1.append(a)
@@ -267,11 +268,12 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
 
        ast_dist = math.dist(input_vector, control_ast_vector)
        # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
-       call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], 
-                                                      control['calls_by_count'])
+       call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control['calls_by_count'])
        new_dist = ast_dist * call_dist
        if new_dist < best_distance and new_dist <= max_distance: 
            if debug:
+               print(input_features['calls_by_count'])
+               print(control['calls_by_count']) 
                print("Got good distance {} for {} (was {}, max={})".format(new_dist, control_url, best_distance, max_distance)) 
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 

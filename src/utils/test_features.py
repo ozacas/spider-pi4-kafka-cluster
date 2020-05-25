@@ -35,6 +35,19 @@ def test_compute_function_dist():
    dist, diff_functions = calc_function_dist(a, b)
    assert dist > 0.0
    assert diff_functions == ['tmp']
+
+def test_compute_function_dist_3():
+   # check symettry
+   a = { "N/A": 1 }
+   b = { }
+   dist1, diff_fn1 = calc_function_dist(a, b)
+   print(dist1)
+   assert pytest.approx(dist1, 10.0)
+   assert diff_fn1 == ['N/A']
+   dist2, diff_fn2 = calc_function_dist(b, a)
+   assert dist2 > 0.0
+   assert diff_fn2 == ['N/A']
+   assert pytest.approx(dist1, dist2)
    
 def test_compute_function_dist_2():
    # real world example

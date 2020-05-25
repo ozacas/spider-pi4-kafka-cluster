@@ -81,7 +81,7 @@ save_pidfile('pid.eval.controls')
 print("Creating origin_url index in vet_against_control collection... please wait")
 db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING )], unique=True)
 print("Index creation complete.")
-for m in next_artefact(consumer, args.n, filter_cb=None, verbose=args.v):
+for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes') >= 1500, verbose=args.v):
     best_control, next_best_control = find_best_control(m, all_controls, db=db)
 
     d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
