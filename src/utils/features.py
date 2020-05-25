@@ -171,6 +171,11 @@ def calc_function_dist(origin_calls, control_calls):
    o_calls = set(origin_calls.keys())
    c_calls = set(control_calls.keys())
    fns = c_calls.union(o_calls)
+   # we regard zero calls as no-evidence and thus safest to consider the distance infinite. Some may regard it as zero. Its rare for the control artefacts
+   # to have no function calls, so we return the less noisy option for now.
+   if len(fns) == 0:
+       return (float('Inf'), [])
+ 
    vec1 = []
    vec2 = []
    #print("*** origin_calls {}".format(origin_calls))
