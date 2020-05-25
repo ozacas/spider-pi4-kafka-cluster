@@ -192,7 +192,7 @@ class KafkaSpiderMixin(object):
 
 class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'kafkaspider'
-    allowed_domains = ['*']  # permitted to crawl anywhere (except unless blacklisted)
+    allowed_domains = ['*']  # permitted to crawl anywhere (subject to rejection criteria)
 
     def recent_site_eviction(self, key, value):
        self.logger.info("Evicting site cache entry: {} = {} (cache size {})".format(key, value, len(self.recent_sites)))
@@ -334,8 +334,6 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
            URLs which are on an australian IP are sent to kafka
         """
         sent = 0
-        rejected = 0
-        not_au = 0
         # the more pages are in the LRU cache for the site
         topic = self.settings.get('ONEURL_KAFKA_URL_TOPIC')
         stats = { t[0]: 0 for t in self.host_rejection_criteria }
