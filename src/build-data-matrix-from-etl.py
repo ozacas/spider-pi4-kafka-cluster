@@ -5,7 +5,7 @@ import argparse
 from dataclasses import dataclass, field
 from collections import namedtuple
 from typing import List
-from statistics import mean
+from statistics import mean, stdev
 from utils.misc import *
 
 @dataclass
@@ -27,10 +27,13 @@ def dump_pretty(result):
 
 def dump_rare_diff_functions(db, pretty=False, threshold=20.0):
     # 1. compute function probability across each family of controls (per differentially expressed function)
-    print("Applying threshold of {} to hits (either ast_dist or function_dist below threshold)".format(threshold))
+    #print("Applying threshold of {} to hits (either ast_dist or function_dist below threshold)".format(threshold))
 
     sites_by_function_count = db.etl_hits.aggregate([
-        { "$match": { "$or": [{"ast_dist": { "$lt": threshold } }, {"function_dist": { "$lt": threshold } } ] } },
+        { "$addFields": {
+            "dist_prod" : { "$multiply": [ "$ast_dist", "$function_dist" ] }
+        }},
+        { "$match": { "dist_prod": { "$lt": threshold } } },
         { "$group": 
              { "_id": { "family": "$control_url", "diff_function": "$diff_function" } ,
                "sites": { "$addToSet": "$cited_on_host" },
@@ -39,51 +42,61 @@ def dump_rare_diff_functions(db, pretty=False, threshold=20.0):
                "function_dist": { "$push": "$function_dist" },
              }
         },
-        { "$sort": { "_id.family": 1, "_id.diff_function": 1 } },
+        { "$project": { # POST-CONDITION: exactly the same fields as for FunctionProbability model
+            "_id": 0,
+            "control_family": "$_id.family",
+            "function_name": "$_id.diff_function",
+            "n_sites": { "$size": "$sites" },
+            "n_pages": { "$size": "$unique_pages" },
+            "sites": 1,
+            "ast_dist": 1,
+            "function_dist": 1,
+        }},
+        { "$sort": { "control_family": 1, "function_name": 1 } },
     ], allowDiskUse=True)
 
-    final_result = []
-    for rec in sites_by_function_count:
-        id = rec.get('_id') 
-        fp = FunctionProbability(control_family=id['family'], 
-                                 function_name=id['diff_function'], 
-                                 n_sites=len(rec.get('sites')), 
-                                 n_pages=len(rec.get('unique_pages')),
-                                 sites=rec.get('sites'),
-                                 ast_dist=rec.get('ast_dist'),
-                                 function_dist=rec.get('function_dist'),
-             )
-        final_result.append(fp)
-    print("Len final_result is {}".format(len(final_result)))
+    final_result = [FunctionProbability(**rec) for rec in sites_by_function_count]
+    #print("Len final_result is {}".format(len(final_result)))
 
     # 2. and update with the values for number of unique sites and pages for each family
     family_results = db.etl_hits.aggregate([
-        { "$match": { "ast_dist": { "$lt": threshold }, "function_dist": { "$lt": threshold } } },
+        { "$addFields": {
+            "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] }
+        }},
+        { "$match": { "dist_prod": { "$lt": threshold } }},
         { "$group": 
              { "_id": { "family": "$control_url" },
                "sites": { "$addToSet": "$cited_on_host" },
                "unique_pages": { "$addToSet": "$cited_on" }
              }
         },
+        { "$project": {
+             "family": "$_id.family",
+             "n_sites": { "$size": "$sites" },
+             "n_pages": { "$size": "$unique_pages" },
+        }},
     ], allowDiskUse=True)
-    result = { }
-    for rec in family_results:
-        id = rec['_id']
-        family = id.get('family')
-        result[family] = { "n_sites": len(rec.get('sites')), "n_pages": len(rec.get('unique_pages')) }
+    result = { rec['family']: rec for rec in family_results }
 
     # 3. merge into final_result dataclasses
+    print('\t'.join(['control_url', 'function', 'n_sites', 'n_sites_with_control', 'n_pages', 'n_pages_with_control', 'ast_max', 'ast_stdev', 'function_max', 'function_stdev']))
+
     for fp in final_result:
          if fp.control_family not in result: # maybe not any diff functions for a given control?
             continue
          obj = result[fp.control_family]
          fp.n_sites_for_family = obj.get('n_sites')
          fp.n_pages_for_family = obj.get('n_pages')
+         assert fp.n_pages_for_family > 0
          rare_site = (fp.n_sites / fp.n_sites_for_family) < 0.05
          rare_page = (fp.n_pages / fp.n_pages_for_family) < 0.05
          rare = rare_site or rare_page
          if fp.n_pages >= 5 and fp.n_sites_for_family >= 5 and fp.n_pages_for_family >= 15 and rare:
-             print(fp)
+             assert len(fp.ast_dist) > 0
+             assert len(fp.function_dist) > 0
+             l = [fp.control_family, fp.function_name, str(fp.n_sites), str(fp.n_sites_for_family), str(fp.n_pages), str(fp.n_pages_for_family),
+                  str(max(fp.ast_dist)), str(stdev(fp.ast_dist)), str(max(fp.function_dist)), str(stdev(fp.function_dist)) ]
+             print('\t'.join(l))
 
 
 def dump_distances(db, pretty=False, threshold=10.0):
@@ -255,7 +268,7 @@ def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=Fals
                 l.append(' '.join(page_counts[host]))
             print('\t'.join(l))
 
-def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None, max_dist_prod=100.0): # origin must be specified or ValueError
+def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_dist_prod=100.0): # origin must be specified or ValueError
    cntrl = db.javascript_controls.find_one({ 'origin': control_url })
    if cntrl is None:
        raise ValueError('No control matching: {}'.format(control_url))
@@ -271,6 +284,9 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None, max_di
                           "max_function_dist": { "$max": "$function_dist" },
                           "min_literal_dist":  { "$min": "$literal_dist" },
                           "max_literal_dist":  { "$max": "$literal_dist" },
+                          "max_literals_not_in_origin": { "$max": "$literals_not_in_origin" },
+                          "max_literals_not_in_control": { "$max": "$literals_not_in_control" },
+                          "max_n_diff_literals": { "$max": "$n_diff_literals" },
                     }},
                     { "$project": {
                           "_id": 0,
@@ -282,11 +298,17 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None, max_di
                           "max_fdist": "$max_function_dist",
                           "min_ldist": "$min_literal_dist",
                           "max_ldist": "$max_literal_dist",
+                          "max_literals_not_in_origin": 1,
+                          "max_literals_not_in_control": 1,
+                          "max_n_diff_literals": 1,
                           "changed_functions": 1
                     }},
                     { "$sort": { "min_ast": 1, "min_fdist": 1 } }
-          ])
-   headers = ['control_url', 'origin_url', 'changed_functions', 'min_ast_dist', 'min_function_dist', 'min_ldist']
+          ], allowDiskUse=True)
+   headers = ['control_url', 'origin_url', 'changed_functions', 
+              'min_ast_dist', 'min_function_dist', 'min_ldist', 
+              "max_literals_not_in_origin", "max_literals_not_in_control", "max_n_diff_literals"]
+
    print('\t'.join(headers))
    for hit in hits:
        if hit.get('min_ast') * hit.get('min_fdist') * hit.get('min_ldist') > max_dist_prod: # usually bad hits have this characteristic
@@ -298,6 +320,9 @@ def dump_control_hits(db, pretty=False, threshold=10.0, control_url=None, max_di
                 str(hit.get('min_ast')), 
                 str(hit.get('min_fdist')),
                 str(hit.get('min_ldist')),
+                str(hit.get('max_literals_not_in_origin')),
+                str(hit.get('max_literals_not_in_control')),
+                str(hit.get('max_n_diff_literals'))
                ]
        print('\t'.join(data)) 
 
@@ -325,6 +350,7 @@ add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
 a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities', 'list_controls', 'control_hits'])
 a.add_argument("--extra", help="Parameter for query", type=str)
+a.add_argument("--threshold", help="Maximum distance to permit [20.0]", type=float, default=20.0)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
@@ -334,11 +360,11 @@ if args.query == "functionsbycontrol":
 elif args.query == "sitesbycontrol":
     dump_sites_by_control(db, want_set=args.v)
 elif args.query == "distances":
-    dump_distances(db, pretty=args.pretty, threshold=10.0 if not args.extra else float(args.extra))
+    dump_distances(db, pretty=args.pretty, threshold=args.threshold)
 elif args.query == "unresolved_clusters":
-    dump_unresolved_clusters(db, pretty=args.pretty, threshold=100.0, want_set=args.v) # distances over 100 will be considered for clustering
+    dump_unresolved_clusters(db, pretty=args.pretty, threshold=args.threshold, want_set=args.v) # distances over 100 will be considered for clustering
 elif args.query == "function_probabilities":
-    dump_rare_diff_functions(db, pretty=args.pretty, threshold=20.0 if not args.extra else float(args.extra)) 
+    dump_rare_diff_functions(db, pretty=args.pretty, threshold=args.threshold)
 elif args.query == "list_controls":
     list_controls(db, pretty=args.pretty)
 elif args.query == "control_hits":
