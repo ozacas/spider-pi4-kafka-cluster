@@ -49,11 +49,15 @@ def cleanup(*args):
 def iterate(consumer, max, verbose, threshold):
    for r in next_artefact(consumer, max, lambda v: v['ast_dist'] <= threshold, verbose=verbose):
        try:
-          yield BestControl(**r)
+          bc = BestControl(**r)
+          if bc.is_good_hit():
+              yield bc
        except TypeError:
           # BUGFIX coming from input topic data: assume r['origin_js_id'] was persisted (in error) as a tuple or list...
           r['origin_js_id'] = r['origin_js_id'][0]
-          yield BestControl(**r)
+          bc = BestControl(**r)
+          if bc.is_good_hit():
+              yield bc
  
 setup_signals(cleanup)
 origins = { }
