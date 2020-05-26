@@ -39,7 +39,13 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.recent_cache = pylru.lrucache(10 * 1024)
        self.cache = pylru.lrucache(500)
        self.update_blacklist()
+       self.disinterest_topic = settings.get('OVERREPRESENTED_HOSTS_TOPIC')
+       self.overrepresented_hosts = self.init_overrepresented_hosts(self.disinterest_topic, bs)
+
        save_pidfile('pid.snippetspider')
+       self.host_rejection_criteria = ( ('host_blacklisted', self.is_blacklisted),         # ignore hosts outside scope or which are manually deemed irrelevant
+                                        ('host_long_term_ban', self.is_long_term_banned),  # we obey long-term bans to avoid contacting the site in concert across spiders
+                                      )
 
     def spider_closed(self, spider):
         # NB: to be overridden by subclass eg. to persist state
@@ -59,23 +65,6 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
     def penalise(self, *args, **kwargs):
         # MUST implement this, but it does nothing for this spider
         pass
-
-    def is_suitable_host(self, host, count_by_hosts): # NB: OVERRIDE
-        return True # this spider considers all hosts suitable, since it has already been fetched by kafkaspider, so we dont reject any here
-
-    def is_suitable(self, url, kafka_message=None, check_priority=True):
-        if url in self.recent_cache:
-            return False
-        ret = True
-        if kafka_message:  # check to see if kafka message has content type and we only want to visit html pages
-            pass # NB: we already know since the html-page-stats only contains HTML so no need to check content type anymore
-            # FALLTHRU
-        else:
-            # no content type, so assume not html and therefore...
-            ret = False
-            # FALLTHRU
-        self.recent_cache[url] = 1 
-        return ret
 
     def find_url(self, url):
         # cache lookups as excessive mongo calls slow the spider down
@@ -113,9 +102,6 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
         script_len = len(script)
         self.save_snippet(url_id, script, script_len, sha256, md5)
 
-    def is_blacklisted(self, domain):
-        return domain in self.blacklisted_domains
-    
     def update_blacklist(self):
          self.blacklisted_domains = self.db.blacklisted_domains.distinct('domain')
 
