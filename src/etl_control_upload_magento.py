@@ -34,22 +34,25 @@ for dirpath, dirnames, files in os.walk(args.local):
             if not item.startswith("app/"):  # do not include test JS etc...
                 continue
             url = urlbase.format(args.release, item)
-            t = (url, family, variant, None, args.release, "adobe.com", fname)
+            t = (url, family, variant, args.release, "adobe.com", fname)
             print(t)
             controls_to_save.append(t)
 print("Found {} artefacts to save.".format(len(controls_to_save)))
 
 for url, family, variant, version, provider, fname in controls_to_save:
     if args.v:
-       print("Found artefact: {}".format(url))
+        print("Found artefact: {}".format(url))
+    assert url is not None
+    assert family is not None
+    assert version is not None
     try: 
-       with open(fname, 'rb') as fp:
-           artefact = save_control(db, url, family, variant, version, 
+        with open(fname, 'rb') as fp:
+            artefact = save_control(db, url, family, variant, version, 
                                    refuse_hashes=existing_control_hashes, 
                                    provider=provider, content=fp.read(),
                                    java=args.java, feature_extractor=args.extractor)
-           existing_control_hashes.add(artefact.sha256)
-           if args.v:
+            existing_control_hashes.add(artefact.sha256)
+            if args.v:
                print(artefact)
     except Exception as e:
        print(str(e))
