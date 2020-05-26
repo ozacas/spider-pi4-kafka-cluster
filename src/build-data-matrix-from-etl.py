@@ -345,6 +345,23 @@ def list_controls(db, pretty=False):
            c.get('md5'), str(total_calls), str(total_literals), str(total_ast)]
       print('\t'.join(l))
 
+def calc_suspicious(csv_string_iterable):
+   suspicious = ['cart', 'password', 'login', 'account', 'submit', 'eval', 'script',
+                 'https://', 'http://', 'encode', 'decode', 'URI', 'network', 
+                 'dns', 'get', 'post', 'fromCharCode', 'xmlHttpRequest', 'ajax', 
+                 'charCodeAt', 'createElement', 'insertBefore', 'appendChild']
+   n = 0
+   for csv in csv_string_iterable: 
+       assert isinstance(csv, str)
+       terms = filter(lambda t: t is not None and len(t) > 0, csv.split(","))
+       for s in suspicious: # TODO FIXME: not quite right since it will count many times, but oh well....
+           cnt = len(list(filter(lambda v: v == True, map(lambda t: s in t.lower(), terms))))
+           if cnt > 0:
+               #print("{} suspicious terms in {}".format(cnt, csv))
+               n += cnt
+
+   return n
+
 def dump_hosts(db, pretty=False, threshold=50.0):
    hits = db.etl_hits.aggregate([
       { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
@@ -354,6 +371,7 @@ def dump_hosts(db, pretty=False, threshold=50.0):
            "controls": { "$addToSet": "$control_url" },
            "pages": { "$addToSet": "$cited_on" },
            "max_diff_literals": { "$max": "$n_diff_literals" },
+           "diff_literals": { "$addToSet": "$diff_literals" },
            "diff_functions": { "$addToSet": "$diff_function" },
       }},
       { "$project": {
@@ -361,16 +379,21 @@ def dump_hosts(db, pretty=False, threshold=50.0):
            "n_controls": { "$size": "$controls" },
            "n_pages": { "$size": "$pages" },
            "max_diff_literals": 1,
+           "diff_functions": 1,
+           "diff_literals": 1,
            "n_diff_functions": { "$size": "$diff_functions" },
       }},
       { "$sort": { "host": 1, "n_controls": -1, "max_diff_literals": -1 } },
    ], allowDiskUse=True)
 
-   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 'n_diff_functions']))
+   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 'n_diff_functions', 'n_suspicious_functions', 'n_suspicious_literals']))
    for hit in hits:
        print('\t'.join([hit.get('host'), str(hit.get('n_controls')), 
                         str(hit.get('n_pages')), 
-                        str(hit.get('max_diff_literals')), str(hit.get('n_diff_functions')) ]))
+                        str(hit.get('max_diff_literals')), 
+                        str(hit.get('n_diff_functions')), 
+                        str(calc_suspicious(hit.get('diff_functions'))),
+                        str(calc_suspicious(hit.get('diff_literals'))) ]))
 
 def dump_host(db, hostspec, pretty=False, threshold=50.0):
    regexp = '.*{}.*'.format(hostspec.replace('.', '\.'))
