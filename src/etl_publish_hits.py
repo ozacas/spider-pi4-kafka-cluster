@@ -11,29 +11,6 @@ from utils.misc import *
 from utils.features import as_url_fields
 from dataclasses import asdict
 
-a = argparse.ArgumentParser(description="Reconcile all data from control, origin and artefacts into a query-ready collection")
-add_kafka_arguments(a,
-                    consumer=True, # ensure we can read from a topic
-                    producer=True, # and save to a topic
-                    default_from='javascript-artefact-control-results',
-                    default_group='etl-publish-hits',
-                    default_to='etl-good-hits')
-add_mongo_arguments(a, default_access="read-write", default_user='rw')
-add_extractor_arguments(a)
-add_debug_arguments(a)
-a.add_argument("--threshold", help="Ignore hits with AST * Function call distance greater than this [50.0]", type=float, default=50.0)
-a.add_argument("--tail", help="Dont terminate if we've read all the messages. Wait for new ones", action="store_true")
-a.add_argument("--bad", help="Save hits which fail threshold to db.etl_bad_hits", action='store_true')
-args = a.parse_args()
-
-mongo = pymongo.MongoClient(args.db, args.port, 
-                            username=args.dbuser, password=str(args.dbpassword))
-db = mongo[args.dbname]
-timeout = float('Inf') if args.tail else 10000
-consumer = KafkaConsumer(args.consume_from, bootstrap_servers=args.bootstrap, group_id=args.group, 
-                         auto_offset_reset=args.start, consumer_timeout_ms=timeout,
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=lambda m: json.dumps(m).encode('utf-8'))
 
 def cleanup(*args):
     global consumer
@@ -47,59 +24,24 @@ def cleanup(*args):
     rm_pidfile('pid.etl.hits')
     exit(0)
 
-setup_signals(cleanup)
-origins = { }
-n_unable = n_ok = n_bad = 0
-n_not_good = n_good = n = 0
-save_pidfile('pid.etl.hits')
-all_controls = {}
-for t in load_controls(db, literals_by_count=False, verbose=args.v):
-    assert isinstance(t, tuple)
-    assert len(t) == 3
-    assert isinstance(t[0], dict)
-    assert 'origin' in t[0]
-    all_controls[t[0].get('origin')] = t[0]
 
-for r in consumer: 
-    n += 1
-    hit = BestControl(**r.value)
-    if hit.ast_dist * hit.function_dist >= args.threshold:
-        if args.bad:
-            db.etl_bad_hits.insert_one(asdict(hit))
-        n_not_good += 1
-        continue
-
-    if args.v:
-        if n % 10000 == 0:
-            print("Processed {} n records ({} not good). {}".format(n, n_not_good, str(datetime.utcnow())))
-
+def process_hit(db, all_controls, hit: BestControl, producer):
     dist = hit.ast_dist
     assert dist >= 0.0
-    # ignore old-style hits which are missing key values (only a few left in input topic, which will slowly die off)
-    if hit.xref is None or len(hit.xref) == 0: 
-       n_bad += 1
-       continue
 
     origin_fields = as_url_fields(hit.origin_url, prefix='origin')
     host = origin_fields.get('origin_host')
     if host is None:
-       continue
-    origins[host] = 1
+        return False
+
     d = asdict(hit)
     d.pop('diff_functions', None)
     fv_origin = get_function_call_vector(db, hit.origin_url)
     if fv_origin is None:
-        n_unable += 1 
-        continue
-    else:
-        n_ok += 1
-        # FALLTHRU
+        return False
 
     u = hit.control_url
-    if not u in all_controls:
-        print("Could not find {} in all controls".format(u))
-        continue   # control no longer in database? ok, skip further work
-
+    assert u in all_controls # should have been checked before call
     fv_control = all_controls[u].get('calls_by_count')
     d.update(origin_fields)
 
@@ -115,24 +57,89 @@ for r in consumer:
         dc['diff_functions'] = hit.diff_functions_as_list()
         assert isinstance(dc['diff_functions'], list)
         if dc['cited_on_host'] is None:   # some buggy records - rare
-            print("Bad data - skipping... {}".format(dc)) 
-            continue
+            print("Bad data - skipping... {}".format(dc))
+            return False
         producer.send('etl-good-hits', dc)
         db.etl_hits.insert_one(dc) # BREAKING CHANGE: dc['diff_functions'] is now a list not a comma separated string, but literals is still a string
-        n_good += 1
+        return True
     else:
         if args.bad:
             db.etl_bad_hits.insert_one(d)
-        n_not_good += 1
+        return False
 
-    if n >= args.n:
-       break
+if __name__ == "__main__":
+    a = argparse.ArgumentParser(description="Reconcile all data from control, origin and artefacts into a query-ready collection")
+    add_kafka_arguments(a,
+                consumer=True, # ensure we can read from a topic
+                producer=True, # and save to a topic
+                default_from='javascript-artefact-control-results',
+                default_group='etl-publish-hits',
+                default_to='etl-good-hits')
+    add_mongo_arguments(a, default_access="read-write", default_user='rw')
+    add_extractor_arguments(a)
+    add_debug_arguments(a)
+    a.add_argument("--threshold", help="Ignore hits with AST * Function call distance greater than this [50.0]", type=float, default=50.0)
+    a.add_argument("--tail", help="Dont terminate if we've read all the messages. Wait for new ones", action="store_true")
+    a.add_argument("--bad", help="Save hits which fail threshold to db.etl_bad_hits", action='store_true')
+    args = a.parse_args()
 
-print("Run completed: processed {} records with AST*function_call threshold <= {}".format(n, args.threshold))
-print("Unable to retrieve FV for {} URLs".format(n_unable))
-print("Found {} FV's without problem".format(n_ok))
-print("{} records had missing fields which were ignored.".format(n_bad))
-print("Published {} hits, {} failed is_good_hit() test.".format(n_good, n_not_good))
-if args.bad:
-    print("{} records failed threshold, published to db.etl_bad_hits".format(n_not_good))
-cleanup()
+    mongo = pymongo.MongoClient(args.db, args.port, 
+                    username=args.dbuser, password=str(args.dbpassword))
+    db = mongo[args.dbname]
+    timeout = float('Inf') if args.tail else 10000
+    consumer = KafkaConsumer(args.consume_from, bootstrap_servers=args.bootstrap, group_id=args.group, 
+                 auto_offset_reset=args.start, consumer_timeout_ms=timeout,
+                 value_deserializer=lambda m: json.loads(m.decode('utf-8')))
+    producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=lambda m: json.dumps(m).encode('utf-8'))
+    setup_signals(cleanup)
+    n_ok = n_bad = 0
+    n_good = n_not_good = n = 0
+    save_pidfile('pid.etl.hits')
+    all_controls = {}
+    for t in load_controls(db, literals_by_count=False, verbose=args.v):
+        assert isinstance(t, tuple)
+        assert len(t) == 3
+        assert isinstance(t[0], dict)
+        assert 'origin' in t[0]
+        all_controls[t[0].get('origin')] = t[0]
+
+    for r in consumer: 
+        n += 1
+        hit = BestControl(**r.value)
+
+        if args.v:
+            if n % 10000 == 0:
+                 print("Processed {} records ({} not good). {}".format(n, n_not_good, str(datetime.utcnow())))
+        if n > args.n: # TODO FIXME: will lose last message unless we exit before kafka auto commit occurs (but only if --n specified)
+            break
+
+        # 1. if xref is missing/empty reject the entire record
+        if hit.xref is None or len(hit.xref) == 0:
+            n_bad += 1
+            continue
+
+        # 2. bad AST*function call product (over threshold)? Or not a hit? reject entire record
+        if (len(hit.control_url) == 0 or hit.ast_dist * hit.function_dist >= args.threshold) and args.bad:
+            db.etl_bad_hits.insert_one(asdict(hit))
+            n_not_good += 1
+            continue
+
+        # 3. control for the hit no longer in the db? This typically happens as the control has been rejected as too small or some other criteria
+        u = hit.control_url
+        if not u in all_controls:
+            print("Could not find {} in all controls".format(u))
+            n_bad += 1
+            continue   # control no longer in database? ok, skip further work
+
+        ret = process_hit(db, all_controls, hit, producer)
+        if ret:
+            n_ok += 1
+        else:
+            n_bad += 1 
+
+    print("Run completed: processed {} records with AST*function_call threshold <= {}".format(n, args.threshold))
+    print("{} records had a problem which could not be ignored.".format(n_bad))
+    print("Published {} hits, {} failed is_good_hit() test.".format(n_good, n_not_good))
+    if args.bad:
+        print("{} records failed threshold, published to db.etl_bad_hits".format(n_not_good))
+    cleanup()
