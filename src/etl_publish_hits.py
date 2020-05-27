@@ -21,7 +21,7 @@ add_kafka_arguments(a,
 add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
 add_debug_arguments(a)
-a.add_argument("--threshold", help="Ignore hits with ast_distance greater than this [50.0]", type=float, default=50.0)
+a.add_argument("--threshold", help="Ignore hits with AST * Function call distance greater than this [50.0]", type=float, default=50.0)
 a.add_argument("--tail", help="Dont terminate if we've read all the messages. Wait for new ones", action="store_true")
 args = a.parse_args()
 
@@ -47,21 +47,20 @@ def cleanup(*args):
     sys.exit(0)
 
 def iterate(consumer, max, verbose, threshold):
-   for r in next_artefact(consumer, max, lambda v: v['ast_dist'] <= threshold, verbose=verbose):
+   for r in next_artefact(consumer, max, lambda v: v['ast_dist'] * v['function_dist'] <= threshold, verbose=verbose):
        try:
           bc = BestControl(**r)
-          if bc.is_good_hit():
-              yield bc
+          yield bc
        except TypeError:
           # BUGFIX coming from input topic data: assume r['origin_js_id'] was persisted (in error) as a tuple or list...
           r['origin_js_id'] = r['origin_js_id'][0]
           bc = BestControl(**r)
-          if bc.is_good_hit():
-              yield bc
+          yield bc
  
 setup_signals(cleanup)
 origins = { }
 n_unable = n_ok = n_bad = 0
+n_not_good = n_good = 0
 save_pidfile('pid.etl.hits')
 all_controls = {}
 for t in load_controls(db, literals_by_count=False, verbose=args.v):
@@ -107,31 +106,27 @@ for hit in iterate(consumer, args.n, args.v, args.threshold):
     d['control_family'] = all_controls[u].get('family')
 
     # good hits get sent to the suspicious analysis pipeline
-    if hit.is_good_hit():
+    ok, reason = hit.good_hit_as_tuple()
+    if ok:
         dc = d.copy()
         dc.pop('_id', None)
         dc['diff_functions'] = hit.diff_functions_as_list()
+        assert isinstance(dc['diff_functions'], list)
         if dc['cited_on_host'] is None:   # some buggy records - rare
             print("Bad data - skipping... {}".format(dc)) 
             continue
-        if args.v:
-            print(dc)
         producer.send('etl-good-hits', dc)
-
-        # finally report each differentially called function as a separate record 
-        for fn in filter(lambda fn: len(fn) > 0, dc['diff_functions']):
-            d['diff_function'] = fn
-            d['expected_calls'] = fv_control.get(fn, None)
-            d['actual_calls'] = fv_origin.get(fn, None)
-            dc = d.copy()  # NB: dont give the same instance to pymongo each call
-            assert 'xref' in dc.keys()
-            assert 'literals_not_in_control' in dc.keys()
-            assert 'literals_not_in_origin' in dc.keys()
-            db.etl_hits.insert_one(dc)
-             
+        db.etl_hits.insert_one(dc) # BREAKING CHANGE: dc['diff_functions'] is now a list not a comma separated string, but literals is still a string
+        n_good += 1
+    else:
+        # bad hit, so we report these if --v specified
+        if args.v:
+            print(reason+": "+d)     # be sure to print d so user can see exact hit which would have been persisted to db.etl_hits iff good 
+        n_not_good += 1
 
 if args.v:
     print("Unable to retrieve FV for {} URLs".format(n_unable))
     print("Found {} FV's without problem".format(n_ok))
     print("{} records had missing fields which were ignored.".format(n_bad))
+    print("Published {} hits, {} failed is_good_hit() test and thus not published.".format(n_good, n_not_good))
 cleanup()
