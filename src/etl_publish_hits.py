@@ -60,7 +60,7 @@ for t in load_controls(db, literals_by_count=False, verbose=args.v):
     assert 'origin' in t[0]
     all_controls[t[0].get('origin')] = t[0]
 
-for r in consumer: # cant use next_artefact() here since it gets in the way of some of the code below
+for r in consumer: 
     n += 1
     hit = BestControl(**r.value)
     if hit.ast_dist * hit.function_dist >= args.threshold:
@@ -75,7 +75,7 @@ for r in consumer: # cant use next_artefact() here since it gets in the way of s
 
     dist = hit.ast_dist
     assert dist >= 0.0
-    # ignore old-style hits which are missing key values (only a few left)
+    # ignore old-style hits which are missing key values (only a few left in input topic, which will slowly die off)
     if hit.xref is None or len(hit.xref) == 0: 
        n_bad += 1
        continue
@@ -125,7 +125,7 @@ for r in consumer: # cant use next_artefact() here since it gets in the way of s
             db.etl_bad_hits.insert_one(d)
         n_not_good += 1
 
-    if n > args.n:
+    if n >= args.n:
        break
 
 print("Run completed: processed {} records with AST*function_call threshold <= {}".format(n, args.threshold))
