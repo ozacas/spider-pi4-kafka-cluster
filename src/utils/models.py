@@ -124,18 +124,25 @@ class BestControl:
            return []
        return self.diff_functions.split(' ')
 
-    def is_good_hit(self):
+    def good_hit_as_tuple(self):
        n_diff = self.diff_functions.count(' ') 
        dist = self.ast_dist
        if (dist < 10.0 or (dist < 20.0 and n_diff < 10)) and (dist > 0.0 and self.function_dist > 0.0):
-           return True
+           return (True, 'original_criteria')
        # in case the literal distance cannot be computed, say False. Should not happen anymore.
        if self.literal_dist < 0.0:
-           return False
+           return ('False', 'bad_literal_dist')
        # NB: experience suggests that reasonable hits will have 3 dists < 200.0 (TODO FIXME: does this include all skimmers???)      
        if self.dist_prod() < 150.0:
-           return True
-       return False
+           return (True, 'dist_lt_150')
+       sl = sorted([dist, self.function_dist, self.literal_dist])
+       if sl[0] * sl[1] < 25.0:
+           return (True, 'good_two_smallest_distances')
+       return (False, 'failed_every_test')
+
+    def is_good_hit(self):
+       ok, reason = self.good_hit_as_tuple()
+       return ok
 
     def is_better(self, other):
         other_prod = other.dist_prod()

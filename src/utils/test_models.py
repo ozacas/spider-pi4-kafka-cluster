@@ -52,5 +52,8 @@ def test_best_control():
     assert not bc2.is_better(bc1)
     assert bc1.dist_prod() < bc2.dist_prod() and pytest.approx(bc1.dist_prod(), 1.5)
 
-    bc3 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=43.0, function_dist=3.0, literal_dist=1.7, sha256_matched=False, diff_functions='aaa bbb')
+    bc3 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=43.0, function_dist=3.0, literal_dist=9.7, sha256_matched=False, diff_functions='aaa bbb')
     assert not bc3.is_good_hit()
+
+    bc2.literal_dist = -1
+    assert not bc2.good_hit_as_tuple() == (False, 'bad_literal_dist')
