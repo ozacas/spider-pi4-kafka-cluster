@@ -35,7 +35,8 @@ def dump_rare_diff_functions(db, pretty=False, threshold=20.0):
         }},
         { "$match": { "dist_prod": { "$lt": threshold } } },
         { "$group": 
-             { "_id": { "family": "$control_url", "diff_function": "$diff_function" } ,
+             { "_id": { "family": "$control_url" },
+               "diff_function": { "$unwind": "$diff_functions" },
                "sites": { "$addToSet": "$cited_on_host" },
                "unique_pages": { "$addToSet": "$cited_on" },
                "ast_dist": { "$push": "$ast_dist" },
@@ -45,7 +46,7 @@ def dump_rare_diff_functions(db, pretty=False, threshold=20.0):
         { "$project": { # POST-CONDITION: exactly the same fields as for FunctionProbability model
             "_id": 0,
             "control_family": "$_id.family",
-            "function_name": "$_id.diff_function",
+            "function_name": "$diff_function",
             "n_sites": { "$size": "$sites" },
             "n_pages": { "$size": "$unique_pages" },
             "sites": 1,
@@ -107,7 +108,7 @@ def dump_distances(db, pretty=False, threshold=10.0):
                         "origin_url": "$origin_url",
                         "cited_on_host": "$cited_on_host" },
                "distances": { "$addToSet": "$ast_dist" },
-               "diff_functions": { "$addToSet": "$diff_function" },
+               "diff_functions": { "$addToSet": { "$unwind": "$diff_functions" } },
                "min_function_dist": { "$min": "$function_dist" },
                "pages": { "$addToSet": "$cited_on_path" }
              }
@@ -221,14 +222,16 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
                 l.append(','.join(t.hosts))
             print('\t'.join(l))
 
-def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=False):
+def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=False, threshold=50.0):
     # we want to aggregate hits to the specified control where we obtain the list of sites for each function
     result = db.etl_hits.aggregate([ 
+                 { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
                  { "$match":  
                       { "control_url": control, 
-                        "ast_dist": { "$lt": 10.0 } },
+                        "dist_prod": { "$lt": threshold } },
                  },
                  { "$count": "stage1" },
+                 { "diff_function": { "$unwind": "$diff_functions" } },
                  { "$group": 
                       { "_id": { "diff_function": "$diff_function", 
                                  "cited_on_host": "$cited_on_host",
@@ -236,7 +239,7 @@ def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=Fals
                                  "origin_url": "$origin_url",
                                },
                         "best_ast_dist": { "$min": "$ast_dist" },
-                      } 
+                      }
                  },
                  { "$count": "stage2" },
                  { "$sort": 
@@ -276,6 +279,7 @@ def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_di
                     { "$match": { "control_url": control_url } },
                     { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
                     { "$match": { "dist_prod": { "$lt": threshold } } },
+                    { "$addFields": { "diff_function": { "$unwind": "$diff_functions" } }},
                     { "$group": { 
                           "_id": { "control_url": "$control_url", "origin_url": "$origin_url" },
                           "changed_functions": { "$addToSet": "$diff_function" },
@@ -362,17 +366,24 @@ def calc_suspicious(csv_string_iterable):
 
    return n
 
+def calc_len_diff_literals(string_iterable):
+   n = 0
+   for s in string_iterable:
+       n += len(s)
+   return n
+
 def dump_hosts(db, pretty=False, threshold=50.0):
    hits = db.etl_hits.aggregate([
       { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
       { "$match": { "dist_prod": { "$lt": threshold } } },
+      { "$unwind": { "path": "$diff_functions" } },
       { "$group": {
            "_id": { "host": "$cited_on_host" },
            "controls": { "$addToSet": "$control_url" },
            "pages": { "$addToSet": "$cited_on" },
            "max_diff_literals": { "$max": "$n_diff_literals" },
            "diff_literals": { "$addToSet": "$diff_literals" },
-           "diff_functions": { "$addToSet": "$diff_function" },
+           "diff_functions": { "$addToSet": "$diff_functions" },
       }},
       { "$project": {
            "host": "$_id.host",
@@ -386,14 +397,17 @@ def dump_hosts(db, pretty=False, threshold=50.0):
       { "$sort": { "host": 1, "n_controls": -1, "max_diff_literals": -1 } },
    ], allowDiskUse=True)
 
-   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 'n_diff_functions', 'n_suspicious_functions', 'n_suspicious_literals']))
+   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 
+                    'n_diff_functions', 'n_suspicious_functions', 'n_suspicious_literals',
+                    'len_diff_literals']))
    for hit in hits:
        print('\t'.join([hit.get('host'), str(hit.get('n_controls')), 
                         str(hit.get('n_pages')), 
                         str(hit.get('max_diff_literals')), 
                         str(hit.get('n_diff_functions')), 
                         str(calc_suspicious(hit.get('diff_functions'))),
-                        str(calc_suspicious(hit.get('diff_literals'))) ]))
+                        str(calc_suspicious(hit.get('diff_literals'))),
+                        str(calc_len_diff_literals(hit.get('diff_literals'))) ]))
 
 def dump_host(db, hostspec, pretty=False, threshold=50.0):
    regexp = '.*{}.*'.format(hostspec.replace('.', '\.'))
@@ -424,7 +438,7 @@ add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
 a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities', 'list_controls', 'control_hits', 'hosts', 'host'])
 a.add_argument("--extra", help="Parameter for query", type=str)
-a.add_argument("--threshold", help="Maximum distance to permit [50.0]", type=float, default=50.0)
+a.add_argument("--threshold", help="Maximum distance product (AST distance * function call distance) to permit [100.0]", type=float, default=100.0)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
