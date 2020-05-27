@@ -72,8 +72,8 @@ def add_mongo_arguments(args, default_host='pi1', default_port=27017, default_db
 
 def add_kafka_arguments(args, producer=False, consumer=True, default_from='', default_group='', default_to=''):
    args.add_argument("--bootstrap", 
-                  help="Kafka bootstrap servers [kafka1]", 
-                  type=str, default="kafka1")
+                  help="Kafka bootstrap servers [kafka2]", 
+                  type=str, default="kafka2")
    if consumer:
        args.add_argument("--consume-from", 
                          help="Kafka topic to read input data from [{}]".format(default_from), 
