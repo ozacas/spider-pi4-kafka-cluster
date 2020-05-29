@@ -204,10 +204,8 @@ class KafkaSpiderMixin(object):
         for site in calc.keys():
             total_n = calc[site].get('n') 
             total_days = len(calc[site].get('dates'))
-            if total_n >= 200:
+            if total_n >= 100:
                hosts.add(site) 
-            elif total_n >= 100 and total_days >= 3:
-               hosts.add(site)
 
         self.logger.info("Long-term blacklist has {} sites.".format(len(hosts)))
         return hosts
