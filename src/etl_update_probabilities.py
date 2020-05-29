@@ -146,8 +146,7 @@ if __name__ == "__main__":
     for control in controls_with_hits:
         save_function_probabilities(db, control, 
                                     threshold=args.threshold, 
-                                    family_cache=pylru.lrucache(50)
+                                    family_cache=pylru.lrucache(50),
                                     verbose=args.v)
     print("Run completed: {}".format(str(datetime.utcnow())))
-
-exit(0)
+    exit(0)
