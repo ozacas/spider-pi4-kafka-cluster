@@ -21,6 +21,7 @@ consumer = KafkaConsumer(args.consume_from, consumer_timeout_ms=10 * 1000,
                          bootstrap_servers=args.bootstrap,
                          group_id=args.group,
                          auto_offset_reset=args.start,
+                         enable_auto_commit=not args.dry_run, # dont update consumer offset if dry-run specified
                          value_deserializer=lambda m: json.loads(m.decode('utf-8')) )
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'),
                          bootstrap_servers=args.bootstrap)
