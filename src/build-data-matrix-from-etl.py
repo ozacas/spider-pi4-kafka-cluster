@@ -222,55 +222,6 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
                 l.append(','.join(t.hosts))
             print('\t'.join(l))
 
-def dump_diff_functions_by_control(db, pretty=False, control=None, want_set=False, threshold=50.0):
-    # we want to aggregate hits to the specified control where we obtain the list of sites for each function
-    result = db.etl_hits.aggregate([ 
-                 { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
-                 { "$match":  
-                      { "control_url": control, 
-                        "dist_prod": { "$lt": threshold } },
-                 },
-                 { "$count": "stage1" },
-                 { "diff_function": { "$unwind": "$diff_functions" } },
-                 { "$group": 
-                      { "_id": { "diff_function": "$diff_function", 
-                                 "cited_on_host": "$cited_on_host",
-                                 "cited_on_path": "$cited_on_path",
-                                 "origin_url": "$origin_url",
-                               },
-                        "best_ast_dist": { "$min": "$ast_dist" },
-                      }
-                 },
-                 { "$count": "stage2" },
-                 { "$sort": 
-                      { "_id.cited_on_host": 1, "_id.diff_function": 1 } 
-                 },
-    ], allowDiskUse=True)
-    if pretty:
-        dump_pretty(result)
-    else:
-        headers = ['diff_function', 'site', 'n_pages_seen_at_site', 'best_ast_dist', 'origin_url', 'control_url']
-        if want_set:
-            headers.append('paths_seen')
-        print('\t'.join(headers))
-        page_counts = { }
-        other_data = { }
-        # finish group by with memory expensive components which MongoDB balks out: TODO FIXME: scalability
-        for rec in result:
-            id = rec.get('_id')
-            host = id['cited_on_host']
-            other_data[host] = { "fn": id['diff_function'], 'best_ast_dist': rec.get('best_ast_dist'), 'origin_url': id['origin_url'], 'control': control }
-            if not host in page_counts:
-                page_counts[host] = set()
-            page_counts[host].add(id['cited_on_path'])
-        
-        for host in page_counts.keys():
-            d = other_data.get(host)
-            l = [d['fn'], host, str(len(page_counts[host])), str(d['best_ast_dist']), d['origin_url'], control]
-            if want_set:
-                l.append(' '.join(page_counts[host]))
-            print('\t'.join(l))
-
 def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_dist_prod=200.0): # origin must be specified or ValueError
    cntrl = db.javascript_controls.find_one({ 'origin': control_url })
    if cntrl is None:
@@ -397,17 +348,19 @@ def dump_hosts(db, pretty=False, threshold=50.0):
       { "$sort": { "host": 1, "n_controls": -1, "max_diff_literals": -1 } },
    ], allowDiskUse=True)
 
-   print('\t'.join(['host', 'n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 
+   print('\t'.join(['n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 
                     'n_diff_functions', 'n_suspicious_functions', 'n_suspicious_literals',
-                    'len_diff_literals']))
+                    'len_diff_literals', 'host']))
    for hit in hits:
-       print('\t'.join([hit.get('host'), str(hit.get('n_controls')), 
+       print('\t'.join([str(hit.get('n_controls')), 
                         str(hit.get('n_pages')), 
                         str(hit.get('max_diff_literals')), 
                         str(hit.get('n_diff_functions')), 
                         str(calc_suspicious(hit.get('diff_functions'))),
                         str(calc_suspicious(hit.get('diff_literals'))),
-                        str(calc_len_diff_literals(hit.get('diff_literals'))) ]))
+                        str(calc_len_diff_literals(hit.get('diff_literals'))),
+                        hit.get('host')
+       ]))
 
 def dump_host(db, hostspec, pretty=False, threshold=50.0):
    regexp = '.*{}.*'.format(hostspec.replace('.', '\.'))
@@ -436,16 +389,16 @@ a = argparse.ArgumentParser(description="Process results for a given query onto 
 add_mongo_arguments(a, default_user='ro') # running queries is basically always read-only role
 add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
-a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, choices=['unresolved_clusters', 'sitesbycontrol', 'functionsbycontrol', 'distances', 'function_probabilities', 'list_controls', 'control_hits', 'hosts', 'host'])
+a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, 
+                          choices=['unresolved_clusters', 'sitesbycontrol', 'distances', 'function_probabilities', 
+                                   'list_controls', 'control_hits', 'hosts', 'host'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 a.add_argument("--threshold", help="Maximum distance product (AST distance * function call distance) to permit [100.0]", type=float, default=100.0)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
 db = mongo[args.dbname]
-if args.query == "functionsbycontrol":
-    dump_diff_functions_by_control(db, pretty=args.pretty, control=args.extra, want_set=args.v)
-elif args.query == "sitesbycontrol":
+if args.query == "sitesbycontrol":
     dump_sites_by_control(db, want_set=args.v)
 elif args.query == "distances":
     dump_distances(db, pretty=args.pretty, threshold=args.threshold)
