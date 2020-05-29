@@ -51,7 +51,7 @@ ONEURL_MAXMIND_DB = '/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb'
 LRU_MAX_PAGES_PER_SITE = 20   # only 20 pages per recent_sites cache entry ie. 20 pages per site for at least 500 sites spidered
 
 # kafkaspider: specific settings
-ONEURL_KAFKA_BOOTSTRAP = 'kafka1'
+ONEURL_KAFKA_BOOTSTRAP = 'kafka2'
 ONEURL_KAFKA_CONSUMER_GROUP = 'scrapy-thug2'
 ONEURL_KAFKA_URL_TOPIC = 'thug.gen5'
 VISITED_TOPIC = 'visited'   # where to save details of each page spidered by kafkaspider
