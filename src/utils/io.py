@@ -8,7 +8,7 @@ import hashlib
 import requests
 from bson.binary import Binary
 from itertools import chain, islice
-from utils.features import analyse_script, calculate_ast_vector
+from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily
 
 def save_ast_vector(db, jsr: JavascriptArtefact, ast_vector, js_id: str=None):
    assert ast_vector is not None
@@ -113,7 +113,7 @@ def save_control(db, url, family, version, variant, force=False, refuse_hashes=N
    ret, failed, stderr = analyse_script(content, jsr, java=java, feature_extractor=feature_extractor)
    if failed:
        raise ValueError('Could not analyse script {} - {}'.format(jsr.url, stderr))
-   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider })
+   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider, 'subfamily': identify_control_subfamily(jsr.url) })
    #print(ret)
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
    resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family },
