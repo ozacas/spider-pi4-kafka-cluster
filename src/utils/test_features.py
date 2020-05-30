@@ -164,3 +164,10 @@ def test_find_script():
    ret = find_script(db, u, debug=True, want_code=False)
    assert ret == (db.scripts.find_one.return_value, db.urls.find_one.return_value)
 
+def test_identify_subfamily():
+   u = 'https://cdnjs.cloudflare.com/ajax/libs/jquery.payment/1.0.0/jquery.payment.min.js'
+   u2 = 'https://cdnjs.cloudflare.com/ajax/libs/flexslider/2.7.2/jquery.flexslider-min.js'
+   assert identify_control_subfamily(u) == (u, 'jquery-payment')
+   assert identify_control_subfamily(u2) == (u2, 'jquery-flexslider')
+   with pytest.raises(AssertionError):
+       identify_control_subfamily(None)

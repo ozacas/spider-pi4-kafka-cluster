@@ -1,6 +1,7 @@
 import subprocess
 import json
 import os
+import re
 import math 
 import hashlib
 from dataclasses import asdict
@@ -327,3 +328,41 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    else:
        print("WARNING: literal vector not available in input features")
    return (best_control, second_best_control)
+
+def identify_control_subfamily(cntl_url):
+   """
+   When controls are added we must identify the subfamily eg. password-strength-meter rather than wordpress. This is so we
+   can reasonably accurately determine the site probability of DE functions related to (say) password-strength-meter. Without
+   a subfamily we cant accurately do that, so many DE functions will have their significance over-estimated. All controls must have a subfamily
+   when put into the database.
+   """
+   assert isinstance(cntl_url, str)
+   subfamily = None
+   last_slash_idx = cntl_url.rfind('/')
+   assert last_slash_idx > 0
+   subfamily = cntl_url[last_slash_idx+1:] 
+   if subfamily.endswith(".min.js") or subfamily.endswith("-min.js"):
+       subfamily = subfamily[:-6]
+   if subfamily.endswith('.js'):
+       subfamily = subfamily[:-3]
+   subfamily = subfamily.rstrip('-_.') # cleanup punctuation
+   subfamily = re.sub('[-_.#~/]+', '-', subfamily) 
+   subfamily = re.sub('\b[a-f0-9]+$', '', subfamily) # remove hex digests at end if any
+   subfamily = subfamily.lower()
+   if 'woocommerce' in cntl_url:
+       if len(subfamily) > 20:
+           subfamily=subfamily[0:20]
+       if 'woocommerce-admin' in cntl_url:
+           subfamily = "woocommerce-admin-" + subfamily 
+       else:
+           subfamily = "woocommerce-" + subfamily 
+      
+   # some of the above rules may re-introduce punctuation at the end. Sooo...
+   subfamily = subfamily.rstrip('-') 
+
+   # and some final rules
+   if subfamily.endswith("-dev"):
+      subfamily = subfamily[:-4]
+
+   assert subfamily is not None # POST-CONDITION: must not be true or we will have problems accurately computing a probability  
+   return (cntl_url, subfamily)
