@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     print("Run completed: processed {} records with AST*function_call threshold <= {}".format(n, args.threshold))
     print("{} records had a problem which could not be ignored.".format(n_bad))
-    print("Published {} hits, {} failed is_good_hit() test.".format(n_good, n_not_good))
+    print("Published {} hits, {} failed is_good_hit() test.".format(n_ok, n_not_good))
     if args.bad:
         print("{} records failed threshold, published to db.etl_bad_hits".format(n_not_good))
     cleanup()
