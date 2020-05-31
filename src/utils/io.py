@@ -84,7 +84,7 @@ def batch(iterable, n=1000):
             return
         yield x
 
-def save_control(db, url, family, version, variant, force=False, refuse_hashes=None, provider='', java='/usr/bin/java', feature_extractor=None, content=None):
+def save_control(db, url, family, variant, version, force=False, refuse_hashes=None, provider='', java='/usr/bin/java', feature_extractor=None, content=None):
    """
    Update all control related data. Note callers must supply refuse_hashes (empty set) or an error will result
 

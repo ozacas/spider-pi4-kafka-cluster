@@ -47,6 +47,7 @@ for url, family, variant, version, provider in controls_to_save:
        print("Found artefact: {}".format(url))
     if not args.list:
        try: 
+           print("Saving artefact {}".format(url))
            artefact = save_control(db, url, family, variant, version, 
                                    refuse_hashes=existing_control_hashes, 
                                    provider=provider, 
@@ -55,6 +56,8 @@ for url, family, variant, version, provider in controls_to_save:
                existing_control_hashes.add(artefact.sha256)
            if args.v:
                print(artefact)
+       except AssertionError as a:
+           raise(a)
        except Exception as e:
            print(str(e))
     
