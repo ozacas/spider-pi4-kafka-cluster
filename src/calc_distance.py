@@ -7,7 +7,11 @@ import sys
 import hashlib
 from utils.features import analyse_script, calculate_ast_vector, calculate_vector, compute_distance, calc_function_dist
 from utils.models import JavascriptArtefact
-from scipy import spatial
+try:
+    from scipy import spatial
+    has_scipy = True
+except:
+    has_scipy = False
 
 # Usage: python3 calc_distance.py --file1 test-javascript/customize-preview.js --file2 test-javascript/customize-preview.min.js --extractor `pwd`/extract-features.jar
 # which will compare a minimised JS artefact against a non-minified artefact and report distances
@@ -37,9 +41,10 @@ if args.v:
     print(nv1)
     print(nv2)
 euclidean_dist = math.dist(nv1, nv2)
-cosine_dist = spatial.distance.cosine(nv1, nv2)
+if has_scipy:
+    cosine_dist = spatial.distance.cosine(nv1, nv2)
+    print("Cosine distance for AST vector: "+str(cosine_dist))
 print("Euclidean distance for AST vector: "+str(euclidean_dist))
-print("Cosine distance for AST vector: "+str(cosine_dist))
 print("Computed distance is: "+str(compute_distance(nv1, nv2)))
 fn1 = ret1["calls_by_count"].keys()
 fn2 = ret2["calls_by_count"].keys()
@@ -53,7 +58,8 @@ if args.v:
 d1 = {t[0]: t[1] for t in zip(all_fns, nv1)}
 d2 = {t[0]: t[1] for t in zip(all_fns, nv2)}
 print("Euclidean distance for Function Call vector: "+str(calc_function_dist(d1, d2)))
-print("Cosine distance for Function Call vector: "+str(spatial.distance.cosine(nv1, nv2)))
+if has_scipy:
+    print("Cosine distance for Function Call vector: "+str(spatial.distance.cosine(nv1, nv2)))
 print("Computed distance for function call vector: "+str(calc_function_dist(ret1['calls_by_count'], ret2['calls_by_count'])))
 all_literals = set(ret1['literals_by_count']).union(set(ret2['literals_by_count']))
 nv1, sum5 = calculate_vector(ret1['literals_by_count'], feature_names=all_literals)
