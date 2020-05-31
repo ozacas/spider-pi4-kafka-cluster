@@ -46,7 +46,7 @@
            - "-zz"
 
 - name: ensure pip is installed to manage python and system is up-to-date
-  hosts: kafka_hosts thug_hosts 
+  hosts: kafka-hosts thug-hosts
   become: yes
   tasks:
      - pacman: name=python-pip state=present
@@ -58,6 +58,7 @@
            pkgconfig
            gcc
            graphviz
+           cronie
          update_cache: yes
      - pacman: upgrade=yes 
 
@@ -188,3 +189,12 @@
   become: yes
   tasks:
     - copy: src=software/daemonize dest=/usr/local/bin/daemonize owner=root group=root mode='0711'
+
+- name: run cron jobs to ensure maintenance is done
+  hosts: pi1
+  tasks:
+    - cron:
+        name: "weekly blacklist sites"
+        special_time: weekly
+        user: acas
+        job: /usr/bin/python3.8 /home/acas/src/populate_long_term_blacklist.py --start earliest
