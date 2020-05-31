@@ -123,6 +123,7 @@ def save_control(db, url, family, version, variant, force=False, refuse_hashes=N
                                                        "last_updated": jsr.when } }, upsert=True)
 
    vector, total_sum = calculate_ast_vector(ret['statements_by_count'])
+   assert total_sum >= 50   # vectors smaller than this are too small to match accurately - and may indicate an issue with the download/code
    sum_of_function_calls = sum(ret['calls_by_count'].values())
    sum_of_literals = sum(ret['literals_by_count'].values())
    vs = JavascriptVectorSummary(origin=url, sum_of_ast_features=total_sum,
