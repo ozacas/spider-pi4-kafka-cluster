@@ -62,6 +62,8 @@ for url, family, variant, version, provider, content in controls_to_save:
            existing_control_hashes.add(artefact.sha256)
            if args.v:
                print(artefact)
+       except AssertionError as a:
+           raise(a)
        except Exception as e:
            print(str(e))
     
