@@ -60,6 +60,8 @@ def process_hit(db, all_controls, hit: BestControl, producer):
             print("Bad data - skipping... {}".format(dc))
             return False
         producer.send('etl-good-hits', dc)
+        # sanity check: if different literals are found then the string must be greater than zero length
+        assert (hit.n_diff_literals > 0 and len(dc.get('diff_literals')) > 0) or hit.n_diff_literals <= 0 
         db.etl_hits.insert_one(dc) # BREAKING CHANGE: dc['diff_functions'] is now a list not a comma separated string, but literals is still a string
         return True
     else:
