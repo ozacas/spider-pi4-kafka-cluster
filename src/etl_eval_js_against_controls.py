@@ -8,7 +8,7 @@ import hashlib
 import pylru
 from kafka import KafkaConsumer, KafkaProducer
 from utils.features import find_best_control, analyse_script, calculate_ast_vector
-from utils.models import JavascriptArtefact, JavascriptVectorSummary
+from utils.models import JavascriptArtefact, JavascriptVectorSummary, BestControl
 from utils.io import next_artefact, load_controls
 from utils.misc import *
 from dataclasses import asdict
@@ -76,21 +76,16 @@ consumer = KafkaConsumer(args.consume_from, group_id=group, auto_offset_reset=ar
 producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
 setup_signals(cleanup)
 
-# 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
-save_pidfile('pid.eval.controls')
-print("Creating origin_url index in vet_against_control collection... please wait")
-db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING )], unique=True)
-print("Index creation complete.")
-for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes') >= 1500, verbose=args.v):
-    best_control, next_best_control = find_best_control(m, all_controls, db=db, control_cache=pylru.lrucache(200))
-
-    d = asdict(best_control) # NB: all fields of the model are sent to output kafka topic and Mongo
-    assert 'cited_on' in d.keys() and len(d['cited_on']) > 0
-
-    # 2a. also send results to MongoDB for batch-oriented applications and for long-term storage
+def save_vetting(db, hit: BestControl ):
+    d = asdict(hit)
+    assert 'cited_on' in d and len(d['cited_on']) > 0
+    assert 'control_url' in d and len(d['control_url']) > 0
     assert 'origin_url' in d and len(d['origin_url']) > 0
     assert isinstance(d['origin_js_id'], str) or d['origin_js_id'] is None
-    ret = db.vet_against_control.find_one_and_update({ 'origin_url': best_control.origin_url }, 
+
+    control_url = hit.control_url
+    origin_url = hit.origin_url
+    ret = db.vet_against_control.find_one_and_update({ 'origin_url': origin_url, 'control_url': control_url }, 
                                                      { "$set": d}, 
                                                      upsert=True, 
                                                      return_document=pymongo.ReturnDocument.AFTER)
@@ -100,26 +95,38 @@ for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes')
     xref = str(ret.get('_id'))
     assert xref is not None
     d['xref'] = xref
-    best_control.xref = xref
-    if next_best_control is not None:
-        next_best_control.xref = xref
-    producer.send(args.to, d) 
+    return d
 
+# 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
+save_pidfile('pid.eval.controls')
+print("Creating required index in vet_against_control collection... please wait")
+db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING), ('control_url', pymongo.ASCENDING )], unique=True)
+print("Index creation complete.")
+
+for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes') >= 1500, verbose=args.v):
+    best_control, next_best_control = find_best_control(m, all_controls, db=db, control_cache=pylru.lrucache(200))
+    if best_control is None or len(best_control.control_url) == 0:
+        continue
+
+    d = save_vetting(db, best_control)
+    best_control.xref = d['xref']
+    assert best_control.xref is not None
+
+    producer.send(args.to, d) 
     if args.v and len(best_control.control_url) > 0:  # only report hits in verbose mode, to make for easier investigation
         print(best_control)
 
-    # 3. finally if the next_best_control looks just as good (or better than) the best control then we ALSO report it...
-    if next_best_control is None:
-        continue
+    if next_best_control is not None and len(next_best_control.control_url) > 0:
+        d2 = save_vetting(db, next_best_control)
+        next_best_control.xref = d2['xref']
+        assert len(next_best_control.xref) > 0
 
-    best_mult = best_control.dist_prod()
-    next_best_mult = next_best_control.dist_prod()
-    if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
-        print("NOTE: next best control looks as good as best control")
-        print(next_best_control) 
-        print(best_control)
-        d = asdict(next_best_control)
-        d['xref'] = xref
-        producer.send(args.to, d)
+        best_mult = best_control.dist_prod()
+        next_best_mult = next_best_control.dist_prod()
+        if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
+            print("NOTE: next best control looks as good as best control")
+            print(next_best_control) 
+            producer.send(args.to, d2)
+            assert d2['xref'] != d['xref']  # xref must not be the same document otherwise something has gone wrong with find_best_control()
 
 cleanup()

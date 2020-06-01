@@ -327,15 +327,16 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    if 'literals_by_count' in input_features:
        lv_origin = input_features.get('literals_by_count')
        # NB: cannot use dist_prod() here since we havent initialised all the {ast,literal,function}_dist fields yet...
-       if best_control.ast_dist * best_control.function_dist < 50.0:
+       half_dist = max_distance / 2  # only quality hits have literals computed since it can be expensive to store
+       if best_control.ast_dist * best_control.function_dist < half_dist:
            bc = best_control
            t = calculate_literal_distance(db, bc, lv_origin, cache=control_cache)
            assert isinstance(t, tuple)
            bc.literal_dist, bc.literals_not_in_origin, bc.literals_not_in_control, diff_literals = t
            bc.n_diff_literals = len(diff_literals)
            bc.diff_literals = encoded_literals(diff_literals)
-       if second_best_control is not None and second_best_control.ast_dist * second_best_control.function_dist < 50.0:
-           sbc = second_best_control
+       sbc = second_best_control
+       if sbc is not None and sbc.ast_dist * sbc.function_dist < half_dist:
            t = calculate_literal_distance(db, sbc, lv_origin, cache=control_cache)
            sbc.literal_dist, sbc.literals_not_in_origin, sbc.literals_not_in_control, diff_literals = t
            sbc.n_diff_literals = len(diff_literals)
