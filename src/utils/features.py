@@ -4,6 +4,7 @@ import os
 import re
 import math 
 import hashlib
+import pylru
 from dataclasses import asdict
 from utils.models import BestControl
 from tempfile import NamedTemporaryFile
@@ -198,16 +199,30 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = (1 / common) * (len(vec1)-common) if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def calculate_literal_distance(db, hit: BestControl, origin_literals):
-   if db is None:
-       return (-1.0, 0, 0, []) # indicate that calculation is not available
+def literal_lookup(db, control_url, cache=None):
+   assert db is not None
+   assert isinstance(control_url, str) and len(control_url) > 0
+
+   if cache is not None and control_url in cache:
+       return cache[control_url].get('literals_by_count')
 
    # vector length is len of union of literals encountered in either vector. Count will differentiate.
-   control_literals_doc = db.javascript_controls.find_one({ 'origin': hit.control_url })
+   control_literals_doc = db.javascript_controls.find_one({ 'origin': control_url }) # NB: includes literal vector
+   if cache is not None:
+       cache[control_url] = control_literals_doc
+
    assert control_literals_doc is not None # should not happen as it means control has been deleted??? maybe bad io???
    control_literals = control_literals_doc.get('literals_by_count')
  
-   features = list(set(control_literals.keys()).union(origin_literals.keys())) # use list() to ensure traversal order doesnt change, although probably unlikely...
+   return control_literals
+
+def calculate_literal_distance(db, hit: BestControl, origin_literals, cache=None):
+   if db is None:
+       return (-1.0, 0, 0, []) # indicate that calculation is not available
+
+   control_literals = literal_lookup(db, hit.control_url, cache=cache)
+
+   features = list(set(control_literals.keys()).union(origin_literals.keys())) # use list() to ensure traversal order is predictable
    #print(hit.control_url)
    #print(hit.origin_url)
    #print(features)
@@ -245,7 +260,7 @@ def encoded_literals(literals_to_encode):
    encoded_literals = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
    return ','.join(encoded_literals)
 
-def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False):
+def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False, control_cache=None):
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None)     # report owning HTML page also if possible (useful for data analysis)
@@ -314,14 +329,14 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
        # NB: cannot use dist_prod() here since we havent initialised all the {ast,literal,function}_dist fields yet...
        if best_control.ast_dist * best_control.function_dist < 50.0:
            bc = best_control
-           t = calculate_literal_distance(db, bc, lv_origin)
+           t = calculate_literal_distance(db, bc, lv_origin, cache=control_cache)
            assert isinstance(t, tuple)
            bc.literal_dist, bc.literals_not_in_origin, bc.literals_not_in_control, diff_literals = t
            bc.n_diff_literals = len(diff_literals)
            bc.diff_literals = encoded_literals(diff_literals)
        if second_best_control is not None and second_best_control.ast_dist * second_best_control.function_dist < 50.0:
            sbc = second_best_control
-           t = calculate_literal_distance(db, sbc, lv_origin)
+           t = calculate_literal_distance(db, sbc, lv_origin, cache=control_cache)
            sbc.literal_dist, sbc.literals_not_in_origin, sbc.literals_not_in_control, diff_literals = t
            sbc.n_diff_literals = len(diff_literals)
            sbc.diff_literals = encoded_literals(diff_literals) 
@@ -361,6 +376,10 @@ def identify_control_subfamily(cntl_url):
    subfamily = subfamily.rstrip('-') 
 
    # and some final rules
+   if subfamily.startswith("kendo-culture"):
+      subfamily = "kendo-culture"
+   if subfamily == "wp-tinymce" or subfamily == "tinymce":
+      subfamily = "tiny-mce"
    if subfamily.endswith("-dev"):
       subfamily = subfamily[:-4]
 

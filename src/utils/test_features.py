@@ -171,3 +171,9 @@ def test_identify_subfamily():
    assert identify_control_subfamily(u2) == (u2, 'jquery-flexslider')
    with pytest.raises(AssertionError):
        identify_control_subfamily(None)
+
+def test_correct_literal_lookup():
+   db = mock.Mock()
+   db.javascript_controls.find_one.return_value = { 'literals_by_count': {  u'a': 10, u'b': 20 } }
+   ret = literal_lookup(db, 'https:/XXX')
+   assert ret == { 'a': 10, 'b': 20 } 

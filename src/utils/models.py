@@ -54,9 +54,23 @@ class JavascriptLocation:
    when: str
    ip: str # NB: first IP associated with the script host only
 
+@dataclass
+class DownloadArtefact:
+   # responsible for handling downloads from scrapy
+   url: str
+   origin: str
+   host: str
+   checksum: str
+   path: str
+   when: str
+
+   def __lt__(self, other):
+       return self.checksum < other.checksum
+
 @enforce_types
 @dataclass
 class JavascriptArtefact: # definition corresponds to visited kafka topic record schema
+    # responsible for record official details of each download
     url: str
     sha256: str
     md5: str
@@ -71,7 +85,11 @@ class JavascriptArtefact: # definition corresponds to visited kafka topic record
           if k == "checksum":
               k = "md5"
           setattr(self, k, v)
- 
+
+    @property
+    def checksum(self):
+       return self.md5 
+
     # ensure when sorted, that list has same checksums next to each other for ingestion efficiency
     def __lt__(self, other):
         return self.md5 < other.md5

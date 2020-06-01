@@ -3,12 +3,36 @@ from utils.models import JavascriptArtefact, JavascriptVectorSummary
 from collections import namedtuple
 from dataclasses import asdict
 from datetime import datetime
-import pymongo
+from pymongo import ReturnDocument
 import hashlib
 import requests
 from bson.binary import Binary
 from itertools import chain, islice
 from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily
+
+def save_artefact(db, producer, artefact: JavascriptArtefact, root, to, content=None, inline=False, content_type='text/javascript' ):
+   assert db is not None
+   assert producer is not None
+   assert content is not None or (root is not None and artefact.path is not None)
+   assert isinstance(to, str) and len(to) > 0
+ 
+   if content is None: 
+        path = "{}/{}".format(root, artefact.path)
+        content = None
+        with open(path, 'rb') as fp:
+            content = fp.read()
+   assert content is not None
+
+   d = save_script(db, artefact, Binary(content))
+   assert 'sha256' in d
+   assert 'md5' in d
+   assert 'size_bytes' in d
+   d.update({ 'url': artefact.url,
+              'inline': inline,
+              'content-type': content_type,
+              'when': artefact.when,
+              'origin': artefact.origin })
+   producer.send(to, d)
 
 def save_ast_vector(db, jsr: JavascriptArtefact, ast_vector, js_id: str=None):
    assert ast_vector is not None
@@ -69,7 +93,7 @@ def save_script(db, artefact, script: bytes):
    s = db.scripts.find_one_and_update(key, { '$set': value }, 
                                       upsert=True, 
                                       projection={ 'code': False },
-                                      return_document=pymongo.ReturnDocument.AFTER)
+                                      return_document=ReturnDocument.AFTER)
    db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
 
    return key
