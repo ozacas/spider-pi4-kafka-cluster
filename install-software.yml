@@ -46,7 +46,7 @@
            - "-zz"
 
 - name: ensure pip is installed to manage python and system is up-to-date
-  hosts: kafka-hosts thug-hosts
+  hosts: kafka_hosts thug_hosts
   become: yes
   tasks:
      - pacman: name=python-pip state=present
@@ -86,6 +86,20 @@
   tasks:
      - pip:
          requirements: /home/acas/src/requirements.txt
+
+- name: setup low-privilege account to reduce risk
+  hosts: thug_hosts
+  become: yes
+  tasks:
+     - group:
+         name: lowpriv
+         state: present
+     - user: 
+         create_home: yes
+         name: lowpriv
+         group: lowpriv
+         password_lock: yes # account must be enabled to have a crontab and run processes
+         state: present
 
 - name: ensure thug pip3 pre-reqs are installed
   hosts: thug_hosts x86_thug_hosts
@@ -192,9 +206,26 @@
 
 - name: run cron jobs to ensure maintenance is done
   hosts: pi1
+  become: yes # so we can install into a low-privilege user crontab
   tasks:
     - cron:
         name: "weekly blacklist sites"
         special_time: weekly
         user: acas
         job: /usr/bin/python3.8 /home/acas/src/populate_long_term_blacklist.py --start earliest
+    - cron:
+        user: lowpriv
+        name: PASSWORD
+        env: yes
+        job: "{{ MONGO_RW_PASS }}"
+    - cron:
+        name: "retry failed downloads"
+        special_time: weekly
+        user: lowpriv  # to reduce security risk of fetching from bad sites
+        job: /usr/bin/python3.8  /home/acas/src/retry_broken_downloads.py --v --start earliest --dbuser rw
+    - file:
+        path: /home/acas
+        state: directory
+        owner: acas
+        group: lowpriv
+        mode: '0750'

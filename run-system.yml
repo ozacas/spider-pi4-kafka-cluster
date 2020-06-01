@@ -24,7 +24,7 @@
        when: SPIDER == 0 and data_root.stat.exists and data_root.stat.isdir
 
 - name: compute feature vectors and ingest into MongoDB
-  hosts: pi2
+  hosts: pi2 
   gather_facts: no
   tasks: 
      - command: 
