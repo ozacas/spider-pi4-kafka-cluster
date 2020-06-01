@@ -7,20 +7,8 @@ from collections import namedtuple
 from bson.binary import Binary
 from kafka import KafkaConsumer, KafkaProducer
 from utils.misc import *
-from utils.io import next_artefact, save_script, artefact_tuple
-
-
-def save_artefact(db, producer, artefact, root, to):
-   path = "{}/{}".format(root, artefact.path)
-   with open(path, 'rb') as fp:
-        d = save_script(db, artefact, Binary(fp.read()))
-        # d already contains 'sha256', 'md5' and 'size_bytes' so this update will make it compatible with the JavascriptArtefact dataclass
-        d.update({ 'url': artefact.url, 
-                   'inline': False, 
-                   'content-type': 'text/javascript', 
-                   'when': artefact.when, 
-                   'origin': artefact.origin })
-        producer.send(to, d)
+from utils.models import DownloadArtefact
+from utils.io import next_artefact, save_script, save_artefact
 
 def save_batch(db, batch_of_artefacts, producer, root, fail_on_error=False, to=None, verbose=False): # eg. root='/data/kafkaspider2'
    # finally process each record via mongo
@@ -74,8 +62,7 @@ if __name__ == "__main__":
     save_pidfile('pid.upload.artefacts')
     my_hostname = socket.gethostname()
     print("Loading records matching {} from kafka topic".format(my_hostname))
-    type = artefact_tuple()
-    batch = sorted([type(**r) for r in next_artefact(consumer, 
+    batch = sorted([DownloadArtefact(**r) for r in next_artefact(consumer, 
                                            args.n, 
                                            lambda v: v['host'] == my_hostname and not v['origin'] is None, 
                                            verbose=args.v)])
