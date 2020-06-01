@@ -1,7 +1,29 @@
 import signal
 import os
+import random
+import json
 from utils.models import Password
 from urllib.parse import urlparse
+
+def random_user_agent(search_paths=None):
+    if search_paths is None:
+        search_paths = [ '/etc/thug/personalities', '/home/acas/src/thug/thug/DOM/personalities']
+    ua = None
+    agents = []
+    random.seed()
+    for dir in filter(lambda dir: os.path.exists(dir), search_paths):
+        print(dir)
+        for dir, subdirs, files in os.walk(dir):
+            json_files = ["{}/{}".format(dir, f) for f in files if f.endswith(".json")]
+            for jsf in json_files:
+                with open(jsf, 'r') as fp:
+                    rec = json.load(fp)
+                    agents.append(rec.get('userAgent'))
+
+    assert len(agents) > 0
+    ret = random.choice(agents)
+    assert len(ret) > 0
+    return ret
 
 def setup_signals(callback):
    for s in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]:

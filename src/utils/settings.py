@@ -24,6 +24,10 @@ SCHEDULER_DISK_QUEUE = 'scrapy.squeues.PickleFifoDiskQueue'
 SCHEDULER_MEMORY_QUEUE = 'scrapy.squeues.FifoMemoryQueue'
 TELNETCONSOLE_ENABLED = False
 
+# set user agent exactly once per crawl session (eg. per day) to a random chosen one from thug personalities
+from utils.misc import random_user_agent
+USER_AGENT = random_user_agent()
+
 # Dont want caching/proxying, ajax crawling or http auth for now
 DOWNLOADER_MIDDLEWARES = {
     'scrapy.downloadermiddlewares.robotstxt.RobotsTxtMiddleware': None,
@@ -49,7 +53,6 @@ MONGO_PORT = 27017
 MONGO_DB   = 'au_js'
 ONEURL_MAXMIND_DB = '/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb'
 LRU_MAX_PAGES_PER_SITE = 20   # only 20 pages per recent_sites cache entry ie. 20 pages per site for at least 500 sites spidered
-
 # kafkaspider: specific settings
 ONEURL_KAFKA_BOOTSTRAP = 'kafka2'
 ONEURL_KAFKA_CONSUMER_GROUP = 'scrapy-thug2'
