@@ -185,27 +185,15 @@ class KafkaSpiderMixin(object):
         calc = { }
         consumer = KafkaConsumer(topic, bootstrap_servers=bootstrap_servers, group_id=None, auto_offset_reset='earliest',
                                  value_deserializer=json_value_deserializer(), consumer_timeout_ms=1000) 
-        # 1.process large sites in topic
+
         for message in consumer:
             d = message.value
             site = d['hostname']
             ymd = d['date']
             n = d['n_pages']
-            if site not in calc:
-               s = set()
-               s.add(ymd)
-               calc[site] =  { 'n': n, 'dates': s }
-            else:
-               existing = calc[site]
-               s = existing['dates']
-               s.add(ymd)
-               existing['n'] = max([n, existing['n']])
-        # 2. add highly fetch sites to internal data structure for the crawl. No more fetching until removed from the topic
-        for site in calc.keys():
-            total_n = calc[site].get('n') 
-            total_days = len(calc[site].get('dates'))
-            if total_n >= 100:
-               hosts.add(site) 
+            calc[site] = max(n, calc.get('site', 0))
+
+        hosts = set([site for site in calc.keys() if calc[site] >= 100 ])
 
         self.logger.info("Long-term blacklist has {} sites.".format(len(hosts)))
         return hosts
