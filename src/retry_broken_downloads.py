@@ -99,10 +99,9 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
                             group_id=args.group, 
                             auto_offset_reset=args.start,
                             consumer_timeout_ms= 10 * 1000, # 10s or we terminate consumption since we have caught up with all available messages
-                            value_deserializer=lambda m: json.loads(m.decode('utf-8')))
+                            value_deserializer=json_value_deserializer())
    if producer is None:
-       producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), 
-                            bootstrap_servers=args.bootstrap)
+       producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
    if cache is None:
        cache = pylru.lrucache(500)
    if db is None:
