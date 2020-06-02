@@ -72,8 +72,8 @@ group = args.group
 if len(group) < 1:
     group = None
 consumer = KafkaConsumer(args.consume_from, group_id=group, auto_offset_reset=args.start, 
-                         bootstrap_servers=args.bootstrap, value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+                         bootstrap_servers=args.bootstrap, value_deserializer=json_value_deserializer())
+producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
 setup_signals(cleanup)
 
 def save_vetting(db, hit: BestControl ):
