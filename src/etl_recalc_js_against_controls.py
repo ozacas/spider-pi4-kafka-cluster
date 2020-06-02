@@ -43,7 +43,7 @@ def cleanup(*args):
 all_controls = load_controls(db)
 save_pidfile('pid.recalc.controls')
 n_failed = n = n_sent = 0
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
 
 # 1. TODO FIXME: this isnt quite right, since if the best control changes as a result of recalc - this will no longer delete as args.control will have changed
 if args.delete_existing:
