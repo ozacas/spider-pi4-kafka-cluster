@@ -4,6 +4,7 @@ from dataclasses import asdict
 import os
 import json
 import pymongo
+import hashlib
 import argparse
 import pylru
 from datetime import datetime
@@ -24,6 +25,7 @@ add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
 add_debug_arguments(a)
 a.add_argument("--cache", help="Cache feature vectors to not re-calculate frequently seen JS (int specifies max cache entries, 0 disabled) [0]", type=int, default=0)
+a.add_argument("--defensive", help="Enable extra checks to check data integrity during run", action="store_true")
 
 terminate = False
 def signal_handler(num, frame):
@@ -59,11 +61,10 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
                             bootstrap_servers=args.bootstrap, 
                             group_id=args.group, 
                             auto_offset_reset=args.start,
-                            value_deserializer=lambda m: json.loads(m.decode('utf-8')), 
+                            value_deserializer=json_value_deserializer(),
                             max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
    if producer is None:
-       producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), 
-                            bootstrap_servers=args.bootstrap)
+       producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
    if db is None:
        mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
        db = mongo[args.dbname]
@@ -101,14 +102,20 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
           results.update({ 'url': jsr.url, 'origin': jsr.origin })
           # falsely "update" the cache to ensure it is rewarded for being hit ie. becomes MRU
           fv_cache[key] = (tmp, js_id)
+          # TODO FIXME: how do we make sure the retrieved results are what went into the cache....
           # FALLTHRU
       else:
           # 3. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
           js, js_id = get_script(db, jsr)
-          if not js:
+          if js is None:
               report_failure(producer, jsr, 'Could not locate in MongoDB')
               n_failed += 1
               continue
+          if args.defensive:
+              # validate that the data from mongo matches the expected hash or die trying...
+              assert hashlib.sha256(js).hexdigest() == jsr.sha256
+              assert hashlib.md5(js).hexdigest() == jsr.md5
+              assert len(js) == jsr.size_bytes
 
           results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
           n_analysed += 1
@@ -120,6 +127,9 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
           if fv_cache is not None:
               fv_cache[key] = (results, js_id)
 
+      assert 'literals_by_count' in results
+      assert 'statements_by_count' in results
+      assert 'calls_by_count' in results
       save_ast_vector(db, jsr, results.get('statements_by_count'), js_id=js_id)
       save_call_vector(db, jsr, results.get('calls_by_count'), js_id=js_id) 
       # NB: dont save literal vector to mongo atm, kafka only
