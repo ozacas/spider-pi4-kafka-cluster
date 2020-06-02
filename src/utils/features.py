@@ -107,7 +107,8 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
    ret = None
    d = asdict(jsr)
    if process.returncode == 0:
-       ret = json.loads(process.stdout)
+       assert process.stdout.__class__ == bytes
+       ret = json.loads(process.stdout.decode('utf-8'))
        ret.update(d)       # will contain url key and NOW origin html page also (missing in early data)
        ret.pop('id', None) # remove duplicate url entry silently
        call_vector = safe_for_mongo(ret.pop('calls_by_count')) # NB: for correct analysis both the AU JS and control vectors must both be safe-for-mongo'ed consistently
