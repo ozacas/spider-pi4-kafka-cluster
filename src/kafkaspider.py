@@ -22,7 +22,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from urllib.parse import urljoin, urlparse, urlunparse
 from utils.fileitem import FileItem
 from utils.geo import AustraliaGeoLocator
-from utils.misc import as_priority, rm_pidfile, save_pidfile
+from utils.misc import as_priority, rm_pidfile, save_pidfile, json_value_serializer, json_value_deserializer
 from utils.models import PageStats, Password
 
 class KafkaSpiderMixin(object):
@@ -184,7 +184,7 @@ class KafkaSpiderMixin(object):
         hosts = set()
         calc = { }
         consumer = KafkaConsumer(topic, bootstrap_servers=bootstrap_servers, group_id=None, auto_offset_reset='earliest',
-                                 value_deserializer=lambda m: json.loads(m.decode('utf-8')), consumer_timeout_ms=1000) 
+                                 value_deserializer=json_value_deserializer(), consumer_timeout_ms=1000) 
         # 1.process large sites in topic
         for message in consumer:
             d = message.value
@@ -235,8 +235,8 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        self.disinterest_topic = settings.get('OVERREPRESENTED_HOSTS_TOPIC')
        print("User agent is {}".format(settings.get('USER_AGENT')))
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=60000000) # crank max poll to ensure no kafkapython timeout, consumer wont die as the code is perfect ;-)
-       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'), bootstrap_servers=bs, batch_size=4096)
+                         value_deserializer=json_value_deserializer(), max_poll_interval_ms=60000000) # crank max poll to ensure no kafkapython timeout, consumer wont die as the code is perfect ;-)
+       self.producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=bs, batch_size=4096)
        self.au_locator = AustraliaGeoLocator(db_location=settings.get('ONEURL_MAXMIND_DB'))
        host = settings.get('MONGO_HOST')
        port = settings.get('MONGO_PORT')
@@ -293,7 +293,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # BUG: we dont know which partitions (ie. hostnames) the spider will be assigned to. So we read every message and populate the LRU
        #      cache in the hope that at least 1/2 of the cache is accurate ie. assigned to this spider (for the two spider operational case)
        consumer = KafkaConsumer('recent-sites-cache', bootstrap_servers=bootstrap_servers, group_id=None, auto_offset_reset='earliest',
-                                value_deserializer=lambda m: json.loads(m.decode('utf-8')), consumer_timeout_ms=1000)
+                                value_deserializer=json_value_deserializer(), consumer_timeout_ms=1000)
        # load only the most recent state message from this host, although this will be inaccurate if we change spider hosts, since consumption partitions will change
        for message in consumer:
            d = message.value

@@ -5,6 +5,15 @@ import json
 from utils.models import Password
 from urllib.parse import urlparse
 
+def json_value_serializer():
+    """
+    Returns a callable which serialises the supplied value with correct handling of UTF-8 encoded literals in artefacts
+    """
+    return lambda v: json.dumps(v, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+
+def json_value_deserializer():
+    return lambda v: json.loads(v.decode('utf-8'))
+
 def random_user_agent(search_paths=None):
     if search_paths is None:
         search_paths = [ '/etc/thug/personalities', '/home/acas/src/thug/thug/DOM/personalities']
