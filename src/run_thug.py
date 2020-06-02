@@ -47,8 +47,8 @@ group = args.group
 if len(group) < 1:
     group = None
 consumer = KafkaConsumer(args.topic, bootstrap_servers=args.bootstrap, group_id=group, auto_offset_reset=args.start,
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+                         value_deserializer=json_value_deserializer())
+producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
 host = os.uname()[1]
 au_locator = AustraliaGeoLocator(db_location=args.geo)
 mongo = pymongo.MongoClient(args.host, args.port, username=args.user, password=str(args.password))

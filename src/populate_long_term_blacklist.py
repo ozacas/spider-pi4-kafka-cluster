@@ -2,7 +2,7 @@
 import argparse
 import json
 from kafka import KafkaConsumer, KafkaProducer
-from utils.misc import add_kafka_arguments, add_debug_arguments
+from utils.misc import *
 from urllib.parse import urlparse
 from datetime import datetime
 
@@ -22,9 +22,8 @@ consumer = KafkaConsumer(args.consume_from, consumer_timeout_ms=10 * 1000,
                          group_id=args.group,
                          auto_offset_reset=args.start,
                          enable_auto_commit=not args.dry_run, # dont update consumer offset if dry-run specified
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')) )
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m, separators=(',', ':')).encode('utf-8'),
-                         bootstrap_servers=args.bootstrap)
+                         value_deserializer=json_value_deserializer() )
+producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
 
 sites = { }
 n = 0

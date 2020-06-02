@@ -12,7 +12,7 @@ from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from kafkaspider import KafkaSpiderMixin
 from utils.models import Password
-from utils.misc import save_pidfile, rm_pidfile
+from utils.misc import *
 
 class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
     name = 'snippetspider'
@@ -28,8 +28,8 @@ class SnippetSpider(KafkaSpiderMixin, scrapy.Spider):
        self.logger.info("Consumer group for URLs {}".format(grp_id))
        self.logger.info("Bootstrapping via {}".format(bs))
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, 
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout 
-       self.producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=bs)
+                         value_deserializer=json_value_deserializer(), max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout 
+       self.producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=bs)
        host = settings.get('MONGO_HOST') 
        port = settings.get('MONGO_PORT')
        user = settings.get('SNIPPETSPIDER_MONGO_USER')

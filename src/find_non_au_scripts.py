@@ -9,7 +9,7 @@ import ipaddress
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from utils.geo import AustraliaGeoLocator
-from utils.misc import add_kafka_arguments
+from utils.misc import add_kafka_arguments, json_value_serializer, json_value_deserializer
 from utils.models import PageStats, JavascriptLocation
 from urllib.parse import urlparse
 from dataclasses import asdict
@@ -20,8 +20,8 @@ a.add_argument("--geo", help="Maxmind DB to use (must include country code) [...
 args = a.parse_args()
 
 consumer = KafkaConsumer(args.consume_from, group_id=args.group, auto_offset_reset=args.start, 
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')), bootstrap_servers=args.bootstrap)
-producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+                         value_deserializer=json_value_deserializer(), bootstrap_servers=args.bootstrap)
+producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
 cache = pylru.lrucache(1000)
 resolver = dns.resolver.Resolver()
 resolver.nameservers = ['8.8.8.8', '8.8.4.4'] # use public resolvers only
