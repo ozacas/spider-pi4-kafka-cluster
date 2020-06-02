@@ -5,7 +5,8 @@ import json
 import argparse
 import sys
 import hashlib
-from utils.features import analyse_script, calculate_ast_vector, calculate_vector, compute_distance, calc_function_dist
+from utils.features import analyse_script, calculate_ast_vector, calculate_vector, compute_distance, calc_function_dist, calculate_literal_distance
+from utils.misc import *
 from utils.models import JavascriptArtefact
 try:
     from scipy import spatial
@@ -17,10 +18,10 @@ except:
 # which will compare a minimised JS artefact against a non-minified artefact and report distances
 
 a = argparse.ArgumentParser(description="Evaluate and permanently store each AST vector against all controls, storing results in MongoDB and Kafka")
-a.add_argument("--v", help="Debug verbosely", action="store_true")
+add_debug_arguments(a)
+add_extractor_arguments(a)
 a.add_argument("--file1", help="File 1 (javascript only)", type=str, required=True)
 a.add_argument("--file2", help="File 2 (javascript only)", type=str, required=True)
-a.add_argument("--extractor", help="JAR file to extract features as JSON [extract-features.jar]", type=str, default="/home/acas/src/extract-features.jar")
 args = a.parse_args()
 
 def calc_vector(filename):
@@ -61,12 +62,9 @@ print("Euclidean distance for Function Call vector: "+str(calc_function_dist(d1,
 if has_scipy:
     print("Cosine distance for Function Call vector: "+str(spatial.distance.cosine(nv1, nv2)))
 print("Computed distance for function call vector: "+str(calc_function_dist(ret1['calls_by_count'], ret2['calls_by_count'])))
-all_literals = set(ret1['literals_by_count']).union(set(ret2['literals_by_count']))
-nv1, sum5 = calculate_vector(ret1['literals_by_count'], feature_names=all_literals)
-nv2, sum6 = calculate_vector(ret2['literals_by_count'], feature_names=all_literals)
-if args.v:
-     print("Literal vector 1"+str(nv1))
-     print("Literal vector 2"+str(nv2))
-print("Euclidean distance for literal vector: "+str(compute_distance(nv1, nv2)))
-
+t = calculate_literal_distance(ret1['literals_by_count'], ret2['literals_by_count'], debug=True)
+print("Euclidean distance for Literal (both string and integer) vector: "+str(t[0]))
+print("Number of literals not found in origin: "+str(t[1]))
+print("Number of literals not found in control: "+str(t[2]))
+print("DE literals: "+str(t[3]))
 exit(0)
