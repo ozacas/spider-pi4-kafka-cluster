@@ -86,7 +86,7 @@ def get_script(db, artefact):
    d = { 'sha256': artefact.sha256.strip(), 'md5': artefact.md5.strip(), 'size_bytes': artefact.size_bytes } # ENSURE we set the right fields so Mongo uses the index
    collection = db.snippets if artefact.inline else db.scripts
    js = collection.find_one(d)
-   return (js.get(u'code'), str(js.get('_id'))) if js else (None, None)
+   return (js.get(u'code'), str(js.get('_id'))) if js is not None else (None, None)
 
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
    if isinstance(js, bytes):
@@ -213,19 +213,15 @@ def literal_lookup(db, control_url, cache=None):
 
    assert control_literals_doc is not None # should not happen as it means control has been deleted??? maybe bad io???
    control_literals = control_literals_doc.get('literals_by_count')
+   assert control_literals is not None
  
    return control_literals
 
-def calculate_literal_distance(db, hit: BestControl, origin_literals, cache=None):
-   if db is None:
-       return (-1.0, 0, 0, []) # indicate that calculation is not available
-
-   control_literals = literal_lookup(db, hit.control_url, cache=cache)
+def calculate_literal_distance(control_literals, origin_literals, debug=False):
+   assert isinstance(control_literals, dict)
+   assert isinstance(origin_literals, dict)
 
    features = list(set(control_literals.keys()).union(origin_literals.keys())) # use list() to ensure traversal order is predictable
-   #print(hit.control_url)
-   #print(hit.origin_url)
-   #print(features)
    v1, control_sum = calculate_vector(control_literals, features)
    v2, origin_sum = calculate_vector(origin_literals, features)
    #print(v1)
@@ -243,6 +239,12 @@ def calculate_literal_distance(db, hit: BestControl, origin_literals, cache=None
          len(literals_not_in_control),
          diff_literals
        )
+   if debug:
+      print(control_literals.keys())
+      print(len(v1))
+      print(control_sum)
+      print(origin_sum)
+      print(t)
    return t
 
 def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
@@ -323,21 +325,31 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control
 
-   # HACK TODO FIXME: obtain the literal vector from kafka as its not stored in Mongo (perf.)
    if 'literals_by_count' in input_features:
        lv_origin = input_features.get('literals_by_count')
        # NB: cannot use dist_prod() here since we havent initialised all the {ast,literal,function}_dist fields yet...
        half_dist = max_distance / 2  # only quality hits have literals computed since it can be expensive to store
        if best_control.ast_dist * best_control.function_dist < half_dist:
            bc = best_control
-           t = calculate_literal_distance(db, bc, lv_origin, cache=control_cache)
-           assert isinstance(t, tuple)
+           control_literals = literal_lookup(db, bc.control_url, cache=control_cache)
+           t = calculate_literal_distance(control_literals, lv_origin)
+           assert isinstance(t, tuple) 
            bc.literal_dist, bc.literals_not_in_origin, bc.literals_not_in_control, diff_literals = t
            bc.n_diff_literals = len(diff_literals)
            bc.diff_literals = encoded_literals(diff_literals)
+           if bc.sha256_matched:
+               # ABANDON ALL HOPE YE WHO ENTER HERE: this should be an assertion, but there appears to be corruption of artefacts somewhere... so 
+               # we just issue a warning until we find the problem
+               #assert bc.literal_dist <= 0.0000001   # these cannot be non-zero if we had a hash match!
+               #assert bc.n_diff_literals == 0
+               if bc.literal_dist > 0.0:
+                   print("WARNING: literal vector distance should be zero - hash match - corrupted artefact???")
+                   print(bc)
+ 
        sbc = second_best_control
        if sbc is not None and sbc.ast_dist * sbc.function_dist < half_dist:
-           t = calculate_literal_distance(db, sbc, lv_origin, cache=control_cache)
+           control_literals = literal_lookup(db, sbc.control_url, cache=control_cache)
+           t = calculate_literal_distance(control_literals, lv_origin)
            sbc.literal_dist, sbc.literals_not_in_origin, sbc.literals_not_in_control, diff_literals = t
            sbc.n_diff_literals = len(diff_literals)
            sbc.diff_literals = encoded_literals(diff_literals) 

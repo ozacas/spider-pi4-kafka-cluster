@@ -63,8 +63,8 @@ def test_calculate_literal_dist():
    hit = mock.Mock()
    hit.control_url = 'http://XXX' 
    db = mock.Mock()
-   db.javascript_controls.find_one.return_value = { 'literals_by_count': { 'a': 1, 'b': 2 } }
-   ret = calculate_literal_distance(db, hit, { 'a': 2, 'b': 2 })
+   hit = { 'literals_by_count': { 'a': 1, 'b': 2 } }
+   ret = calculate_literal_distance(hit['literals_by_count'], { 'a': 2, 'b': 2 })
    assert isinstance(ret, tuple)
    assert ret[0] == pytest.approx(10.0)
    assert ret[1] == 0
@@ -134,7 +134,9 @@ def test_find_best_control(pytestconfig, all_controls):
                                 md5=hashlib.md5(content).hexdigest(), size_bytes=len(content))
        input_features, failed, stderr = analyse_script(content, jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
        assert not failed
-       best_control, next_best_control = find_best_control(input_features, all_controls, db=None) # db=None means no mongo hash match
+       db = mock.Mock()
+       db.javascript_controls.find_one.return_value =  { 'literals_by_count': { 'blah': 0, 'blah': 0 } }
+       best_control, next_best_control = find_best_control(input_features, all_controls, db=db) 
 # EXPECTED RESULTS:
 #BestControl(control_url='https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=0.0, function_dist=0.0, diff_functions='', cited_on=None)
 #BestControl(control_url='', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=inf, function_dist=inf, diff_functions='', cited_on=None)
