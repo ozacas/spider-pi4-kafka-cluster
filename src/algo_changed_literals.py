@@ -29,8 +29,8 @@ db = mongo[args.dbname]
 
 consumer = KafkaConsumer(args.consume_from, bootstrap_servers=args.bootstrap, group_id=args.group, 
                          auto_offset_reset=args.start, consumer_timeout_ms=10000,
-                         value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=lambda m: json.dumps(m).encode('utf-8'))
+                         value_deserializer=json_value_deserializer())
+producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=json_value_serializer())
 
 def cleanup(*args):
     global consumer
