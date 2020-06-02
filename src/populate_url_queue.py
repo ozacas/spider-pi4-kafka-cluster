@@ -5,8 +5,7 @@ import csv
 import json
 import uuid
 
-producer = KafkaProducer(bootstrap_servers='kafka1', 
-                         value_serializer=lambda m: json.dumps(m).encode('utf-8'))
+producer = KafkaProducer(bootstrap_servers='kafka2', value_serializer=json_value_serializer())
 
 with open('/home/acas/data/filtered_au_websites.csv', 'r') as csv:
      done = 0
