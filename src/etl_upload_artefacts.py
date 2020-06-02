@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
     db = mongo[args.dbname]
-    producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers=args.bootstrap)
+    producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
     consumer = KafkaConsumer(args.consume_from, value_deserializer=lambda m: json.loads(m.decode('utf-8')), 
                              consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
 
