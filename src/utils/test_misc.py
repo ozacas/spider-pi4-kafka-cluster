@@ -14,6 +14,7 @@ def test_json_utf8_clean():
    encoder = json_value_serializer()
    s = encoder(a)
    assert s.__class__ == bytes
+   assert len(s) == 18   # ensure minimal whitespace is correctly performed
    decoder = json_value_deserializer()
    s2 = decoder(s)
    assert s2 == a
