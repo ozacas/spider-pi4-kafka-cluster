@@ -18,3 +18,7 @@ def test_json_utf8_clean():
    decoder = json_value_deserializer()
    s2 = decoder(s)
    assert s2 == a
+
+def test_random_user_agent():
+   ua = random_user_agent()
+   assert ua is not None and len(ua) > 0

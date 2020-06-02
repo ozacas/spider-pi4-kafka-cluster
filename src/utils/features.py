@@ -339,13 +339,8 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
            bc.n_diff_literals = len(diff_literals)
            bc.diff_literals = encoded_literals(diff_literals)
            if bc.sha256_matched:
-               # ABANDON ALL HOPE YE WHO ENTER HERE: this should be an assertion, but there appears to be corruption of artefacts somewhere... so 
-               # we just issue a warning until we find the problem
-               #assert bc.literal_dist <= 0.0000001   # these cannot be non-zero if we had a hash match!
-               #assert bc.n_diff_literals == 0
-               if bc.literal_dist > 0.0:
-                   print("WARNING: literal vector distance should be zero - hash match - corrupted artefact???")
-                   print(bc)
+               assert bc.literal_dist <= 0.0000001   # these cannot be non-zero if we had a hash match!
+               assert bc.n_diff_literals == 0
  
        sbc = second_best_control
        if sbc is not None and sbc.ast_dist * sbc.function_dist < half_dist:

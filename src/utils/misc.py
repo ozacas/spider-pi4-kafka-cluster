@@ -12,9 +12,16 @@ def json_value_serializer():
     return lambda v: json.dumps(v, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
 
 def json_value_deserializer():
+    """
+    Returns a callable for correctly decoding a message which has been serialized via json_value_serializer() (or compatible)
+    """
     return lambda v: json.loads(v.decode('utf-8'))
 
 def random_user_agent(search_paths=None):
+    """
+    Examines search_paths which are directories of thug personalities and return a random userAgent string contained therein.
+    Useful for those systems with thug installed.
+    """
     if search_paths is None:
         search_paths = [ '/etc/thug/personalities', '/home/acas/src/thug/thug/DOM/personalities']
     ua = None
