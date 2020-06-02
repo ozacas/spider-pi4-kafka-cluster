@@ -28,7 +28,7 @@ def random_user_agent(search_paths=None):
     agents = []
     random.seed()
     for dir in filter(lambda dir: os.path.exists(dir), search_paths):
-        print(dir)
+        #print(dir)
         for dir, subdirs, files in os.walk(dir):
             json_files = ["{}/{}".format(dir, f) for f in files if f.endswith(".json")]
             for jsf in json_files:

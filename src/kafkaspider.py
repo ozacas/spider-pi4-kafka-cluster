@@ -221,7 +221,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        site_cache_max = settings.get('KAFKASPIDER_MAX_SITE_CACHE', 1000)
        recent_cache_max = settings.get('KAFKASPIDER_MAX_RECENT_CACHE', 5000)
        self.disinterest_topic = settings.get('OVERREPRESENTED_HOSTS_TOPIC')
-       print("User agent is {}".format(settings.get('USER_AGENT')))
+       #print("User agent is {}".format(settings.get('USER_AGENT')))
        self.consumer = KafkaConsumer(topic, bootstrap_servers=bs, group_id=grp_id, auto_offset_reset='earliest',
                          value_deserializer=json_value_deserializer(), max_poll_interval_ms=60000000) # crank max poll to ensure no kafkapython timeout, consumer wont die as the code is perfect ;-)
        self.producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=bs, batch_size=4096)
