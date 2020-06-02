@@ -91,8 +91,8 @@ if __name__ == "__main__":
     timeout = float('Inf') if args.tail else 10000
     consumer = KafkaConsumer(args.consume_from, bootstrap_servers=args.bootstrap, group_id=args.group, 
                  auto_offset_reset=args.start, consumer_timeout_ms=timeout,
-                 value_deserializer=lambda m: json.loads(m.decode('utf-8')))
-    producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=lambda m: json.dumps(m).encode('utf-8'))
+                 value_deserializer=json_value_deserializer())
+    producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=json_value_serializer())
     setup_signals(cleanup)
     n_ok = n_bad = 0
     n_good = n_not_good = n = 0
