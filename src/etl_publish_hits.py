@@ -25,7 +25,8 @@ def cleanup(*args):
     exit(0)
 
 
-def process_hit(db, all_controls, hit: BestControl, producer):
+def process_hit(db, all_controls, hit: BestControl, producer, stats=None):
+    assert stats is not None
     dist = hit.ast_dist
     assert dist >= 0.0
 
@@ -52,6 +53,9 @@ def process_hit(db, all_controls, hit: BestControl, producer):
     # good hits get sent to the suspicious analysis pipeline
     ok, reason = hit.good_hit_as_tuple()
     if ok:
+        if not reason in stats:
+            stats[reason] = 0
+        stats[reason] += 1
         dc = d.copy()
         dc.pop('_id', None)
         dc['diff_functions'] = hit.diff_functions_as_list()
@@ -105,6 +109,8 @@ if __name__ == "__main__":
         assert 'origin' in t[0]
         all_controls[t[0].get('origin')] = t[0]
 
+
+    stats = {}
     for r in consumer: 
         n += 1
         hit = BestControl(**r.value)
@@ -112,6 +118,7 @@ if __name__ == "__main__":
         if args.v:
             if n % 10000 == 0:
                  print("Processed {} records ({} not good). {}".format(n, n_not_good, str(datetime.utcnow())))
+                 print(stats)
         if n > args.n: # TODO FIXME: will lose last message unless we exit before kafka auto commit occurs (but only if --n specified)
             break
 
@@ -133,7 +140,7 @@ if __name__ == "__main__":
             n_bad += 1
             continue   # control no longer in database? ok, skip further work
 
-        ret = process_hit(db, all_controls, hit, producer)
+        ret = process_hit(db, all_controls, hit, producer, stats={})
         if ret:
             n_ok += 1
         else:

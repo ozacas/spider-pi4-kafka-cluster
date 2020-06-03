@@ -263,6 +263,37 @@ def encoded_literals(literals_to_encode):
    encoded_literals = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
    return ','.join(encoded_literals)
 
+def update_literal_fields(db, hit: BestControl, origin_literals, cache, max_distance=50.0):
+   assert isinstance(origin_literals, dict)
+
+   # is ok, second best control may not exist
+   if hit is None:
+       return
+
+   # do not update the fields if the hit is poor, but do check that they are correctly initialised
+   assert hit.ast_dist >= 0.0 and hit.function_dist >= 0.0
+   if hit.ast_dist * hit.function_dist >= max_distance:
+       hit.literal_dist = -1
+       assert hit.n_diff_literals <= 0
+       assert hit.literals_not_in_origin <= 0
+       assert hit.literals_not_in_control <= 0
+       assert hit.diff_literals == ''
+       return
+
+   control_literals = literal_lookup(db, hit.control_url, cache=cache)
+   assert isinstance(control_literals, dict)
+   t = calculate_literal_distance(control_literals, origin_literals)
+   hit.literal_dist, hit.literals_not_in_origin, hit.literals_not_in_control, diff_literals = t
+   hit.n_diff_literals = len(diff_literals)
+   hit.diff_literals = encoded_literals(diff_literals) 
+
+   assert hit.literals_not_in_origin >= 0
+   assert hit.literals_not_in_control >= 0 
+   assert hit.diff_literals is not None
+
+   if hit.n_diff_literals > 0:
+       assert hit.literals_not_in_origin > 0 or hit.literals_not_in_control > 0
+
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False, control_cache=None):
    best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
@@ -326,31 +357,11 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control
 
-   if 'literals_by_count' in input_features:
-       lv_origin = input_features.get('literals_by_count')
-       # NB: cannot use dist_prod() here since we havent initialised all the {ast,literal,function}_dist fields yet...
-       half_dist = max_distance / 2  # only quality hits have literals computed since it can be expensive to store
-       if best_control.ast_dist * best_control.function_dist < half_dist:
-           bc = best_control
-           control_literals = literal_lookup(db, bc.control_url, cache=control_cache)
-           t = calculate_literal_distance(control_literals, lv_origin)
-           assert isinstance(t, tuple) 
-           bc.literal_dist, bc.literals_not_in_origin, bc.literals_not_in_control, diff_literals = t
-           bc.n_diff_literals = len(diff_literals)
-           bc.diff_literals = encoded_literals(diff_literals)
-           if bc.sha256_matched:
-               assert bc.literal_dist <= 0.0000001   # these cannot be non-zero if we had a hash match!
-               assert bc.n_diff_literals == 0
- 
-       sbc = second_best_control
-       if sbc is not None and sbc.ast_dist * sbc.function_dist < half_dist:
-           control_literals = literal_lookup(db, sbc.control_url, cache=control_cache)
-           t = calculate_literal_distance(control_literals, lv_origin)
-           sbc.literal_dist, sbc.literals_not_in_origin, sbc.literals_not_in_control, diff_literals = t
-           sbc.n_diff_literals = len(diff_literals)
-           sbc.diff_literals = encoded_literals(diff_literals) 
-   else:
-       print("WARNING: literal vector not available in input features")
+   assert 'literals_by_count' in input_features
+   lv_origin = input_features.get('literals_by_count')
+   update_literal_fields(db, best_control, lv_origin, control_cache)
+   update_literal_fields(db, second_best_control, lv_origin, control_cache)
+
    return (best_control, second_best_control)
 
 def identify_control_subfamily(cntl_url):

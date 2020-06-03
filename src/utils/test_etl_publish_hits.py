@@ -10,7 +10,7 @@ def test_process_hit_failure():
    producer = mock.Mock()
    bc = BestControl(control_url='XXX', origin_url='YYY', sha256_matched=False, diff_functions='', ast_dist=10.0, literal_dist=5.0, function_dist=8.0)
    all_controls = { 'XXX': { 'control_url': 'XXX', 'literals_by_count': { 'a': 1 } }}
-   assert process_hit(db, all_controls, bc, producer) == False
+   assert process_hit(db, all_controls, bc, producer, stats={}) == False
 
 def test_process_hit_success():
    db = mock.Mock()
@@ -21,7 +21,7 @@ def test_process_hit_success():
                     cited_on='https://some.web.site/somewhere.html',
                     sha256_matched=True, diff_functions='', ast_dist=0.0, literal_dist=0.0, function_dist=0.0)
    all_controls = { control_url: { 'control_url': control_url, 'literals_by_count': { 'a': 1 } }}
-   assert process_hit(db, all_controls, bc, producer) == True
+   assert process_hit(db, all_controls, bc, producer, stats={}) == True
    expected_find_call = mock.call.count_by_function.find_one({'url': 'https://some.web.site/somewhere.js'})
    expected_insert_call = mock.call.etl_hits.insert_one({'control_url': 'https://cdn.com/path/to/artefact.js', 
                                                         'origin_url': 'https://some.web.site/somewhere.js', 'sha256_matched': True, 
