@@ -5,6 +5,7 @@ import requests
 import logging
 import argparse
 import tempfile
+import json
 from bson.objectid import ObjectId
 from subprocess import run
 from utils.features import find_script, calculate_ast_vector, analyse_script, compute_distance, calculate_vector
@@ -71,9 +72,10 @@ def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
 
    # we must analyse the artefact to get the vectors for the artefact (since its too expensive to search kafka for it)
    jsr = JavascriptArtefact(url=artefact_url, sha256='XXX', md5='XXX', inline=False)
-   ret, failed, stderr = analyse_script(artefact_fname, jsr)
+   byte_content, failed, stderr = analyse_script(artefact_fname, jsr)
    if failed:
       raise ValueError("Unable to analyse script: {}".format(artefact_url))
+   ret = json.loads(byte_content.decode())
    assert 'literals_by_count' in ret
    assert 'statements_by_count' in ret 
    assert 'calls_by_count' in ret
