@@ -37,8 +37,9 @@ def process_hit(db, all_controls, hit: BestControl, producer, stats=None):
 
     d = asdict(hit)
     d.pop('diff_functions', None)
-    rec = db.analysis_content.find_one({ 'js_id': d['origin_js_id'], 'byte_content_sha256': d['origin_vectors_sha256'] })
-    assert rec is not None and 'calls_by_count' in rec
+    content_doc = db.analysis_content.find_one({ 'js_id': d['origin_js_id'], 'byte_content_sha256': d['origin_vectors_sha256'] })
+    assert content_doc is not None and 'analysis_bytes' in content_doc
+    rec = json.loads(content_doc['analysis_bytes'].decode())
     fv_origin = rec.get('calls_by_count')
     if fv_origin is None:
         return False
@@ -116,6 +117,9 @@ if __name__ == "__main__":
     for r in consumer: 
         n += 1
         if 'origin_vectors_sha256' not in r.value:
+            if not 'missing_vectors' in stats:
+                stats['missing_vectors'] = 0
+            stats['missing_vectors'] += 1 
             continue
 
         hit = BestControl(**r.value)
@@ -145,7 +149,7 @@ if __name__ == "__main__":
             n_bad += 1
             continue   # control no longer in database? ok, skip further work
 
-        ret = process_hit(db, all_controls, hit, producer, stats={})
+        ret = process_hit(db, all_controls, hit, producer, stats=stats)
         if ret:
             n_ok += 1
         else:
@@ -154,6 +158,7 @@ if __name__ == "__main__":
     print("Run completed: processed {} records with AST*function_call threshold <= {}".format(n, args.threshold))
     print("{} records had a problem which could not be ignored.".format(n_bad))
     print("Published {} hits, {} failed is_good_hit() test.".format(n_ok, n_not_good))
+    print(stats)
     if args.bad:
         print("{} records failed threshold, published to db.etl_bad_hits".format(n_not_good))
     cleanup()
