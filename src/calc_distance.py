@@ -30,7 +30,7 @@ def calc_vector(filename):
         ret, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor=args.extractor)
         if failed:
             raise Exception(stderr)
-        return ret
+        return json.loads(ret.decode('utf-8'))
 
 ret1 = calc_vector(args.file1)
 ret2 = calc_vector(args.file2)

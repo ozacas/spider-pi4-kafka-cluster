@@ -15,7 +15,7 @@ def json_value_deserializer():
     """
     Returns a callable for correctly decoding a message which has been serialized via json_value_serializer() (or compatible)
     """
-    return lambda v: json.loads(v.decode('utf-8'))
+    return lambda v: json.loads(v)  # v can be bytes with python 3.6 (assumed utf8 et al.)
 
 def random_user_agent(search_paths=None):
     """

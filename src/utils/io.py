@@ -3,7 +3,7 @@ from utils.models import JavascriptArtefact, JavascriptVectorSummary
 from collections import namedtuple
 from dataclasses import asdict
 from datetime import datetime
-from pymongo import ReturnDocument
+from pymongo import ReturnDocument, ASCENDING
 import hashlib
 import requests
 from bson.binary import Binary
@@ -34,25 +34,18 @@ def save_artefact(db, producer, artefact: JavascriptArtefact, root, to, content=
               'origin': artefact.origin })
    producer.send(to, d)
 
-def save_ast_vector(db, jsr: JavascriptArtefact, ast_vector, js_id: str=None):
-   assert ast_vector is not None
-   d = { "js_id": js_id, "url": jsr.url, "origin": jsr.origin }
-   d.update(**ast_vector)  # ast_vector never needs to be made safe for Mongo, since its just mozilla rhino statement types for keys
-   d.update({ "js_id": js_id })
-   assert '_id' not in d.keys()
-   db.statements_by_count.insert_one(d)
+def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, js_id: str=None, ensure_indexes=False):
+   assert bytes_content is not None
+   assert len(js_id) > 0
+   assert isinstance(bytes_content, bytes)
 
-def get_function_call_vector(db, url):
-    ret = db.count_by_function.find_one({ 'url': url })
-    return ret
+   if ensure_indexes:
+       db.analysis_content.create_index([( 'js_id', ASCENDING ), ( 'byte_content_sha256', ASCENDING ) ], unique=True)
 
-def save_call_vector(db, jsr: JavascriptArtefact, call_vector, js_id: str=None):
-   assert call_vector is not None
-   d = { "js_id": js_id, "url": jsr.url, "origin": jsr.origin }
-   calls = safe_for_mongo(call_vector)
-   d['calls'] = calls
-   d.pop('_id', None) # BUG: FIXME -- sometimes it appears to be present, so... maybe topic has a bit of pollution during dev???
-   db.count_by_function.insert_one(d)
+   d = asdict(jsr)
+   expected_hash = hashlib.sha256(bytes_content).hexdigest()
+   d.update({ "js_id": js_id, "analysis_bytes": bytes_content, "byte_content_sha256": expected_hash })
+   db.analysis_content.find_one_and_update({ "js_id": js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     n = 0
@@ -63,11 +56,6 @@ def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
             print("Processed {} records. {}".format(n, str(datetime.utcnow())))
         if n >= max:
             break
-
-def artefact_tuple():
-   ret = namedtuple('Artefact', 'url origin host checksum path when')
-   ret.__lt__ = lambda self, other: self.checksum < other.checksum
-   return ret
 
 def save_url(db, artefact):
    result = db.urls.insert_one({ 'url': artefact.url, 'last_visited': artefact.when, 'origin': artefact.origin })
@@ -134,9 +122,10 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
        print("Refusing to update existing control as dupe: {}".format(jsr))
        return jsr
 
-   ret, failed, stderr = analyse_script(content, jsr, java=java, feature_extractor=feature_extractor)
+   bytes_content, failed, stderr = analyse_script(content, jsr, java=java, feature_extractor=feature_extractor)
    if failed:
        raise ValueError('Could not analyse script {} - {}'.format(jsr.url, stderr))
+   ret = json.loads(bytes_content.decode())
    ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider, 'subfamily': identify_control_subfamily(jsr.url) })
    #print(ret)
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)

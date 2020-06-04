@@ -5,8 +5,9 @@ import re
 import math 
 import hashlib
 import pylru
+from bson.objectid import ObjectId
 from dataclasses import asdict
-from utils.models import BestControl
+from utils.models import BestControl, JavascriptArtefact
 from tempfile import NamedTemporaryFile
 from urllib.parse import urlparse
 
@@ -71,6 +72,33 @@ def find_script(db, url, want_code=True, debug=False):
                    print(script_doc)
                return (script_doc, url_id)
    return (None, None)
+
+def validate_feature_vectors(db, msg, java, extractor):
+    """
+    Returns True if the features in msg can be validated using only the Mongo-stored artefact (ie. not kafka) and re-calculating. Otherwise False
+    Slow and expensive, so only called when --defensive is specified. Extensive checking to validate that key metrics are exactly what they should be so
+    that data quality across the pipeline is high.
+    """
+    assert isinstance(msg, dict)
+    assert 'url' in msg
+    assert os.path.exists(java)
+    assert os.path.exists(extractor)
+
+    jsr = JavascriptArtefact(url=msg['url'], sha256=msg['sha256'], md5=msg['md5'], size_bytes=msg['size_bytes'])
+    ret = db.scripts.find_one({ '_id': ObjectId(msg['js_id']) })
+    if ret is None:
+        raise ValueError("Could not locate script: {}".format(jsr.url))
+    features, failed, stderr = analyse_script(ret.get('code'), jsr, java=java, feature_extractor=extractor)
+    if failed:
+        return False
+    
+    l = len(features['literals_by_count'])
+    o = len(msg['literals_by_count'])
+    print(l, " ", o)
+    assert o == l
+    assert features['statements_by_count'] == msg['statements_by_count']
+    assert features['calls_by_count'] == msg['calls_by_count']
+    return True
  
 def find_sha256_hash(db, url):
    """
@@ -99,26 +127,12 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
        fname = js
        tmpfile = None
 
-   url = jsr.url
    # save to file and run extract-features.jar to identify the javascript features
-   process = subprocess.run([java, "-jar", feature_extractor, fname, url], capture_output=True)
+   process = subprocess.run([java, "-jar", feature_extractor, fname, jsr.url], capture_output=True)
    
    # turn process stdout into something we can save
-   ret = None
-   d = asdict(jsr)
-   if process.returncode == 0:
-       assert process.stdout.__class__ == bytes
-       ret = json.loads(process.stdout.decode('utf-8'))
-       ret.update(d)       # will contain url key and NOW origin html page also (missing in early data)
-       ret.pop('id', None) # remove duplicate url entry silently
-       call_vector = safe_for_mongo(ret.pop('calls_by_count')) # NB: for correct analysis both the AU JS and control vectors must both be safe-for-mongo'ed consistently
-       #print(call_vector)
-       ret['calls_by_count'] = call_vector
-       tmp = ret.pop('literals_by_count')
-       literal_vector = safe_for_mongo({ k[0:200]: v  for k,v in tmp.items() }) # HACK TODO FIXME: we assume that the first 200 chars per literal is unique
-       ret['literals_by_count'] = literal_vector
-
-       # FALLTHRU
+   ret = process.stdout
+   assert ret.__class__ == bytes
 
    # cleanup
    if tmpfile is not None:
@@ -222,18 +236,25 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
    assert isinstance(control_literals, dict)
    assert isinstance(origin_literals, dict)
 
-   features = list(set(control_literals.keys()).union(origin_literals.keys())) # use list() to ensure traversal order is predictable
-   v1, control_sum = calculate_vector(control_literals, features)
-   v2, origin_sum = calculate_vector(origin_literals, features)
+   # NB: control_literals are not truncated to 200 chars, so we do it on-the-fly as performance is ok for now
+   truncated_control = { k[0:200]: v for k,v in control_literals.items() }
+   truncated_origin = { k[0:200]: v for k,v in origin_literals.items() }
+   features = list(set(truncated_control.keys()).union(truncated_origin.keys())) # use list() to ensure traversal order is predictable
+   v1, control_sum = calculate_vector(truncated_control, features)
+   v2, origin_sum = calculate_vector(truncated_origin, features)
    #print(v1)
    #print(v2)
    assert len(v1) == len(v2)
    assert control_sum >= 0
    assert origin_sum >= 0
    
-   literals_not_in_origin = set(control_literals.keys()).difference(origin_literals.keys())
-   literals_not_in_control = set(origin_literals.keys()).difference(control_literals.keys())
-   diff_literals = [lit for lit in features if control_literals.get(lit, 0) != origin_literals.get(lit, 0)]
+   literals_not_in_origin = set(truncated_control.keys()).difference(truncated_origin.keys())
+   literals_not_in_control = set(truncated_origin.keys()).difference(truncated_control.keys())
+   diff_literals = [lit for lit in features if truncated_origin.get(lit, 0) != truncated_control.get(lit, 0)]
+   if debug:
+       for dl in diff_literals:
+            assert len(dl) <= 200
+
    t = (
          compute_distance(v1, v2, short_vector_penalty=True),
          len(literals_not_in_origin),
@@ -241,8 +262,9 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
          diff_literals
        )
    if debug:
-      print(control_literals.keys())
-      print(len(v1))
+      print(len(control_literals.keys()))
+      print(len(origin_literals.keys()))
+      print(origin_literals.keys())
       print(control_sum)
       print(origin_sum)
       print(t)
@@ -263,7 +285,7 @@ def encoded_literals(literals_to_encode):
    encoded_literals = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
    return ','.join(encoded_literals)
 
-def update_literal_fields(db, hit: BestControl, origin_literals, cache, max_distance=50.0):
+def update_literal_fields(db, hit: BestControl, origin_literals, cache, max_distance=50.0, debug=False):
    assert isinstance(origin_literals, dict)
 
    # is ok, second best control may not exist
@@ -282,7 +304,7 @@ def update_literal_fields(db, hit: BestControl, origin_literals, cache, max_dist
 
    control_literals = literal_lookup(db, hit.control_url, cache=cache)
    assert isinstance(control_literals, dict)
-   t = calculate_literal_distance(control_literals, origin_literals)
+   t = calculate_literal_distance(control_literals, origin_literals, debug=debug)
    hit.literal_dist, hit.literals_not_in_origin, hit.literals_not_in_control, diff_literals = t
    hit.n_diff_literals = len(diff_literals)
    hit.diff_literals = encoded_literals(diff_literals) 
@@ -291,17 +313,18 @@ def update_literal_fields(db, hit: BestControl, origin_literals, cache, max_dist
    assert hit.literals_not_in_control >= 0 
    assert hit.diff_literals is not None
 
-   if hit.n_diff_literals > 0:
-       assert hit.literals_not_in_origin > 0 or hit.literals_not_in_control > 0
+   if hit.literals_not_in_origin > 0 or hit.literals_not_in_control > 0:
+       assert hit.n_diff_literals > 0
 
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False, control_cache=None):
-   best_distance = float('Inf')
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None)     # report owning HTML page also if possible (useful for data analysis)
    origin_js_id = input_features.get("js_id", None)  # ensure we can find the script directly without URL lookup
    if isinstance(origin_js_id, tuple) or isinstance(origin_js_id, list): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
        origin_js_id = origin_js_id[0]
    assert isinstance(origin_js_id, str) or origin_js_id is None # check POST-CONDITION
+
+   best_distance = float('Inf')
    hash_match = False
    input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
@@ -324,12 +347,12 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
        ast_dist = math.dist(input_vector, control_ast_vector)
        # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
        call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control['calls_by_count'])
-       new_dist = ast_dist * call_dist
-       if new_dist < best_distance and new_dist <= max_distance: 
+       ast_x_call = ast_dist * call_dist
+       if ast_x_call < best_distance and ast_x_call <= max_distance: 
            if debug:
                print(input_features['calls_by_count'])
                print(control['calls_by_count']) 
-               print("Got good distance {} for {} (was {}, max={})".format(new_dist, control_url, best_distance, max_distance)) 
+               print("Got good distance {} for {} (was {}, max={})".format(ast_x_call, control_url, best_distance, max_distance)) 
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
                                       origin_js_id=origin_js_id,
@@ -343,12 +366,13 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
            # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
            #     (with accidental ast hits) as the number of controls in the database increases
            if best_control.is_better(new_control):
-               if second_best_control is None or second_best_control.dist_prod() > new_control.dist_prod():
+               ast_x_call_2 = second_best_control.ast_dist * second_best_control.function_dist if second_best_control is not None else 0.0
+               if second_best_control is None or ast_x_call_2 > ast_x_call:
                    #print("NOTE: improved second_best control")
                    second_best_control = new_control
                # NB: dont update best_* since we dont consider this hit a replacement for current best_control
            else: 
-               best_distance = new_dist
+               best_distance = ast_x_call
                second_best_control = best_control
                best_control = new_control
 
@@ -359,8 +383,12 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
 
    assert 'literals_by_count' in input_features
    lv_origin = input_features.get('literals_by_count')
-   update_literal_fields(db, best_control, lv_origin, control_cache)
-   update_literal_fields(db, second_best_control, lv_origin, control_cache)
+   update_literal_fields(db, best_control, lv_origin, control_cache, debug=debug)
+   update_literal_fields(db, second_best_control, lv_origin, control_cache, debug=debug)
+
+   if best_control.sha256_matched:
+       assert best_control.dist_prod() < 0.00001
+       assert best_control.n_diff_literals < 1
 
    return (best_control, second_best_control)
 

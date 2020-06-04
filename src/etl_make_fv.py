@@ -8,9 +8,9 @@ import hashlib
 import argparse
 import pylru
 from datetime import datetime
-from utils.features import analyse_script, get_script
+from utils.features import analyse_script, get_script, safe_for_mongo
 from datetime import datetime
-from utils.io import save_call_vector, save_ast_vector, next_artefact
+from utils.io import save_analysis_content, next_artefact
 from utils.models import JavascriptArtefact
 from utils.misc import *
 
@@ -27,11 +27,12 @@ add_debug_arguments(a)
 a.add_argument("--cache", help="Cache feature vectors to not re-calculate frequently seen JS (int specifies max cache entries, 0 disabled) [0]", type=int, default=0)
 a.add_argument("--defensive", help="Enable extra checks to check data integrity during run", action="store_true")
 
-terminate = False
 def signal_handler(num, frame):
-    global terminate
+    global consumer
+    global mongo
     print("Control-C pressed. Terminating... may take a while for current batch to complete")
-    terminate = True
+    cleanup([mongo, consumer])
+    exit(1)
 
 def cleanup(items_to_close, pidfile='pid.make.fv'):
     for c in items_to_close:
@@ -48,26 +49,17 @@ def save_to_kafka(producer, results, to='analysis-results', key=None):
    assert 'js_id' in results and '_id' not in results
    producer.send(to, results, key=key)
 
-def iterate(consumer, max, verbose=False):
+def iterate(consumer, max, cache, verbose=False):
    for r in next_artefact(consumer, max, lambda v: 'javascript' in v.get('content-type', ''), verbose=verbose):
-       yield JavascriptArtefact(**r)
+       jsr = JavascriptArtefact(**r)
+       if not jsr.url in cache:
+           yield jsr
 
 def main(args, consumer=None, producer=None, db=None, cache=None):
-   global terminate
    if args.v:
        print(args)
-   if consumer is None:
-       consumer = KafkaConsumer(args.consume_from, 
-                            bootstrap_servers=args.bootstrap, 
-                            group_id=args.group, 
-                            auto_offset_reset=args.start,
-                            value_deserializer=json_value_deserializer(),
-                            max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
    if producer is None:
        producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
-   if db is None:
-       mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
-       db = mongo[args.dbname]
    if cache is None:
        cache = pylru.lrucache(1000)
 
@@ -81,7 +73,8 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
        print("WARNING: not using FV cache - are you sure you wanted to?")
 
    n_cached = n_analysed = n_failed = 0
-   for jsr in filter(lambda a: not a.url in cache, iterate(consumer, args.n, verbose=args.v)):
+   is_first = True
+   for jsr in iterate(consumer, args.n, cache, verbose=args.v):
       # eg.  {'url': 'https://XXXX.asn.au/', 'size_bytes': 294, 'inline': True, 'content-type': 'text/html; charset=UTF-8', 
       #       'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 
       #        'md5': '4714b9a46307758a7272ecc666bc88a7', 'origin': 'XXXX' }  NB: origin may be none for old records (sadly)
@@ -95,14 +88,10 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
       # 2. got results cache hit ??? Saves computing it again and hitting the DB, which is slow...
       key = '-'.join([jsr.sha256, jsr.md5, str(jsr.size_bytes)])  # a cache hit has both hash matches AND byte size the same. Unlikely to be false positive!
       if fv_cache is not None and key in fv_cache:
-          tmp, js_id = fv_cache[key]
+          byte_content, js_id = fv_cache[key]
           n_cached += 1
-          # need to update some fields as the cached copy is not the same...
-          results = tmp.copy()
-          results.update({ 'url': jsr.url, 'origin': jsr.origin })
           # falsely "update" the cache to ensure it is rewarded for being hit ie. becomes MRU
-          fv_cache[key] = (tmp, js_id)
-          # TODO FIXME: how do we make sure the retrieved results are what went into the cache....
+          fv_cache[key] = (byte_content, js_id)
           # FALLTHRU
       else:
           # 3. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
@@ -117,7 +106,7 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
               assert hashlib.md5(js).hexdigest() == jsr.md5
               assert len(js) == jsr.size_bytes
 
-          results, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
+          byte_content, failed, stderr = analyse_script(js, jsr, java=args.java, feature_extractor=args.extractor)
           n_analysed += 1
           if failed:
               report_failure(producer, jsr, "Unable to analyse script: {}".format(stderr))
@@ -125,20 +114,14 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
               continue
           # put results into the cache and then FALLTHRU...
           if fv_cache is not None:
-              fv_cache[key] = (results, js_id)
+              fv_cache[key] = (byte_content, js_id)
 
-      assert 'literals_by_count' in results
-      assert 'statements_by_count' in results
-      assert 'calls_by_count' in results
-      save_ast_vector(db, jsr, results.get('statements_by_count'), js_id=js_id)
-      save_call_vector(db, jsr, results.get('calls_by_count'), js_id=js_id) 
-      # NB: dont save literal vector to mongo atm, kafka only
-      results.update({ 'js_id': js_id })
+      save_analysis_content(db, jsr, byte_content, js_id=js_id, ensure_indexes=is_first)
+      is_first = False
+      results = asdict(jsr)
+      results.update({ 'js_id': js_id })  # this will be sufficient to load the vector from Mongo by the receiving application
+      results.update({ 'byte_content_sha256': hashlib.sha256(byte_content).hexdigest() })
       save_to_kafka(producer, results, to=args.to)
-
-      # signal sent eg. Ctrl-C?
-      if terminate:
-          break
 
    print("Analysed {} artefacts, {} failed, {} cached, now={}".format(n_analysed, n_failed, n_cached, str(datetime.now())))
    cleanup([mongo, consumer])
@@ -147,5 +130,17 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
 if __name__ == "__main__":
    save_pidfile('pid.make.fv')
    setup_signals(signal_handler)
-   status = main(a.parse_args())
+   global mongo
+   global consumer
+   args = a.parse_args()
+   mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
+   db = mongo[args.dbname]
+ 
+   consumer = KafkaConsumer(args.consume_from, 
+                            bootstrap_servers=args.bootstrap, 
+                            group_id=args.group, 
+                            auto_offset_reset=args.start,
+                            value_deserializer=json_value_deserializer(),
+                            max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
+   status = main(args, consumer=consumer, db=db)
    exit(status)

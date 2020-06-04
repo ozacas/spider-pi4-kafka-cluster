@@ -10,14 +10,16 @@ def test_as_priority():
    assert pri is not None and pri <= 2
 
 def test_json_utf8_clean():
-   a = { '\u0222': 10, 'B\u0654': 20 }
+   a = { '\u0022': 10, 'B\u0654': 20 }
    encoder = json_value_serializer()
    s = encoder(a)
    assert s.__class__ == bytes
    assert len(s) == 18   # ensure minimal whitespace is correctly performed
    decoder = json_value_deserializer()
    s2 = decoder(s)
+   assert s2.__class__ == dict
    assert s2 == a
+   assert s2['"'] == 10
 
 def test_random_user_agent():
    ua = random_user_agent()

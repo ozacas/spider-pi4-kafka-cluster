@@ -85,22 +85,22 @@ def test_analyse_script(pytestconfig, analyse_script_expected_results):
    testjs = "{}/src/test-javascript/banners.js".format(pytestconfig.rootdir)
    with open(testjs, "rb") as fp:
       jsr = JavascriptArtefact(url="file:{}".format(testjs), origin=None, sha256='XXX', md5='XXX')
-      json, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
+      byte_content, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
       assert not failed
-      assert 'when' in json and isinstance(json['when'], str) and len(json['when']) > 0
-      json.pop('when', None)
-      assert json == analyse_script_expected_results
+      js = json.loads(byte_content.decode())
+      js.pop('id', None) # not interested in this field anymore -- obsolete
+      assert js == analyse_script_expected_results
 
 def test_analyse_script_2(pytestconfig):
    testjs = "{}/src/test-javascript/fieldRequiredWhenNotAfterGoLiveValidation.js".format(pytestconfig.rootdir)
    with open(testjs, "rb") as fp:
        jsr = JavascriptArtefact(url="file:{}".format(testjs), origin=None, sha256="XXX", md5="XXX")
-       json, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
+       byte_content, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
        assert not failed
-
-       assert json['statements_by_count'] == {"FunctionNode":2,"StringLiteral":13,"VariableInitializer":3,"Scope":1,"KeywordLiteral":3,"AstRoot":1,"Assignment":2,"IfStatement":1,"Block":2,"InfixExpression":10,"ExpressionStatement":4,"PropertyGet":14,"ReturnStatement":2,"UnaryExpression":1,"Name":37,"NumberLiteral":2,"ArrayLiteral":1,"VariableDeclaration":3,"FunctionCall":9,"ElementGet":2,"ParenthesizedExpression":3}
-       assert json['calls_by_count'] == {"val":1,"F$":3,"addMethod":1,"get":1,"attr":1,"split":1,"add":1}
-       assert json['literals_by_count'] == {" ":1,"0":2,"#IsAfterGoLive":1,"INPUT":1,"requiredwhennotaftergolivevalidation":1,"True":1,"class":1,"testrequiredwhennotaftergolivevalidation":3,"SELECT":1}
+       js = json.loads(byte_content.decode())
+       assert js['statements_by_count'] == {"FunctionNode":2,"StringLiteral":13,"VariableInitializer":3,"Scope":1,"KeywordLiteral":3,"AstRoot":1,"Assignment":2,"IfStatement":1,"Block":2,"InfixExpression":10,"ExpressionStatement":4,"PropertyGet":14,"ReturnStatement":2,"UnaryExpression":1,"Name":37,"NumberLiteral":2,"ArrayLiteral":1,"VariableDeclaration":3,"FunctionCall":9,"ElementGet":2,"ParenthesizedExpression":3}
+       assert js['calls_by_count'] == {"val":1,"F$":3,"addMethod":1,"get":1,"attr":1,"split":1,"add":1}
+       assert js['literals_by_count'] == {" ":1,"0":2,"#IsAfterGoLive":1,"INPUT":1,"requiredwhennotaftergolivevalidation":1,"True":1,"class":1,"testrequiredwhennotaftergolivevalidation":3,"SELECT":1}
 
 def test_analyse_script_failure(pytestconfig):
    # mozilla rhino cant handle all JS... so check that failure path is as expected
@@ -136,7 +136,7 @@ def test_find_best_control(pytestconfig, all_controls):
        assert not failed
        db = mock.Mock()
        db.javascript_controls.find_one.return_value =  { 'literals_by_count': { 'blah': 0, 'blah': 0 } }
-       best_control, next_best_control = find_best_control(input_features, all_controls, db=db) 
+       best_control, next_best_control = find_best_control(json.loads(input_features.decode('utf-8')), all_controls, db=db) 
 # EXPECTED RESULTS:
 #BestControl(control_url='https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=0.0, function_dist=0.0, diff_functions='', cited_on=None)
 #BestControl(control_url='', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=inf, function_dist=inf, diff_functions='', cited_on=None)

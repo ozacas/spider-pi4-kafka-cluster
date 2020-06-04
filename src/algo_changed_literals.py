@@ -75,11 +75,10 @@ for good_hit in next_artefact(consumer, args.n, lambda v: v['ast_dist'] < 0.01 o
            continue
        jsr = JavascriptArtefact(url=good_hit['origin_url'], sha256=script.get('sha256'), md5=script.get('md5'), size_bytes=script.get('size_bytes'))
        ret, failed, stderr = analyse_script(content, jsr, java=args.java, feature_extractor=args.extractor)
-       if args.v:
-           print(jsr)
+       d = json.loads(ret.decode('utf-8'))
        if not failed:
            ks = set(lv_control.keys())
-           lv_origin = ret.get('literals_by_count', {})
+           lv_origin = d.get('literals_by_count', {})
            origin_literals_not_in_control = set(lv_origin.keys()).difference(lv_control.keys())
            v1, lv_control_sum = calculate_vector(lv_control, feature_names=ks) 
            if len(origin_literals_not_in_control) > 0 and looks_suspicious(origin_literals_not_in_control):

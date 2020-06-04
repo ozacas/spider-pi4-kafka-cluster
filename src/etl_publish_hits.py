@@ -5,7 +5,7 @@ import argparse
 import pymongo
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
-from utils.io import get_function_call_vector, load_controls
+from utils.io import load_controls
 from utils.models import BestControl, Password
 from utils.misc import *
 from utils.features import as_url_fields
@@ -37,7 +37,9 @@ def process_hit(db, all_controls, hit: BestControl, producer, stats=None):
 
     d = asdict(hit)
     d.pop('diff_functions', None)
-    fv_origin = get_function_call_vector(db, hit.origin_url)
+    rec = db.analysis_content.find_one({ 'js_id': d['origin_js_id'], 'byte_content_sha256': d['origin_vectors_sha256'] })
+    assert rec is not None and 'calls_by_count' in rec
+    fv_origin = rec.get('calls_by_count')
     if fv_origin is None:
         return False
 
@@ -113,6 +115,9 @@ if __name__ == "__main__":
     stats = {}
     for r in consumer: 
         n += 1
+        if 'origin_vectors_sha256' not in r.value:
+            continue
+
         hit = BestControl(**r.value)
 
         if args.v:

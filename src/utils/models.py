@@ -128,6 +128,7 @@ class BestControl:
     literals_not_in_origin: int = -1  # literals present in control but not found also in origin (ditto)
     n_diff_literals: int = -1         # literals which are present in both, but not found the same number of times
     diff_literals: str = ''           # comma separated literals (if literal contains a comma it will be entity encoded, max 200 chars per literal)
+    origin_vectors_sha256: str = ''   # partial FK into db.analysis_content to retrieve vectors for this origin_url 
 
     def dist_prod(self):
        """ 
