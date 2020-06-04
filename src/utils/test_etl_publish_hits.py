@@ -21,7 +21,7 @@ def test_process_hit_success():
                     cited_on='https://some.web.site/somewhere.html', origin_js_id='12345',
                     sha256_matched=True, diff_functions='', origin_vectors_sha256='abcdef', ast_dist=0.0, literal_dist=0.0, function_dist=0.0)
    all_controls = { control_url: { 'control_url': control_url, 'literals_by_count': { 'a': 1 } }}
-   db.analysis_content.find_one.return_value = { 'calls_by_count': {} }
+   db.analysis_content.find_one.return_value = { 'analysis_bytes': b'{"calls_by_count":{}}' }
    assert process_hit(db, all_controls, bc, producer, stats={}) == True
    expected_find_call = mock.call.analysis_content.find_one({'js_id': '12345', 'byte_content_sha256': 'abcdef' })
    expected_insert_call = mock.call.etl_hits.insert_one({'control_url': 'https://cdn.com/path/to/artefact.js', 
