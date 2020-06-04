@@ -387,7 +387,9 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    update_literal_fields(db, second_best_control, lv_origin, control_cache, debug=debug)
 
    if best_control.sha256_matched:
-       assert best_control.dist_prod() < 0.00001
+       print("******")
+       print(best_control)
+       assert best_control.dist_prod() < 0.1
        assert best_control.n_diff_literals < 1
 
    return (best_control, second_best_control)
