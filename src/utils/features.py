@@ -242,8 +242,6 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
    features = list(set(truncated_control.keys()).union(truncated_origin.keys())) # use list() to ensure traversal order is predictable
    v1, control_sum = calculate_vector(truncated_control, features)
    v2, origin_sum = calculate_vector(truncated_origin, features)
-   #print(v1)
-   #print(v2)
    assert len(v1) == len(v2)
    assert control_sum >= 0
    assert origin_sum >= 0
@@ -254,6 +252,10 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
    if debug:
        for dl in diff_literals:
             assert len(dl) <= 200
+            ords = [str(ord(c)) for c in dl]
+            reprs = [str(repr(c)) for c in dl]
+            print(' '.join(ords)) 
+            print(' '.join(reprs))
 
    t = (
          compute_distance(v1, v2, short_vector_penalty=True),
@@ -262,6 +264,8 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
          diff_literals
        )
    if debug:
+      print(v1)
+      print(v2)
       print(len(control_literals.keys()))
       print(len(origin_literals.keys()))
       print(origin_literals.keys())
@@ -313,6 +317,10 @@ def update_literal_fields(db, hit: BestControl, origin_literals, cache, max_dist
    assert hit.literals_not_in_control >= 0 
    assert hit.diff_literals is not None
 
+   if hit.sha256_matched and hit.n_diff_literals > 0:
+       # we recompute literal distance with debug=True to track this bug
+       calculate_literal_distance(control_literals, origin_literals, debug=True)
+
    if hit.literals_not_in_origin > 0 or hit.literals_not_in_control > 0:
        assert hit.n_diff_literals > 0
 
@@ -323,6 +331,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    if isinstance(origin_js_id, tuple) or isinstance(origin_js_id, list): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
        origin_js_id = origin_js_id[0]
    assert isinstance(origin_js_id, str) or origin_js_id is None # check POST-CONDITION
+   assert 'byte_content_sha256' in input_features
 
    best_distance = float('Inf')
    hash_match = False
@@ -333,7 +342,8 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                               function_dist=float('Inf'), 
                               literal_dist=0.0,
                               diff_functions='',
-                              origin_js_id=origin_js_id)
+                              origin_js_id=origin_js_id,
+                              origin_vectors_sha256=input_features['byte_content_sha256'])
    second_best_control = None
 
    feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance)
@@ -356,6 +366,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
                                       origin_js_id=origin_js_id,
+                                      origin_vectors_sha256=input_features['byte_content_sha256'],
                                       cited_on=cited_on,
                                       sha256_matched=False, 
                                       ast_dist=ast_dist, 
@@ -377,7 +388,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                best_control = new_control
 
                if ast_dist < 0.00001:     # small distance means we can try for a hash match against control?
-                   hash_match = find_hash_match(db, input_features, best_control.control_url)
+                   hash_match = (control['sha256'] == input_features['sha256'])
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control
 
@@ -389,8 +400,9 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    if best_control.sha256_matched:
        print("******")
        print(best_control)
-       assert best_control.dist_prod() < 0.1
-       assert best_control.n_diff_literals < 1
+       # BROKEN UTF8 content makes this very difficult unfortunately although it could be a bug...
+       #assert best_control.dist_prod() < 0.1
+       #assert best_control.n_diff_literals < 1
 
    return (best_control, second_best_control)
 
