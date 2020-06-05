@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import pytest
 import mock
+import hashlib
 from utils.features import *
 from bson.objectid import ObjectId
 from datetime import datetime
@@ -136,7 +137,11 @@ def test_find_best_control(pytestconfig, all_controls):
        assert not failed
        db = mock.Mock()
        db.javascript_controls.find_one.return_value =  { 'literals_by_count': { 'blah': 0, 'blah': 0 } }
-       best_control, next_best_control = find_best_control(json.loads(input_features.decode('utf-8')), all_controls, db=db) 
+       d = json.loads(input_features.decode())
+       d['js_id'] = 'XXXXXXXXXXXXXXXXXXXXXXXX'
+       d['sha256'] = 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
+       d['byte_content_sha256'] = hashlib.sha256(input_features).hexdigest()
+       best_control, next_best_control = find_best_control(d, all_controls, db=db) 
 # EXPECTED RESULTS:
 #BestControl(control_url='https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=0.0, function_dist=0.0, diff_functions='', cited_on=None)
 #BestControl(control_url='', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=inf, function_dist=inf, diff_functions='', cited_on=None)
@@ -173,9 +178,3 @@ def test_identify_subfamily():
    assert identify_control_subfamily(u2) == (u2, 'jquery-flexslider')
    with pytest.raises(AssertionError):
        identify_control_subfamily(None)
-
-def test_correct_literal_lookup():
-   db = mock.Mock()
-   db.javascript_controls.find_one.return_value = { 'literals_by_count': {  u'a': 10, u'b': 20 } }
-   ret = literal_lookup(db, 'https:/XXX')
-   assert ret == { 'a': 10, 'b': 20 } 

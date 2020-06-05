@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import pymongo
 import argparse
+import json
 from bson.objectid import ObjectId
 from utils.misc import add_mongo_arguments
 from utils.models import JavascriptArtefact
@@ -33,11 +34,13 @@ with open(args.file, 'wb+') as fp:
 
 if args.artefact:
    jsr = JavascriptArtefact(url='foo', sha256='XXX', md5='YYY', inline=False) # doesnt matter from the perspective of dumping the literals
-   ret, failed, stderr = analyse_script(args.file, jsr)
+   byte_content, failed, stderr = analyse_script(args.file, jsr)
    if failed:
       raise ValueError("Unable to analyse script: {}\n{}".format(args.file, stderr))
+   ret = json.loads(byte_content)
 else:
-   ret = db.javascript_controls.find_one({'origin': args.control })
+   doc = db.javascript_control_code.find_one({'origin': args.control })
+   ret = json.loads(doc.get('analysis_bytes'))
 
 assert 'literals_by_count' in ret
 if ret is not None and args.literals:

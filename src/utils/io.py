@@ -23,7 +23,8 @@ def save_artefact(db, producer, artefact: JavascriptArtefact, root, to, content=
             content = fp.read()
    assert content is not None
 
-   d = save_script(db, artefact, Binary(content))
+   d, js_id = save_script(db, artefact, Binary(content))
+   assert len(js_id) > 0
    assert 'sha256' in d
    assert 'md5' in d
    assert 'size_bytes' in d
@@ -31,7 +32,8 @@ def save_artefact(db, producer, artefact: JavascriptArtefact, root, to, content=
               'inline': inline,
               'content-type': content_type,
               'when': artefact.when,
-              'origin': artefact.origin })
+              'origin': artefact.origin,
+              'js_id': js_id })
    producer.send(to, d)
 
 def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, js_id: str=None, ensure_indexes=False):
@@ -61,7 +63,7 @@ def save_url(db, artefact):
    result = db.urls.insert_one({ 'url': artefact.url, 'last_visited': artefact.when, 'origin': artefact.origin })
    return result.inserted_id
 
-def save_script(db, artefact, script: bytes):
+def save_script(db, artefact: JavascriptArtefact, script: bytes):
    # NB: we work hard here to avoid mongo calls which will cause performance problems (hashing too)
 
    # compute hashes to search for
@@ -82,9 +84,10 @@ def save_script(db, artefact, script: bytes):
                                       upsert=True, 
                                       projection={ 'code': False },
                                       return_document=ReturnDocument.AFTER)
-   db.script_url.insert_one( { 'url_id': url_id, 'script': s.get(u'_id') })
+   js_id = s.get('_id')
+   db.script_url.insert_one( { 'url_id': url_id, 'script': js_id })
 
-   return key
+   return (key, js_id)
 
 # https://stackoverflow.com/questions/8290397/how-to-split-an-iterable-in-constant-size-chunks
 # https://stackoverflow.com/questions/24527006/split-a-generator-into-chunks-without-pre-walking-it/24527424
@@ -132,7 +135,8 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
    resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family },
                                                      { "$set": ret }, upsert=True)
    db.javascript_control_code.find_one_and_update({ 'origin': url },
-                                                     { "$set": { 'origin': url, 'code': Binary(content),
+                                                     { "$set": { 'origin': url, 'code': Binary(content), 
+                                                       'analysis_bytes': bytes_content, 'analysis_vectors_sha256': hashlib.sha256(bytes_content).hexdigest(),
                                                        "last_updated": jsr.when } }, upsert=True)
 
    vector, total_sum = calculate_ast_vector(ret['statements_by_count'])

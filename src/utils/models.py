@@ -63,6 +63,7 @@ class DownloadArtefact:
    checksum: str
    path: str
    when: str
+   js_id: str = ''   # db.scripts.get('_id') == js_id - should always be valid in normal operations
 
    def __lt__(self, other):
        return self.checksum < other.checksum
@@ -74,6 +75,7 @@ class JavascriptArtefact: # definition corresponds to visited kafka topic record
     url: str
     sha256: str
     md5: str
+    js_id: str = ''  # db.scripts.get('_id') == js_id
     inline: bool = False
     content_type: str = 'text/javascript'
     when: str = str(datetime.utcnow())

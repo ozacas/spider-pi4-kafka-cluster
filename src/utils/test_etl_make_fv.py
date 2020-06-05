@@ -19,7 +19,7 @@ def test_report_failure():
     d.pop('when', None)
     expected_results = { 'url': 'XXX', 'sha256': 'affb', 'md5': 'affc', 'inline': False, 
                          'content_type': 'text/javascript', 'size_bytes': 33, 'origin': None, 
-                         'reason': 'reason=hello world'}
+                         'reason': 'reason=hello world', 'js_id': ''}
     assert d == expected_results
 
 def test_send_to_kafka():

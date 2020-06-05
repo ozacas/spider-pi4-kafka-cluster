@@ -110,10 +110,16 @@ def find_sha256_hash(db, url):
    return (None, None)
 
 def get_script(db, artefact):
-   # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
-   d = { 'sha256': artefact.sha256.strip(), 'md5': artefact.md5.strip(), 'size_bytes': artefact.size_bytes } # ENSURE we set the right fields so Mongo uses the index
-   collection = db.snippets if artefact.inline else db.scripts
-   js = collection.find_one(d)
+   if len(artefact.js_id) > 0:
+       js = db.scripts.find_one({ '_id': ObjectId(artefact.js_id) })
+   else:
+       # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
+       d = { 'sha256': artefact.sha256.strip(), 
+             'md5': artefact.md5.strip(), 
+             'size_bytes': artefact.size_bytes } # ENSURE we set the right fields so Mongo uses the index
+       collection = db.snippets if artefact.inline else db.scripts
+       js = collection.find_one(d)
+       assert js.get('_id') == artefact.js_id # ensure we find the right ONE!
    return (js.get(u'code'), str(js.get('_id'))) if js is not None else (None, None)
 
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
@@ -166,23 +172,6 @@ def calculate_vector(features, feature_names=None):
 
    return (ret, sum)
 
-def find_hash_match(db, input_features, control_url):
-   if db:
-       rec = db.javascript_controls.find_one({ 'origin': control_url })
-       if rec is None:
-           return False
-       expected_sha256 = rec.get('sha256', None)    
-       actual_sha256 = input_features.get('sha256', None)
-       if actual_sha256 is None:
-           # lookup db if sha256 is not in kafka message? nah, not for now... TODO FIXME
-           url = input_features.get('id', input_features.get('url')) # url field was named 'id' field in legacy records
-           actual_sha256, url_id = find_sha256_hash(db, url)
-           #print(actual_sha256)
-           # FALLTHRU 
-       ret = expected_sha256 == actual_sha256
-       return ret
-   return False
-
 def calc_function_dist(origin_calls, control_calls):
    # function distance is a little different: all function calls are used for distance, even if only present in one vector 
    o_calls = set(origin_calls.keys())
@@ -214,22 +203,23 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = (1 / common) * (len(vec1)-common) if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def literal_lookup(db, control_url, cache=None):
+def lookup_control_literals(db, control_url, cache, debug=True):
    assert db is not None
    assert isinstance(control_url, str) and len(control_url) > 0
 
-   if cache is not None and control_url in cache:
-       return cache[control_url].get('literals_by_count')
-
    # vector length is len of union of literals encountered in either vector. Count will differentiate.
-   control_literals_doc = db.javascript_controls.find_one({ 'origin': control_url }) # NB: includes literal vector
-   if cache is not None:
-       cache[control_url] = control_literals_doc
-
+   control_literals_doc = db.javascript_control_code.find_one({ 'origin': control_url }) # NB: includes literal vector
    assert control_literals_doc is not None # should not happen as it means control has been deleted??? maybe bad io???
-   control_literals = control_literals_doc.get('literals_by_count')
+   assert 'analysis_bytes' in control_literals_doc
+   analysis_bytes = control_literals_doc.get('analysis_bytes')
+   assert 'analysis_vectors_sha256' in control_literals_doc
+
+   if debug:
+       # integrity check: verify that bytes hashed matches the expected hash
+       assert hashlib.sha256(analysis_bytes).hexdigest() == control_literals_doc['analysis_vectors_sha256']
+
+   control_literals = json.loads(analysis_bytes.decode('utf-8')).get('literals_by_count')
    assert control_literals is not None
- 
    return control_literals
 
 def calculate_literal_distance(control_literals, origin_literals, debug=False):
@@ -285,44 +275,10 @@ def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
    feasible_controls = [tuple for tuple in filter(lambda t: t[1] >= lb and t[1] <= ub, controls_to_search)]
    return feasible_controls
 
-def encoded_literals(literals_to_encode):
-   encoded_literals = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
-   return ','.join(encoded_literals)
+def fix_literals(literals_to_encode):
+   ret = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
+   return ','.join(ret)
 
-def update_literal_fields(db, hit: BestControl, origin_literals, cache, max_distance=50.0, debug=False):
-   assert isinstance(origin_literals, dict)
-
-   # is ok, second best control may not exist
-   if hit is None:
-       return
-
-   # do not update the fields if the hit is poor, but do check that they are correctly initialised
-   assert hit.ast_dist >= 0.0 and hit.function_dist >= 0.0
-   if hit.ast_dist * hit.function_dist >= max_distance:
-       hit.literal_dist = -1
-       assert hit.n_diff_literals <= 0
-       assert hit.literals_not_in_origin <= 0
-       assert hit.literals_not_in_control <= 0
-       assert hit.diff_literals == ''
-       return
-
-   control_literals = literal_lookup(db, hit.control_url, cache=cache)
-   assert isinstance(control_literals, dict)
-   t = calculate_literal_distance(control_literals, origin_literals, debug=debug)
-   hit.literal_dist, hit.literals_not_in_origin, hit.literals_not_in_control, diff_literals = t
-   hit.n_diff_literals = len(diff_literals)
-   hit.diff_literals = encoded_literals(diff_literals) 
-
-   assert hit.literals_not_in_origin >= 0
-   assert hit.literals_not_in_control >= 0 
-   assert hit.diff_literals is not None
-
-   if hit.sha256_matched and hit.n_diff_literals > 0:
-       # we recompute literal distance with debug=True to track this bug
-       calculate_literal_distance(control_literals, origin_literals, debug=True)
-
-   if hit.literals_not_in_origin > 0 or hit.literals_not_in_control > 0:
-       assert hit.n_diff_literals > 0
 
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False, control_cache=None):
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
@@ -330,11 +286,10 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    origin_js_id = input_features.get("js_id", None)  # ensure we can find the script directly without URL lookup
    if isinstance(origin_js_id, tuple) or isinstance(origin_js_id, list): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
        origin_js_id = origin_js_id[0]
-   assert isinstance(origin_js_id, str) or origin_js_id is None # check POST-CONDITION
+   assert isinstance(origin_js_id, str) and len(origin_js_id) == 24
    assert 'byte_content_sha256' in input_features
 
    best_distance = float('Inf')
-   hash_match = False
    input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
                               sha256_matched=False, 
@@ -388,22 +343,11 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                best_control = new_control
 
                if ast_dist < 0.00001:     # small distance means we can try for a hash match against control?
-                   hash_match = (control['sha256'] == input_features['sha256'])
+                   hash_match = (control.get('sha256', None) == input_features['sha256'])
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control
 
-   assert 'literals_by_count' in input_features
-   lv_origin = input_features.get('literals_by_count')
-   update_literal_fields(db, best_control, lv_origin, control_cache, debug=debug)
-   update_literal_fields(db, second_best_control, lv_origin, control_cache, debug=debug)
-
-   if best_control.sha256_matched:
-       print("******")
-       print(best_control)
-       # BROKEN UTF8 content makes this very difficult unfortunately although it could be a bug...
-       #assert best_control.dist_prod() < 0.1
-       #assert best_control.n_diff_literals < 1
-
+   # NB: literal fields in best_control/next_best_control are updated elsewhere... not here
    return (best_control, second_best_control)
 
 def identify_control_subfamily(cntl_url):
