@@ -11,6 +11,7 @@ add_mongo_arguments(a, default_access="read-write", default_user='rw')
 a.add_argument("--family", help="Name of WordPress plugin eg. contact-form-7", type=str, required=True)
 a.add_argument("--local", help="Local checked-out SVN plugin copy for scanning for JS artefacts", type=str, required=True)
 a.add_argument("--variant", help="Only update artefacts with the specified string in their name eg. min.js", type=str, default=None)
+a.add_argument("--force", help="Force update even if database entry exists", action="store_true")
 add_extractor_arguments(a)
 add_debug_arguments(a)
 a.add_argument("--list", help="List the artefacts to save, but do not change the database", action="store_true")
@@ -57,7 +58,7 @@ for url, family, variant, version, provider, content in controls_to_save:
            # since python requests will 403 without cookies/UA etc. we use the local filesystem content instead
            artefact = save_control(db, url, family, variant, version, 
                                    refuse_hashes=existing_control_hashes, 
-                                   provider=provider, 
+                                   provider=provider, force=args.force,
                                    java=args.java, feature_extractor=args.extractor, content=content)
            existing_control_hashes.add(artefact.sha256)
            if args.v:
