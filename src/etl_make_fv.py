@@ -79,6 +79,7 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
       #       'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 
       #        'md5': '4714b9a46307758a7272ecc666bc88a7', 'origin': 'XXXX' }  NB: origin may be none for old records (sadly)
       assert isinstance(jsr, JavascriptArtefact)
+      #assert len(jsr.js_id) > 0
       cache[jsr.url] = 1
 
       # 1. verbose?
@@ -86,12 +87,11 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
           print(jsr)
 
       # 2. got results cache hit ??? Saves computing it again and hitting the DB, which is slow...
-      key = '-'.join([jsr.sha256, jsr.md5, str(jsr.size_bytes)])  # a cache hit has both hash matches AND byte size the same. Unlikely to be false positive!
-      if fv_cache is not None and key in fv_cache:
-          byte_content, js_id = fv_cache[key]
+      if fv_cache is not None and jsr.js_id in fv_cache:
+          byte_content, js_id = fv_cache[jsr.js_id]
           n_cached += 1
           # falsely "update" the cache to ensure it is rewarded for being hit ie. becomes MRU
-          fv_cache[key] = (byte_content, js_id)
+          fv_cache[js_id] = (byte_content, js_id)
           # FALLTHRU
       else:
           # 3. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
@@ -102,6 +102,7 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
               continue
           if args.defensive:
               # validate that the data from mongo matches the expected hash or die trying...
+              assert js_id == jsr.js_id
               assert hashlib.sha256(js).hexdigest() == jsr.sha256
               assert hashlib.md5(js).hexdigest() == jsr.md5
               assert len(js) == jsr.size_bytes
@@ -114,9 +115,12 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
               continue
           # put results into the cache and then FALLTHRU...
           if fv_cache is not None:
-              fv_cache[key] = (byte_content, js_id)
+              fv_cache[js_id] = (byte_content, js_id)
 
-      save_analysis_content(db, jsr, byte_content, js_id=js_id, ensure_indexes=is_first)
+      if len(jsr.js_id) == 0:
+          jsr.js_id = js_id
+
+      save_analysis_content(db, jsr, byte_content, ensure_indexes=is_first)
       is_first = False
       results = asdict(jsr)
       results.update({ 'js_id': js_id })  # this will be sufficient to load the vector from Mongo by the receiving application
