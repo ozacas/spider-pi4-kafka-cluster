@@ -27,6 +27,7 @@ add_debug_arguments(a)
 a.add_argument("--file", help="Debug specified file and exit []", type=str, default=None)
 a.add_argument("--min-size", help="Skip all controls less than X bytes [1500]", type=int, default=1500)
 a.add_argument("--defensive", help="Validate each message from kafka for corruption (slow)", action="store_true")
+a.add_argument("--max-distance", help="Limit control hits to those with AST*Call distance < [150.0]", type=float, default=150.0)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
@@ -63,7 +64,8 @@ if args.file:
            print("Unable to extract features... aborting.")
            print(stderr)
            cleanup()
-       best_control, next_best_control = find_best_control(json.loads(byte_content.decode()), all_controls, db=db, max_distance=1000.0, debug=True) 
+       best_control, next_best_control = find_best_control(json.loads(byte_content.decode()), all_controls, 
+                                                           db=db, max_distance=args.max_distance, debug=True) 
        print("*** WINNING CONTROL HIT")
        print(best_control)
        print("*** NEXT BEST CONTROL HIT")
@@ -81,7 +83,7 @@ setup_signals(cleanup)
 def save_vetting(db, hit: BestControl, origin_byte_content_sha256: str ):
     d = asdict(hit)
     assert 'cited_on' in d and len(d['cited_on']) > 0
-    assert 'control_url' in d and len(d['control_url']) > 0
+    assert 'control_url' in d  # control url may be empty for poor quality (or no) hits
     assert 'origin_url' in d and len(d['origin_url']) > 0
     assert isinstance(d['origin_js_id'], str) or d['origin_js_id'] is None
     assert len(origin_byte_content_sha256) > 32
@@ -164,11 +166,11 @@ for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes')
     #             'inline': False, 'content_type': 'text/javascript', 'when': '2020-06-04 03:28:28.483855', 'size_bytes': 14951, 
     #             'origin': 'https://homes.mirvac.com/homes-portfolio',  'js_id': '5e8ef7df582045cdd24ce8ae', 
     #             'byte_content_sha256': 'b2b45feee3497bee1e575eb56c50a84ec7651dbc160e8b1607b07153563d804c'}
-    best_control, next_best_control = find_best_control(m, all_controls, db=db, control_cache=pylru.lrucache(200))
+    best_control, next_best_control = find_best_control(m, all_controls, db=db, control_cache=pylru.lrucache(200), max_distance=args.max_distance)
     if best_control is None or len(best_control.control_url) == 0:
-        continue
-
-    update_literal_distance(db, best_control)
+        pass 
+    else:
+        update_literal_distance(db, best_control)
     d = save_vetting(db, best_control, required_hash)
     best_control.xref = d['xref']
     assert best_control.xref is not None
