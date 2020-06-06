@@ -87,7 +87,7 @@ if __name__ == "__main__":
     add_mongo_arguments(a, default_access="read-write", default_user='rw')
     add_extractor_arguments(a)
     add_debug_arguments(a)
-    a.add_argument("--threshold", help="Ignore hits with AST * Function call distance greater than this [50.0]", type=float, default=50.0)
+    a.add_argument("--threshold", help="Ignore hits with AST * Function call distance greater than this [150.0]", type=float, default=150.0)
     a.add_argument("--tail", help="Dont terminate if we've read all the messages. Wait for new ones", action="store_true")
     a.add_argument("--bad", help="Save hits which fail threshold to db.etl_bad_hits", action='store_true')
     args = a.parse_args()
