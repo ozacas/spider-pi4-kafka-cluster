@@ -110,8 +110,10 @@ def find_sha256_hash(db, url):
    return (None, None)
 
 def get_script(db, artefact):
-   if len(artefact.js_id) > 0:
-       js = db.scripts.find_one({ '_id': ObjectId(artefact.js_id) })
+   if isinstance(artefact, str):
+       js = db.scripts.find_one({ '_id': ObjectId(artefact) })
+   elif isinstance(artefact, JavascriptArtefact) and len(artefact.js_id) > 0:
+       return get_script(db, artefact.js_id)
    else:
        # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
        d = { 'sha256': artefact.sha256.strip(), 
@@ -119,7 +121,8 @@ def get_script(db, artefact):
              'size_bytes': artefact.size_bytes } # ENSURE we set the right fields so Mongo uses the index
        collection = db.snippets if artefact.inline else db.scripts
        js = collection.find_one(d)
-       assert js.get('_id') == artefact.js_id # ensure we find the right ONE!
+       if len(artefact.js_id) > 0:
+           assert js.get('_id') == artefact.js_id # ensure we find the right ONE!
    return (js.get(u'code'), str(js.get('_id'))) if js is not None else (None, None)
 
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
@@ -281,6 +284,11 @@ def fix_literals(literals_to_encode):
 
 
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False, control_cache=None):
+   """
+   Search all controls with AST vector magnitudes within max_distance and find the best hit (lowest product of AST*call distance)
+   against suitable controls. Does not currently use literal distance for the calculation. Could be improved.... returns up to two hits
+   representing the best and next best hits (although the latter may be None).
+   """
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None)     # report owning HTML page also if possible (useful for data analysis)
    origin_js_id = input_features.get("js_id", None)  # ensure we can find the script directly without URL lookup
@@ -301,7 +309,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                               origin_vectors_sha256=input_features['byte_content_sha256'])
    second_best_control = None
 
-   feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance)
+   feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance * 2) # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
    for fc_tuple in feasible_controls:
        control, control_ast_sum, control_ast_vector = fc_tuple
        assert isinstance(control, dict)
@@ -331,7 +339,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
 
            # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
            #     (with accidental ast hits) as the number of controls in the database increases
-           if best_control.is_better(new_control):
+           if best_control.is_better(new_control, max_distance=max_distance):
                ast_x_call_2 = second_best_control.ast_dist * second_best_control.function_dist if second_best_control is not None else 0.0
                if second_best_control is None or ast_x_call_2 > ast_x_call:
                    #print("NOTE: improved second_best control")
