@@ -9,7 +9,7 @@ def test_password_env(monkeypatch):
     result = str(Password("foobaz")) 
     assert result == "foobaz"
 
-def test_artefact_model():
+def test_javascript_artefact():
     # usual constructor parameters for most apps
     jsr1 = JavascriptArtefact(sha256="XYZ", md5="XXX", size_bytes=279, url="http://foo/bar/baz")
     assert jsr1.sha256 == "XYZ"
@@ -57,3 +57,22 @@ def test_best_control():
 
     bc2.literal_dist = -1
     assert not bc2.good_hit_as_tuple() == (False, 'bad_literal_dist')
+
+def test_best_control_infinity_handling():
+    bc1 = BestControl(literal_dist=float('Inf'), ast_dist=float('Inf'), function_dist=float('Inf'), 
+                      control_url='', origin_url='', sha256_matched=False, diff_functions='')
+    bc2 = BestControl(literal_dist=0.0, ast_dist=0.0, function_dist=0.0,
+                      control_url='XXX', origin_url='YYY', sha256_matched=True, diff_functions='')
+
+    assert bc2.is_better(bc1)
+    assert not bc1.is_better(bc2)
+
+def test_best_control_max_distance():
+    bc2 = BestControl(literal_dist=7.0, ast_dist=12.0, function_dist=3.0, diff_functions='                  ', # need 12 to disable original criteria
+                      control_url='XXX', origin_url='YYY', sha256_matched=True)
+    ok, reason = bc2.good_hit_as_tuple(max_distance=100.0) # since distprod is (12+3) * (3+7) == 150
+    assert ok and reason == 'good_two_smallest_distances' # must fail dist_prod() test
+    assert bc2.good_hit_as_tuple(max_distance=150.0) == (True, 'dist_lt_150.0')
+
+    bc2.function_dist=22
+    assert not bc2.is_good_hit()

@@ -138,14 +138,14 @@ class BestControl:
        We compute the distance product as (ast_dist + function_dist) * (function_dist + literal_dist)
        """
        assert self.literal_dist >= 0.0 # reject calls if model not initialised fully
-       return (self.ast_dist + self.function_dist) * (self.function_dist + self.literal_dist)
+       return (self.ast_dist + self.function_dist) * (self.function_dist + self.literal_dist) 
 
     def diff_functions_as_list(self):
        if len(self.diff_functions) < 1:
            return []
        return self.diff_functions.split(' ')
 
-    def good_hit_as_tuple(self):
+    def good_hit_as_tuple(self, max_distance=200.0):
        n_diff = self.diff_functions.count(' ') 
        dist = self.ast_dist
        if (dist < 10.0 or (dist < 20.0 and n_diff < 10)) and (dist > 0.0 and self.function_dist > 0.0):
@@ -154,20 +154,20 @@ class BestControl:
        if self.literal_dist < 0.0:
            return ('False', 'bad_literal_dist')
        # NB: experience suggests that reasonable hits will have 3 dists < 200.0 (TODO FIXME: does this include all skimmers???)      
-       if self.dist_prod() < 150.0:
-           return (True, 'dist_lt_150')
+       if self.dist_prod() <= max_distance:
+           return (True, 'dist_lt_{}'.format(max_distance))
        sl = sorted([dist, self.function_dist, self.literal_dist])
        if sl[0] * sl[1] < 25.0:
            return (True, 'good_two_smallest_distances')
        return (False, 'failed_every_test')
 
-    def is_good_hit(self):
-       ok, reason = self.good_hit_as_tuple()
+    def is_good_hit(self, max_distance=200.0):
+       ok, reason = self.good_hit_as_tuple(max_distance=max_distance)
        return ok
 
-    def is_better(self, other):
+    def is_better(self, other, max_distance=200.0):
         other_prod = other.dist_prod()
-        if other_prod > 50.0:
+        if other_prod > max_distance:
             return True       # return True since other is a poor hit ie. self is better
         return self.dist_prod() < other_prod
 
