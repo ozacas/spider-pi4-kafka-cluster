@@ -5,8 +5,7 @@ import json
 from bson.objectid import ObjectId
 from utils.misc import add_mongo_arguments
 from utils.models import JavascriptArtefact
-from utils.features import analyse_script
-from utils.io import get_script
+from utils.features import analyse_script, get_script
 
 a = argparse.ArgumentParser(description="Save the specified artefact to disk as the specified filename")
 add_mongo_arguments(a, default_access="read-only", default_user='ro')
@@ -21,9 +20,9 @@ mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=s
 db = mongo[args.dbname]
 
 if args.artefact:
-   code, js_id = get_script(args.artefact)
+   code, js_id = get_script(db, args.artefact)
    assert js_id == args.artefact
-   if ret is None:
+   if code is None:
        raise ValueError("Unable to retrieve artefact {}".format(args.artefact))
 else: # args.control
    ret = db.javascript_control_code.find_one({ 'origin': args.control })
@@ -45,7 +44,7 @@ else:
    vectors = json.loads(ret.get('analysis_bytes'))
 
 assert 'literals_by_count' in vectors
-if ret is not None and args.literals:
+if vectors is not None and args.literals:
    for k,v in vectors.get('literals_by_count').items():
        print(v, " ", k)
 
