@@ -5,6 +5,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pymongo import ReturnDocument, ASCENDING
 import hashlib
+import json
 import requests
 from bson.binary import Binary
 from itertools import chain, islice
@@ -148,15 +149,28 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
    db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
    return jsr
 
-def load_controls(db, min_size=1500, literals_by_count=False, verbose=False):
+def load_controls(db, min_size=1500, all_vectors=False, verbose=False):
    all_controls = []
-   for control in db.javascript_controls.find(
-                      { "size_bytes": { "$gte": min_size } }, 
-                      { 'literals_by_count': literals_by_count }):             # dont load literal vector to save considerable memory
+   # NB: vectors come from javascript_control_code where integrity is better implemented
+   for control in db.javascript_controls.find({ "size_bytes": { "$gte": min_size } }, { 'literals_by_count': 0, 'calls_by_count': 0 }):
        ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
-       tuple = (control, ast_sum, ast_vector)
-#       print(tuple)
-       all_controls.append(tuple)
+       
+       if all_vectors: 
+           bytes_content_doc = db.javascript_control_code.find_one({ 'origin': control['origin'] })
+           if bytes_content_doc is None:
+               print("WARNING: could not load code for {}".format(control['origin']))
+               continue
+           assert bytes_content_doc is not None
+           assert 'analysis_bytes' in bytes_content_doc
+           assert 'analysis_vectors_sha256' in bytes_content_doc
+           if verbose:
+               assert hashlib.sha256(bytes_content_doc.get('analysis_bytes')).hexdigest() == bytes_content_doc.get('analysis_vectors_sha256')
+           vectors = json.loads(bytes_content_doc.get('analysis_bytes'))
+           assert vectors is not None and 'statements_by_count' in vectors
+           tuple = (control, ast_sum, ast_vector, vectors['calls_by_count'], vectors['literals_by_count'])
+       else:
+           tuple = (control, ast_sum, ast_vector)
+       yield tuple
+
    if verbose:
        print("Loaded {} controls, each at least {} bytes".format(len(all_controls), min_size))
-   return all_controls
