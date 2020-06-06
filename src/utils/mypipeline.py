@@ -3,6 +3,7 @@ from scrapy.pipelines.files import FilesPipeline, FileException
 from scrapy.utils.project import get_project_settings
 from scrapy.utils.request import referer_str
 from kafka import KafkaProducer
+from urllib.parse import urlparse
 import json
 import socket
 import pylru
@@ -31,9 +32,10 @@ class MyFilesPipeline(FilesPipeline):
    def item_completed(self, results, item, info):
       item = super().item_completed(results, item, info)
       # submit completion to kafka queue (only if item successfully saved)
-      t = results[0]
-      if t[0]:
-          self.success(t[1], item)
+      if results is not None and len(results) > 0:
+          t = results[0]
+          if t[0]:
+              self.success(t[1], item)
       else:
           # failed to download JS - indicator of malicious-ness???? so we need to send it to kafka
           self.error(item)
