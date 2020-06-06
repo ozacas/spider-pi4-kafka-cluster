@@ -10,7 +10,7 @@ from bson.binary import Binary
 from itertools import chain, islice
 from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily
 
-def save_artefact(db, producer, artefact: JavascriptArtefact, root, to, content=None, inline=False, content_type='text/javascript' ):
+def save_artefact(db, producer, artefact, root, to, content=None, inline=False, content_type='text/javascript' ):
    assert db is not None
    assert producer is not None
    assert content is not None or (root is not None and artefact.path is not None)
@@ -36,9 +36,9 @@ def save_artefact(db, producer, artefact: JavascriptArtefact, root, to, content=
               'js_id': js_id })
    producer.send(to, d)
 
-def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, js_id: str=None, ensure_indexes=False):
+def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, ensure_indexes=False):
    assert bytes_content is not None
-   assert len(js_id) > 0
+   assert len(jsr.js_id) > 0
    assert isinstance(bytes_content, bytes)
 
    if ensure_indexes:
@@ -46,8 +46,8 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, js_id: str
 
    d = asdict(jsr)
    expected_hash = hashlib.sha256(bytes_content).hexdigest()
-   d.update({ "js_id": js_id, "analysis_bytes": bytes_content, "byte_content_sha256": expected_hash })
-   db.analysis_content.find_one_and_update({ "js_id": js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
+   d.update({ "analysis_bytes": bytes_content, "byte_content_sha256": expected_hash })
+   db.analysis_content.find_one_and_update({ "js_id": jsr.js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     n = 0
@@ -84,9 +84,9 @@ def save_script(db, artefact: JavascriptArtefact, script: bytes):
                                       upsert=True, 
                                       projection={ 'code': False },
                                       return_document=ReturnDocument.AFTER)
-   js_id = s.get('_id')
-   db.script_url.insert_one( { 'url_id': url_id, 'script': js_id })
-
+   js_id = str(s.get('_id'))
+   db.script_url.insert_one({ 'url_id': url_id, 'script': js_id })
+   assert len(js_id) > 0
    return (key, js_id)
 
 # https://stackoverflow.com/questions/8290397/how-to-split-an-iterable-in-constant-size-chunks
