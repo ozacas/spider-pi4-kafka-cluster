@@ -117,10 +117,9 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
           if fv_cache is not None:
               fv_cache[js_id] = (byte_content, js_id)
 
-      if len(jsr.js_id) == 0:
-          jsr.js_id = js_id
-
+      assert len(jsr.js_id) > 0
       save_analysis_content(db, jsr, byte_content, ensure_indexes=is_first)
+
       is_first = False
       results = asdict(jsr)
       results.update({ 'js_id': js_id })  # this will be sufficient to load the vector from Mongo by the receiving application
