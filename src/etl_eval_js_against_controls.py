@@ -48,7 +48,7 @@ def cleanup(*args):
 
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
-all_controls = load_controls(db, min_size=args.min_size, literals_by_count=False, verbose=args.v)
+all_controls = list(load_controls(db, min_size=args.min_size, verbose=args.v))
 
 if args.v:
    print("Reporting unique families with JS controls (please wait this may take some time):")
