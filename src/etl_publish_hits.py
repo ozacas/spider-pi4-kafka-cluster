@@ -105,7 +105,7 @@ if __name__ == "__main__":
     n_good = n_not_good = n = 0
     save_pidfile('pid.etl.hits')
     all_controls = {}
-    for t in load_controls(db, literals_by_count=False, verbose=args.v):
+    for t in load_controls(db, verbose=args.v):
         assert isinstance(t, tuple)
         assert len(t) == 3
         assert isinstance(t[0], dict)
@@ -137,7 +137,8 @@ if __name__ == "__main__":
             continue
 
         # 2. bad AST*function call product (over threshold)? Or not a hit? reject entire record
-        if (len(hit.control_url) == 0 or hit.ast_dist * hit.function_dist >= args.threshold) and args.bad:
+        if (len(hit.control_url) == 0 or hit.ast_dist * hit.function_dist >= args.threshold or 
+            not hit.is_good_hit(max_distance=args.threshold)) and args.bad:
             db.etl_bad_hits.insert_one(asdict(hit))
             n_not_good += 1
             continue
