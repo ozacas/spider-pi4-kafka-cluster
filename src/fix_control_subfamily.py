@@ -15,9 +15,8 @@ if __name__ == "__main__":
 
     mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
     db = mongo[args.dbname]
-    all_controls = load_controls(db, verbose=args.v)
     subfamilies = []
-    for t in sorted(all_controls, key=lambda t: t[0].get('family')):
+    for t in sorted(load_controls(db, verbose=args.v), key=lambda t: t[0].get('family')):
         u = t[0].get('origin')
         u2, subfamily = identify_control_subfamily(u)
         assert u == u2
@@ -28,15 +27,17 @@ if __name__ == "__main__":
         print([s[0], s[2][1], s[1]])
 
     d = { t[1]: t[0] for t in subfamilies }
-
+    n = 0
     if not args.dry_run:
-        for t in all_controls:
+        for t in load_controls(db, verbose=args.v):
             assert isinstance(t[0], dict)
             u = t[0].get('origin')
             assert u in d
             if args.v:          
                 print("Updating subfamily {} for {}".format(d[u], u))
+            assert isinstance(d[u], str)
             ret = db.javascript_controls.find_one_and_update({ 'origin': u }, { '$set': { 'subfamily': d[u] } }, upsert=True)
             assert ret is not None
-
+            n += 1
+    print("Updated {} javascript controls.".format(n))
     exit(0)
