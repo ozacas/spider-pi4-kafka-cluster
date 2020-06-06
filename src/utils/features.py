@@ -311,7 +311,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
 
    feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance * 2) # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
    for fc_tuple in feasible_controls:
-       control, control_ast_sum, control_ast_vector = fc_tuple
+       control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple
        assert isinstance(control, dict)
        assert control_ast_sum > 0
        assert isinstance(control_ast_vector, list)
@@ -319,12 +319,12 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
 
        ast_dist = math.dist(input_vector, control_ast_vector)
        # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
-       call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control['calls_by_count'])
+       call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control_call_vector)
        ast_x_call = ast_dist * call_dist
        if ast_x_call < best_distance and ast_x_call <= max_distance: 
            if debug:
                print(input_features['calls_by_count'])
-               print(control['calls_by_count']) 
+               print(control_call_vector)
                print("Got good distance {} for {} (was {}, max={})".format(ast_x_call, control_url, best_distance, max_distance)) 
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 

@@ -48,7 +48,14 @@ def cleanup(*args):
 
 
 # 0. read controls once only (TODO FIXME: assumption is that the vectors fit entirely in memory)
-all_controls = list(load_controls(db, min_size=args.min_size, verbose=args.v))
+all_controls = []
+for t in load_controls(db, all_vectors=True, min_size=args.min_size, verbose=args.v):
+   assert isinstance(t, tuple)
+   rec, ast_sum, ast_vector, call_vector, _ = t
+   assert isinstance(rec, dict)
+   all_controls.append((rec, ast_sum, ast_vector, call_vector ))
+
+print("Loaded {} javascript controls.".format(len(all_controls)))
 
 if args.v:
    print("Reporting unique families with JS controls (please wait this may take some time):")
@@ -64,7 +71,7 @@ if args.file:
            print("Unable to extract features... aborting.")
            print(stderr)
            cleanup()
-       best_control, next_best_control = find_best_control(json.loads(byte_content.decode()), all_controls, 
+       best_control, next_best_control = find_best_control(json.loads(byte_content.decode()), all_controls,
                                                            db=db, max_distance=args.max_distance, debug=True) 
        print("*** WINNING CONTROL HIT")
        print(best_control)
