@@ -8,9 +8,10 @@ import json
 import socket
 import pylru
 from datetime import datetime
+from utils.misc import json_value_serializer
 
 class MyFilesPipeline(FilesPipeline):
-   producer = KafkaProducer(value_serializer=lambda m: json.dumps(m).encode('utf-8'), bootstrap_servers='kafka1')
+   producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers='kafka1')
    settings = get_project_settings()
    bad_sites = pylru.lrucache(50)
 
