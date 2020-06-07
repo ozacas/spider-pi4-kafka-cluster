@@ -85,7 +85,7 @@ def test_save_script_correct_checksum():
 
 def test_save_script_incorrect_checksum():
    m = Mock()
-   jsr = DownloadArtefact(url='X', path='full/foo.js', checksum='XXX', host='pi3', origin='crap.html', when='2020-04-25')
+   jsr = DownloadArtefact(url='X', path='full/foo.js', checksum='X' * 32, host='pi3', origin='crap.html', when='2020-04-25')
    with pytest.raises(ValueError):
        ret = save_script(m, jsr, 'rubbish.code.which.does.not.match.required.checksum'.encode())
    # mongo database must not have been updated

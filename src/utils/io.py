@@ -1,5 +1,5 @@
 from utils.features import safe_for_mongo
-from utils.models import JavascriptArtefact, JavascriptVectorSummary
+from utils.models import JavascriptArtefact, JavascriptVectorSummary, DownloadArtefact
 from collections import namedtuple
 from dataclasses import asdict
 from datetime import datetime
@@ -11,7 +11,10 @@ from bson.binary import Binary
 from itertools import chain, islice
 from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily
 
-def save_artefact(db, producer, artefact, root, to, content=None, inline=False, content_type='text/javascript' ):
+def save_artefact(db, producer, artefact, root, to, content=None, inline=False, content_type='text/javascript'):
+   """
+   Saves the content to Mongo as specified by root/artefact.path and then the record of the save to Kafka (topic to) for downstream processing
+   """
    assert db is not None
    assert producer is not None
    assert content is not None or (root is not None and artefact.path is not None)
@@ -22,9 +25,9 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
         content = None
         with open(path, 'rb') as fp:
             content = fp.read()
-   assert content is not None
+            assert content is not None
 
-   d, js_id = save_script(db, artefact, Binary(content))
+   d, js_id = save_script(db, artefact, content)
    assert len(js_id) > 0
    assert 'sha256' in d
    assert 'md5' in d
@@ -36,6 +39,7 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
               'origin': artefact.origin,
               'js_id': js_id })
    producer.send(to, d)
+   return d
 
 def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, ensure_indexes=False):
    assert bytes_content is not None
@@ -62,10 +66,13 @@ def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
 
 def save_url(db, artefact):
    result = db.urls.insert_one({ 'url': artefact.url, 'last_visited': artefact.when, 'origin': artefact.origin })
+   assert result is not None
    return result.inserted_id
 
-def save_script(db, artefact: JavascriptArtefact, script: bytes):
+def save_script(db, artefact: DownloadArtefact, script: bytes):
    # NB: we work hard here to avoid mongo calls which will cause performance problems (hashing too)
+   assert isinstance(artefact, DownloadArtefact)
+   assert len(artefact.checksum) == 32  # length of an md5 hexdigest
 
    # compute hashes to search for
    sha256 = hashlib.sha256(script).hexdigest()
@@ -79,7 +86,7 @@ def save_script(db, artefact: JavascriptArtefact, script: bytes):
    script_len = len(script)
    key = { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }  
    value = key.copy() # NB: shallow copy is sufficient for this application
-   value.update({ 'code': script })
+   value.update({ 'code': Binary(script) })
 
    s = db.scripts.find_one_and_update(key, { '$set': value }, 
                                       upsert=True, 
