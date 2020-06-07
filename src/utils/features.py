@@ -184,7 +184,7 @@ def calc_function_dist(origin_calls, control_calls):
    # to have no function calls, so we return the less noisy option for now.
    if len(fns) == 0:
        return (float('Inf'), [])
- 
+
    vec1 = []
    vec2 = []
    #print("*** origin_calls {}".format(origin_calls))
@@ -230,40 +230,47 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
    assert isinstance(origin_literals, dict)
 
    # NB: control_literals are not truncated to 200 chars, so we do it on-the-fly as performance is ok for now
-   truncated_control = { k[0:200]: v for k,v in control_literals.items() }
-   truncated_origin = { k[0:200]: v for k,v in origin_literals.items() }
-   features = list(set(truncated_control.keys()).union(truncated_origin.keys())) # use list() to ensure traversal order is predictable
-   v1, control_sum = calculate_vector(truncated_control, features)
-   v2, origin_sum = calculate_vector(truncated_origin, features)
-   assert len(v1) == len(v2)
-   assert control_sum >= 0
-   assert origin_sum >= 0
+   v1 = []
+   v2 = []
    
-   literals_not_in_origin = set(truncated_control.keys()).difference(truncated_origin.keys())
-   literals_not_in_control = set(truncated_origin.keys()).difference(truncated_control.keys())
-   diff_literals = [lit for lit in features if truncated_origin.get(lit, 0) != truncated_control.get(lit, 0)]
-   if debug:
-       for dl in diff_literals:
-            assert len(dl) <= 200
-            ords = [str(ord(c)) for c in dl]
-            reprs = [str(repr(c)) for c in dl]
-            print(' '.join(ords)) 
-            print(' '.join(reprs))
+   features = set()
+   diff_literals = []
+   n_not_in_origin = n_not_in_control = 0
+   for k in origin_literals.keys():
+       features.add(k)
+       if k not in control_literals:  # case 1: k is not a literal present in the control
+          n_not_in_control += 1
+          diff_literals.append(k[0:200])
+          v1.append(origin_literals[k])
+          v2.append(0)
+       else:                          # case 2: k is present in both vectors, but not necessarily with the same count
+          v1_count = origin_literals[k]
+          v2_count = control_literals[k]
+          v1.append(v1_count)
+          v2.append(v2_count)
+          if v1_count != v2_count:
+              diff_literals.append(k[0:200]) 
+   for k in control_literals.keys():
+       if not k in features:          # case 3: k is present in the control but not in origin vector
+          features.add(k)
+          v1.append(0)
+          v2.append(control_literals[k])
+          n_not_in_origin += 1
+          diff_literals.append(k[0:200])
+
+   assert len(v1) == len(v2)       
+   assert len(features) == len(v1)
 
    t = (
          compute_distance(v1, v2, short_vector_penalty=True),
-         len(literals_not_in_origin),
-         len(literals_not_in_control),
+         n_not_in_origin,
+         n_not_in_control,
          diff_literals
        )
+
    if debug:
       print(v1)
       print(v2)
-      print(len(control_literals.keys()))
-      print(len(origin_literals.keys()))
-      print(origin_literals.keys())
-      print(control_sum)
-      print(origin_sum)
       print(t)
    return t
 
@@ -282,6 +289,16 @@ def fix_literals(literals_to_encode):
    ret = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
    return ','.join(ret)
 
+def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False):
+   if debug:
+       assert isinstance(origin_ast, list)
+       assert isinstance(control_ast, list)
+       assert isinstance(origin_calls, dict)
+       assert isinstance(control_calls, dict)
+       assert len(origin_ast) == len(control_ast)
+   ast_dist = compute_distance(origin_ast, control_ast, short_vector_penalty=True)
+   call_dist, diff_functions = calc_function_dist(origin_calls, control_calls)
+   return ((ast_dist * call_dist) + ast_dist + call_dist, ast_dist, call_dist, diff_functions)
 
 def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False, control_cache=None):
    """
@@ -298,7 +315,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    assert 'byte_content_sha256' in input_features
 
    best_distance = float('Inf')
-   input_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
+   input_ast_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
                               sha256_matched=False, 
                               ast_dist=float('Inf'), 
@@ -309,7 +326,8 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                               origin_vectors_sha256=input_features['byte_content_sha256'])
    second_best_control = None
 
-   feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance * 2) # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
+   # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
+   feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance * 2) 
    for fc_tuple in feasible_controls:
        control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple
        assert isinstance(control, dict)
@@ -317,15 +335,12 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
        assert isinstance(control_ast_vector, list)
        control_url = control.get('origin')
 
-       ast_dist = math.dist(input_vector, control_ast_vector)
        # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
-       call_dist, diff_functions = calc_function_dist(input_features['calls_by_count'], control_call_vector)
-       ast_x_call = ast_dist * call_dist
-       if ast_x_call < best_distance and ast_x_call <= max_distance: 
+       new_distance, ast_dist, call_dist, diff_functions = distance(input_ast_vector, control_ast_vector, 
+                                                                    input_features['calls_by_count'], control_call_vector, debug=debug)
+       if new_distance < best_distance and new_distance <= max_distance: 
            if debug:
-               print(input_features['calls_by_count'])
-               print(control_call_vector)
-               print("Got good distance {} for {} (was {}, max={})".format(ast_x_call, control_url, best_distance, max_distance)) 
+               print("Got good distance {} for {} (was {}, max={})".format(new_distance, control_url, best_distance, max_distance)) 
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
                                       origin_js_id=origin_js_id,
@@ -340,13 +355,13 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
            # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
            #     (with accidental ast hits) as the number of controls in the database increases
            if best_control.is_better(new_control, max_distance=max_distance):
-               ast_x_call_2 = second_best_control.ast_dist * second_best_control.function_dist if second_best_control is not None else 0.0
-               if second_best_control is None or ast_x_call_2 > ast_x_call:
+               second_dist = second_best_control.distance() if second_best_control is not None else 0.0
+               if second_best_control is None or second_dist > best_control.distance():
                    #print("NOTE: improved second_best control")
                    second_best_control = new_control
                # NB: dont update best_* since we dont consider this hit a replacement for current best_control
            else: 
-               best_distance = ast_x_call
+               best_distance = new_distance
                second_best_control = best_control
                best_control = new_control
 

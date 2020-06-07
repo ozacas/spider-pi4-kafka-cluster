@@ -8,7 +8,7 @@ import sys
 import hashlib
 import pylru
 from kafka import KafkaConsumer, KafkaProducer
-from utils.features import find_best_control, analyse_script, calculate_ast_vector, calculate_literal_distance, fix_literals
+from utils.features import find_best_control, analyse_script, calculate_ast_vector, calculate_literal_distance, fix_literals, find_feasible_controls
 from utils.models import JavascriptArtefact, JavascriptVectorSummary, BestControl
 from utils.io import next_artefact, load_controls
 from utils.misc import *
@@ -108,13 +108,6 @@ def save_vetting(db, hit: BestControl, origin_byte_content_sha256: str ):
     d['xref'] = xref
     return d
 
-def get_origin_bytes(db, o_js_id: str, o_byte_content_sha256: str):
-    doc = db.analysis_content.find_one({ 'js_id': o_js_id, 'byte_content_sha256': o_byte_content_sha256 })
-    assert doc is not None
-    assert 'analysis_bytes' in doc
-    assert hashlib.sha256(doc['analysis_bytes']).hexdigest() == o_byte_content_sha256
-    return doc['analysis_bytes']
-
 def get_control_bytes(db, control_url: str):
     doc = db.javascript_control_code.find_one({ 'origin': control_url })
     if doc is None:  # should not happen during the normal course of events... but if it does we handle it gracefully
@@ -125,9 +118,9 @@ def get_control_bytes(db, control_url: str):
     assert hashlib.sha256(doc['analysis_bytes']).hexdigest() == doc['analysis_vectors_sha256']
     return doc['analysis_bytes']
 
-def update_literal_distance(db, hit: BestControl):
+def update_literal_distance(db, hit: BestControl, ovec):
     assert hit is not None
-    ovec = get_origin_bytes(db, hit.origin_js_id, hit.origin_vectors_sha256)
+    assert ovec is not None
     cvec = get_control_bytes(db, hit.control_url)
     if cvec is None:
          hit.literal_dist = -1.0
@@ -136,12 +129,15 @@ def update_literal_distance(db, hit: BestControl):
          hit.n_diff_literals = -1
          hit.diff_literals = ''
          return
-    t = calculate_literal_distance(json.loads(cvec).get('literals_by_count'), json.loads(ovec).get('literals_by_count'), None)
+    t = calculate_literal_distance(json.loads(cvec).get('literals_by_count'), ovec, None)
     hit.literal_dist, hit.literals_not_in_origin, hit.literals_not_in_control, diff_literals = t
     hit.n_diff_literals = len(diff_literals)
     hit.diff_literals = fix_literals(diff_literals) 
     if hit.sha256_matched:
-        assert hit.dist_prod() < 0.1
+        assert hit.distance() < 0.1
+        assert hit.n_diff_literals == 0
+        assert hit.literals_not_in_origin == 0
+        assert hit.literals_not_in_control == 0
     
 # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
 save_pidfile('pid.eval.controls')
@@ -168,16 +164,17 @@ for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes')
     d = json.loads(byte_content)
     for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
         m[t] = d[t]
-    # m example: {'url': 'https://homes.mirvac.com/-/media/Project/Mirvac/Residential/Base-Residential-Site/Base-Residential-Site-Theme/scripts/navigationmin.js', 
+    # example m: {'url': 'https://homes.mirvac.com/-/media/Project/Mirvac/Residential/Base-Residential-Site/Base-Residential-Site-Theme/scripts/navigationmin.js', 
     #             'sha256': 'd6941fcfdd12069e20f4bb880ecbab12d797d9696cae1b05ec9d59fb9bd90b51', 'md5': '2b10377115ab0747535acb1ad38b26bd', 
     #             'inline': False, 'content_type': 'text/javascript', 'when': '2020-06-04 03:28:28.483855', 'size_bytes': 14951, 
     #             'origin': 'https://homes.mirvac.com/homes-portfolio',  'js_id': '5e8ef7df582045cdd24ce8ae', 
     #             'byte_content_sha256': 'b2b45feee3497bee1e575eb56c50a84ec7651dbc160e8b1607b07153563d804c'}
     best_control, next_best_control = find_best_control(m, all_controls, db=db, control_cache=pylru.lrucache(200), max_distance=args.max_distance)
+    ovec = m['literals_by_count']
     if best_control is None or len(best_control.control_url) == 0:
         pass 
     else:
-        update_literal_distance(db, best_control)
+        update_literal_distance(db, best_control, ovec)
     d = save_vetting(db, best_control, required_hash)
     best_control.xref = d['xref']
     assert best_control.xref is not None
@@ -187,15 +184,15 @@ for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes')
         print(best_control)
 
     if next_best_control is not None and len(next_best_control.control_url) > 0:
-        update_literal_distance(db, next_best_control)
+        update_literal_distance(db, next_best_control, ovec)
         d2 = save_vetting(db, next_best_control, required_hash)
         next_best_control.xref = d2['xref']
         assert len(next_best_control.xref) > 0
         if next_best_control.literal_dist < 0.0: # if the literal distance calculation fails (eg. missing control features) we ignore the hit
             continue
 
-        best_mult = best_control.dist_prod()
-        next_best_mult = next_best_control.dist_prod()
+        best_mult = best_control.distance()
+        next_best_mult = next_best_control.distance()
         if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
             print("NOTE: next best control looks as good as best control")
             print(next_best_control) 
