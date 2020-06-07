@@ -50,7 +50,7 @@ def test_best_control():
     bc2 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=10.0, function_dist=1.5, literal_dist=0.0, sha256_matched=False, diff_functions='a b c')
     assert bc1.is_better(bc2)
     assert not bc2.is_better(bc1)
-    assert bc1.dist_prod() < bc2.dist_prod() and pytest.approx(bc1.dist_prod(), 1.5)
+    assert bc1.distance() < bc2.distance() and pytest.approx(bc1.distance(), 1.5)
 
     bc3 = BestControl(origin_url='AAA', control_url='BBB', ast_dist=43.0, function_dist=3.0, literal_dist=9.7, sha256_matched=False, diff_functions='aaa bbb')
     assert not bc3.is_good_hit()
@@ -71,8 +71,8 @@ def test_best_control_max_distance():
     bc2 = BestControl(literal_dist=7.0, ast_dist=12.0, function_dist=3.0, diff_functions='                  ', # need 12 to disable original criteria
                       control_url='XXX', origin_url='YYY', sha256_matched=True)
     ok, reason = bc2.good_hit_as_tuple(max_distance=100.0) # since distprod is (12+3) * (3+7) == 150
-    assert ok and reason == 'good_two_smallest_distances' # must fail dist_prod() test
-    assert bc2.good_hit_as_tuple(max_distance=150.0) == (True, 'dist_lt_150.0')
+    assert ok and reason == 'good_two_smallest_distances' # must fail distance() test
+    assert bc2.good_hit_as_tuple(max_distance=200.0) == (True, 'dist_lt_200.0')
 
     bc2.function_dist=22
     assert not bc2.is_good_hit()
