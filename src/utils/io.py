@@ -25,7 +25,7 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
         content = None
         with open(path, 'rb') as fp:
             content = fp.read()
-            assert content is not None
+            assert isinstance(content, bytes)
 
    d, js_id = save_script(db, artefact, content)
    assert len(js_id) > 0
@@ -51,7 +51,7 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, ensure_ind
 
    d = asdict(jsr)
    expected_hash = hashlib.sha256(bytes_content).hexdigest()
-   d.update({ "analysis_bytes": bytes_content, "byte_content_sha256": expected_hash })
+   d.update({ "analysis_bytes": Binary(bytes_content), "byte_content_sha256": expected_hash })
    db.analysis_content.find_one_and_update({ "js_id": jsr.js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
