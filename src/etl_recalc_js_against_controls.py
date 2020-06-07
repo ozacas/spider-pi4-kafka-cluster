@@ -111,8 +111,8 @@ for hit in db.vet_against_control.find({ "control_url": args.control }):
     if next_best_control is None:
         continue
 
-    best_mult = best_control.dist_prod()
-    next_best_mult = next_best_control.dist_prod()
+    best_mult = best_control.distance()
+    next_best_mult = next_best_control.distance()
     if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
         print("NOTE: next best control looks as good as best control")
         print(next_best_control) 
