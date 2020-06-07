@@ -105,7 +105,7 @@ def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
    dist = compute_distance(v1, v2)
    print("Function call distance: {:.2f}".format(dist))
    if len(diffs) == 0:
-       print("All literals seen the expected number of times.")
+       print("All functions called the expected number of times.")
    else:
        print("Functions not called the expected number of times: {}".format(' '.join(diffs)))
    diffs = []
