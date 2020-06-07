@@ -132,13 +132,13 @@ class BestControl:
     diff_literals: str = ''           # comma separated literals (if literal contains a comma it will be entity encoded, max 200 chars per literal)
     origin_vectors_sha256: str = ''   # partial FK into db.analysis_content to retrieve vectors for this origin_url 
 
-    def dist_prod(self):
+    def distance(self):
        """ 
        If one vector distance is zero, that is not enough to be sure its not a false positive. So we require two distances to be zero before we do that here.
-       We compute the distance product as (ast_dist + function_dist) * (function_dist + literal_dist)
+       We compute the distance product as (ast_dist + function_dist) * (function_dist + literal_dist) 
        """
        assert self.literal_dist >= 0.0 # reject calls if model not initialised fully
-       return (self.ast_dist + self.function_dist) * (self.function_dist + self.literal_dist) 
+       return (self.ast_dist + self.function_dist) * (self.function_dist + self.literal_dist) + sum([self.ast_dist, self.function_dist, self.literal_dist])
 
     def diff_functions_as_list(self):
        if len(self.diff_functions) < 1:
@@ -154,7 +154,7 @@ class BestControl:
        if self.literal_dist < 0.0:
            return ('False', 'bad_literal_dist')
        # NB: experience suggests that reasonable hits will have 3 dists < 200.0 (TODO FIXME: does this include all skimmers???)      
-       if self.dist_prod() <= max_distance:
+       if self.distance() <= max_distance:
            return (True, 'dist_lt_{}'.format(max_distance))
        sl = sorted([dist, self.function_dist, self.literal_dist])
        if sl[0] * sl[1] < 25.0:
@@ -166,10 +166,10 @@ class BestControl:
        return ok
 
     def is_better(self, other, max_distance=200.0):
-        other_prod = other.dist_prod()
+        other_prod = other.distance()
         if other_prod > max_distance:
             return True       # return True since other is a poor hit ie. self is better
-        return self.dist_prod() < other_prod
+        return self.distance() < other.distance()
 
 @dataclass
 class FeatureVector:
