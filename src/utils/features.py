@@ -225,7 +225,7 @@ def lookup_control_literals(db, control_url, cache, debug=True):
    assert control_literals is not None
    return control_literals
 
-def calculate_literal_distance(control_literals, origin_literals, debug=False):
+def calculate_literal_distance(control_literals, origin_literals, debug=False, fail_if_difference=False):
    assert isinstance(control_literals, dict)
    assert isinstance(origin_literals, dict)
 
@@ -241,6 +241,8 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
        if k not in control_literals:  # case 1: k is not a literal present in the control
           n_not_in_control += 1
           diff_literals.append(k[0:200])
+          if fail_if_difference:
+              raise ValueError("Found incorrect case1 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
           v1.append(origin_literals[k])
           v2.append(0)
        else:                          # case 2: k is present in both vectors, but not necessarily with the same count
@@ -250,6 +252,8 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
           v2.append(v2_count)
           if v1_count != v2_count:
               diff_literals.append(k[0:200]) 
+              if fail_if_difference:
+                  raise ValueError("Found incorrect case 2 difference: {}".format(k))
    for k in control_literals.keys():
        if not k in features:          # case 3: k is present in the control but not in origin vector
           features.add(k)
@@ -257,6 +261,8 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False):
           v2.append(control_literals[k])
           n_not_in_origin += 1
           diff_literals.append(k[0:200])
+          if fail_if_difference:
+              raise ValueError("Found incorrect case 3 difference: {}".format(k))
 
    assert len(v1) == len(v2)       
    assert len(features) == len(v1)
@@ -365,8 +371,9 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
                second_best_control = best_control
                best_control = new_control
 
-               if ast_dist < 0.00001:     # small distance means we can try for a hash match against control?
-                   hash_match = (control.get('sha256', None) == input_features['sha256'])
+               if best_distance < 0.00001:     # small distance means we can try for a hash match against control?
+                   assert control_url == best_control.control_url
+                   hash_match = (control['sha256'] == input_features['sha256'])
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control
 
