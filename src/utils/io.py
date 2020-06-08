@@ -157,8 +157,8 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
    return jsr
 
 def load_controls(db, min_size=1500, all_vectors=False, verbose=False):
-   all_controls = []
    # NB: vectors come from javascript_control_code where integrity is better implemented
+   n = 0
    for control in db.javascript_controls.find({ "size_bytes": { "$gte": min_size } }, { 'literals_by_count': 0, 'calls_by_count': 0 }):
        ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
        
@@ -178,6 +178,7 @@ def load_controls(db, min_size=1500, all_vectors=False, verbose=False):
        else:
            tuple = (control, ast_sum, ast_vector)
        yield tuple
+       n += 1
 
    if verbose:
-       print("Loaded {} controls, each at least {} bytes".format(len(all_controls), min_size))
+       print("Loaded {} controls, each at least {} bytes".format(n, min_size))
