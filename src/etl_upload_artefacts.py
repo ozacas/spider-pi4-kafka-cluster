@@ -8,17 +8,17 @@ from bson.binary import Binary
 from kafka import KafkaConsumer, KafkaProducer
 from utils.misc import *
 from utils.models import DownloadArtefact
-from utils.io import next_artefact, save_script, save_artefact
+from utils.io import next_artefact, save_artefact
 
-def save_batch(db, batch_of_artefacts, producer, root, fail_on_error=False, to=None, verbose=False): # eg. root='/data/kafkaspider2'
+def save_batch(db, batch_of_artefacts, producer, root, fail_on_error=False, to=None, verbose=False, defensive=False): # eg. root='/data/kafkaspider2'
    # finally process each record via mongo
    cnt = 0
    for artefact in batch_of_artefacts:
        try:
+           save_artefact(db, producer, artefact, root, to, defensive=defensive)
+           cnt += 1
            if verbose:
                print(artefact)
-           save_artefact(db, producer, artefact, root, to)
-           cnt += 1
            if cnt % 10000 == 0:
                print("Processed {} records.".format(cnt))
        except Exception as e:
@@ -31,7 +31,8 @@ if __name__ == "__main__":
     a.add_argument("--root", help="Root of scrapy file data directory which spider has populated", type=str, required=True)
     a.add_argument("--fail", help="Fail on first error", action='store_true')
     a.add_argument("--artefacts", help="Kafka topic to read JS artefact records from eg. javascript-artefacts2", type=str, required=True)
-    add_mongo_arguments(a, default_access="read-write")
+    a.add_argument("--defensive", help="Validate objects to/from the database for correctness (SLOW) [False]", action="store_true")
+    add_mongo_arguments(a, default_access="read-write", default_user="rw")
     add_kafka_arguments(a, 
                         consumer=True, 
                         producer=True, 
@@ -67,5 +68,5 @@ if __name__ == "__main__":
                                            lambda v: v['host'] == my_hostname and not v['origin'] is None, 
                                            verbose=args.v)])
     print("Loaded {} records.".format(len(batch)))
-    save_batch(db, batch, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v)
+    save_batch(db, batch, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v, defensive=args.defensive)
     rm_pidfile('pid.upload.artefacts')

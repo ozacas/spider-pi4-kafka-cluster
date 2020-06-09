@@ -11,7 +11,7 @@ from bson.binary import Binary
 from itertools import chain, islice
 from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily
 
-def save_artefact(db, producer, artefact, root, to, content=None, inline=False, content_type='text/javascript'):
+def save_artefact(db, producer, artefact, root, to, content=None, inline=False, content_type='text/javascript', defensive=False):
    """
    Saves the content to Mongo as specified by root/artefact.path and then the record of the save to Kafka (topic to) for downstream processing
    """
@@ -27,7 +27,7 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
             content = fp.read()
             assert isinstance(content, bytes)
 
-   d, js_id = save_script(db, artefact, content)
+   d, js_id = save_script(db, artefact, content, defensive=defensive)
    assert len(js_id) > 0
    assert 'sha256' in d
    assert 'md5' in d
@@ -69,7 +69,7 @@ def save_url(db, artefact):
    assert result is not None
    return result.inserted_id
 
-def save_script(db, artefact: DownloadArtefact, script: bytes):
+def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
    # NB: we work hard here to avoid mongo calls which will cause performance problems (hashing too)
    assert isinstance(artefact, DownloadArtefact)
    assert len(artefact.checksum) == 32  # length of an md5 hexdigest
@@ -88,7 +88,25 @@ def save_script(db, artefact: DownloadArtefact, script: bytes):
    value = key.copy() # NB: shallow copy is sufficient for this application
    value.update({ 'code': Binary(script) })
 
-   s = db.scripts.find_one_and_update(key, { '$set': value }, 
+   if defensive:
+       # we only insert if NOT found, if it is found then it must have the same content as what we've just been given
+       s = db.scripts.find_one(key)
+       if s is None:
+           s = db.scripts.insert_one(value)
+           assert s is not None and '_id' in s
+           # FALLTHRU since we've now inserted... and there is nothing to validate for newly seen scripts (rare once you've done a lot of crawling)
+       else:
+           assert '_id' in s
+           assert 'code' in s
+           assert s.get('size_bytes') == s['size_bytes']
+           code = s.get('code')
+           assert hashlib.sha256(code).hexdigest() == sha256
+           assert hashlib.md5(code).hexdigest() == md5
+           print(artefact, " is ok: ", sha256, md5, s['size_bytes'])
+           # FALLTHRU since its a match...
+   else:
+       # this update should have no effect if already inserted since the hashes have already matched for an index lookup!
+       s = db.scripts.find_one_and_update(key, { '$set': value }, 
                                       upsert=True, 
                                       projection={ 'code': False },
                                       return_document=ReturnDocument.AFTER)

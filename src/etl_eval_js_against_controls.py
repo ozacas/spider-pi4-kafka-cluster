@@ -118,7 +118,7 @@ def get_control_bytes(db, control_url: str):
     assert hashlib.sha256(doc['analysis_bytes']).hexdigest() == doc['analysis_vectors_sha256']
     return doc['analysis_bytes']
 
-def update_literal_distance(db, hit: BestControl, ovec):
+def update_literal_distance(db, hit: BestControl, ovec, fail_if_difference=False):
     assert hit is not None
     assert ovec is not None
     cvec = get_control_bytes(db, hit.control_url)
@@ -129,7 +129,7 @@ def update_literal_distance(db, hit: BestControl, ovec):
          hit.n_diff_literals = -1
          hit.diff_literals = ''
          return
-    t = calculate_literal_distance(json.loads(cvec).get('literals_by_count'), ovec, fail_if_difference=hit.sha256_matched) 
+    t = calculate_literal_distance(json.loads(cvec).get('literals_by_count'), ovec, fail_if_difference=fail_if_difference)
     hit.literal_dist, hit.literals_not_in_origin, hit.literals_not_in_control, diff_literals = t
     hit.n_diff_literals = len(diff_literals)
     hit.diff_literals = fix_literals(diff_literals) 
@@ -162,8 +162,10 @@ for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes')
     byte_content = byte_content_doc.get('analysis_bytes')
     assert isinstance(byte_content, bytes)
     if args.defensive:
+       # 1. check byte vector hashes match
        actual_sha256 =  hashlib.sha256(byte_content).hexdigest() 
-       #print(actual_sha256, " ", required_hash)
+       if args.v:
+           print("byte_vectors: ", actual_sha256, " ", required_hash, " origin js_id:", js_id)
        assert actual_sha256 == required_hash
     d = json.loads(byte_content)
     for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
@@ -178,7 +180,14 @@ for m in next_artefact(consumer, args.n, filter_cb=lambda m: m.get('size_bytes')
     if best_control is None or len(best_control.control_url) == 0:
         pass 
     else:
-        update_literal_distance(db, best_control, ovec)
+        # 2. check that sha256's match each artefact iff find_best_control() said the hashes matched (since next_best_control had some distance it cannot be a hash match)
+        if args.defensive and best_control.sha256_matched:
+            cntl_doc = db.javascript_controls.find_one({ 'origin': best_control.control_url })
+            assert cntl_doc is not None
+            if args.v:
+                print("artefact hash: ", m['sha256'], m['md5'], " control_hashes: ", cntl_doc.get('sha256'), cntl_doc.get('md5'))
+            assert cntl_doc.get('sha256') == m['sha256']
+        update_literal_distance(db, best_control, ovec, fail_if_difference=args.defensive and best_control.sha256_matched)
     d = save_vetting(db, best_control, required_hash)
     best_control.xref = d['xref']
     assert best_control.xref is not None
