@@ -62,7 +62,7 @@ PAGESTATS_TOPIC = 'html-page-stats' # where to save details of each html page (l
 SITE_INTERNAL_LINK_LIMIT = 20 # if we visit more than twenty pages according to the LRU cache: we stop adding internal links to the kafka queue
 KAFKASPIDER_MAX_SITE_CACHE = 1000 # dont go crazy with this number, doing so may exceed the max kafka message size which will fail persisting site cache state
 KAFKASPIDER_MAX_RECENT_CACHE = 5000 # handle navbar related links quickly without refetching. Cache is not persisted
-KAFKASPIDER_MONGO_USER = 'ro' # read only MongoDB user to access blacklisted domains from spidering
+KAFKASPIDER_MONGO_USER = 'rw' # must be read-write to dump settings used for run (unfortunately)
 OVERREPRESENTED_HOSTS_TOPIC = 'kafkaspider-long-term-disinterest'
 
 # we use a modified FilesPipeline to persist the javascript to local storage (which scales better than mongo)

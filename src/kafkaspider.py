@@ -20,10 +20,10 @@ from bson.objectid import ObjectId
 from datetime import datetime, timedelta
 from kafka import KafkaConsumer, KafkaProducer
 from urllib.parse import urljoin, urlparse, urlunparse
-from utils.fileitem import FileItem
 from utils.geo import AustraliaGeoLocator
+from utils.features import safe_for_mongo
 from utils.misc import as_priority, rm_pidfile, save_pidfile, json_value_serializer, json_value_deserializer
-from utils.models import PageStats, Password
+from utils.models import PageStats, Password, FileItem
 
 class KafkaSpiderMixin(object):
 
@@ -232,6 +232,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        password = str(Password(Password.DEFAULT, 'Password for {}@{}: '.format(user, host)))
        mongo = pymongo.MongoClient(host, port, username=user, password=password)
        self.db = mongo[settings.get('MONGO_DB')]
+       self.save_settings_for_mongo(self.db, settings)
        self.recent_cache = pylru.lrucache(recent_cache_max) # size just a guess (roughly a few hours of spidering, non-JS script URLs only)
        self.recent_sites = pylru.lrucache(site_cache_max, self.recent_site_eviction) # last X sites (value is page count fetched since cache entry created for host)
        self.js_cache = pylru.lrucache(500) # dont re-fetch JS which we've recently seen
@@ -252,16 +253,19 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # write a PID file so that ansible wont start duplicates on this host
        save_pidfile("pid.kafkaspider")
 
+    def save_settings_for_mongo(self, db, settings):
+       s = { k:str(v) for k,v in settings.items() if isinstance(k, str) }  # YUK, better way to be safe for mongo?
+       d = safe_for_mongo(s)
+       d.update({ 'when': datetime.utcnow(), 'host': socket.gethostname() })
+       print(d)
+       db.kafkaspider_settings.insert_one(d)
+
     def spider_closed(self, spider):
        # persist recent_sites to kafka topic so that we have long-term memory of caching
        d = { }
        d['host'] = socket.gethostname()
-       long_term = { }
        # NB: update recent sites cache for next run, whenever that may be
-       for k,v in spider.recent_sites.items():
-           d[k] = v
-           if v > 100:  # should be entered into long-term memory?
-              long_term[k] = v
+       long_term = { k: v for k,v in spider.recent_sites.items() if v > 100 }
        spider.producer.send('recent-sites-cache', d)
        self.logger.info("Saved recent sites to cache")
        # NB: push long-term disinterested data into topic
