@@ -3,7 +3,13 @@ from datetime import datetime
 from typing import Optional
 from enforce_typing import enforce_types
 import getpass
+import scrapy
 import os
+
+class FileItem(scrapy.Item):
+   origin = scrapy.Field()
+   file_urls = scrapy.Field()
+   files = scrapy.Field()
 
 class Password:
     DEFAULT = 'Prompt if not specified'
