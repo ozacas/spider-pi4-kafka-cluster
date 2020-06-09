@@ -51,7 +51,7 @@ for host, n_seen in sites.items():
            print(d)
        if do_it:
            producer.send(args.to, d)
-       n_added += 1
+           n_added += 1
 
 print("Added {} entries to long-term blacklist (processed total {} records).".format(n_added, n))
 exit(0)
