@@ -140,18 +140,24 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
        fname = js
        tmpfile = None
 
+   # ensure we get lossless output using recommendations reported at: https://bugs.python.org/issue34618
+   environ = os.environ.copy()
+   environ['PYTHONIOENCODING'] = 'utf-8' 
+
    # save to file and run extract-features.jar to identify the javascript features
-   process = subprocess.run([java, "-jar", feature_extractor, fname, jsr.url], capture_output=True)
+   process = subprocess.run([java, "-jar", feature_extractor, fname, jsr.url], env=environ, capture_output=True, encoding='utf-8', errors='strict')
    
    # turn process stdout into something we can save
    ret = process.stdout
-   assert ret.__class__ == bytes
+   assert isinstance(ret, str)
+   bytes_content = ret.encode('utf-8') # although this is double-encoding, if there are any errors - at least we will detect them here!
+   assert isinstance(bytes_content, bytes)
 
    # cleanup
    if tmpfile is not None:
        os.unlink(tmpfile.name)
 
-   return (ret, process.returncode != 0, process.stderr)  # JSON (iff successful else None), failed (boolean), stderr capture
+   return (bytes_content, process.returncode != 0, process.stderr)  # JSON (iff successful else None), failed (boolean), stderr capture
 
 def compute_distance(v1, v2, short_vector_penalty=True):
    svp = 1.0
@@ -229,6 +235,10 @@ def lookup_control_literals(db, control_url, cache, debug=True):
    assert control_literals is not None
    return control_literals
 
+def truncate_literals(literal_dict):
+   assert isinstance(literal_dict, dict)
+   return { k[0:200] : v for k,v in literal_dict.items() }
+
 def calculate_literal_distance(control_literals, origin_literals, debug=False, fail_if_difference=False):
    assert isinstance(control_literals, dict)
    assert isinstance(origin_literals, dict)
@@ -242,20 +252,20 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
    n_not_in_origin = n_not_in_control = 0
    for k in origin_literals.keys():
        features.add(k)
-       if k not in control_literals:  # case 1: k is not a literal present in the control
-          n_not_in_control += 1
-          diff_literals.append(k[0:200])
-          if fail_if_difference:
-              raise ValueError("Found incorrect case1 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
+       if not k in control_literals:  # case 1: k is not a literal present in the control 
           v1.append(origin_literals[k])
           v2.append(0)
+          n_not_in_control += 1
+          diff_literals.append(k)
+          if fail_if_difference:
+              raise ValueError("Found incorrect case1 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
        else:                          # case 2: k is present in both vectors, but not necessarily with the same count
           v1_count = origin_literals[k]
           v2_count = control_literals[k]
           v1.append(v1_count)
           v2.append(v2_count)
           if v1_count != v2_count:
-              diff_literals.append(k[0:200]) 
+              diff_literals.append(k) 
               if fail_if_difference:
                   raise ValueError("Found incorrect case 2 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
    for k in control_literals.keys():
@@ -264,7 +274,7 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
           v1.append(0)
           v2.append(control_literals[k])
           n_not_in_origin += 1
-          diff_literals.append(k[0:200])
+          diff_literals.append(k)
           if fail_if_difference:
               raise ValueError("Found incorrect case 3 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
 
