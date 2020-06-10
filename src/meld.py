@@ -8,7 +8,7 @@ import tempfile
 import json
 from bson.objectid import ObjectId
 from subprocess import run
-from utils.features import find_script, calculate_ast_vector, analyse_script, compute_distance, calculate_vector
+from utils.features import find_script, calculate_ast_vector, analyse_script, compute_distance, calculate_vector, calculate_literal_distance, truncate_literals
 from utils.misc import add_mongo_arguments, add_debug_arguments
 from utils.models import JavascriptArtefact
 from datetime import datetime
@@ -108,17 +108,12 @@ def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
        print("All functions called the expected number of times.")
    else:
        print("Functions not called the expected number of times: {}".format(' '.join(diffs)))
-   diffs = []
-   all_literals = set(cntrl['literals_by_count'].keys()).union(ret['literals_by_count'].keys())
-   for lit in all_literals:
-       cntl_cnt = cntrl['literals_by_count'].get(lit, 0)
-       artefact_cnt = ret['literals_by_count'].get(lit, 0)
-       if cntl_cnt != artefact_cnt:
-           diffs.append(lit) 
-   if len(diffs) > 0:
-       print("Literals not seen the expected number of times: {}".format(','.join(diffs)))
-   else:
-       print("All literals seen the expected number of times.")
+   t = calculate_literal_distance(truncate_literals(cntrl['literals_by_count']), truncate_literals(ret['literals_by_count']))
+   literal_dist, n_not_in_origin, n_not_in_control, diff_literals = t
+   print("Literal distance is: {}".format(literal_dist))
+   print("Number of literals in control but not origin: {}".format(n_not_in_origin))
+   print("Number of literals in origin but not control: {}".format(n_not_in_control))
+   print("Diff literals: {}".format(diff_literals)) 
  
 
 if __name__ == "__main__":
