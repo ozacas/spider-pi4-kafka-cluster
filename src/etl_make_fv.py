@@ -118,12 +118,13 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
               fv_cache[js_id] = (byte_content, js_id)
 
       assert len(jsr.js_id) > 0
-      save_analysis_content(db, jsr, byte_content, ensure_indexes=is_first)
+      required_vector_hash = save_analysis_content(db, jsr, byte_content, ensure_indexes=is_first)
 
       is_first = False
       results = asdict(jsr)
       results.update({ 'js_id': js_id })  # this will be sufficient to load the vector from Mongo by the receiving application
-      results.update({ 'byte_content_sha256': hashlib.sha256(byte_content).hexdigest() })
+      results.update({ 'byte_content_sha256': required_vector_hash })
+      assert required_vector_hash == hashlib.sha256(byte_content).hexdigest()
       save_to_kafka(producer, results, to=args.to)
 
    print("Analysed {} artefacts, {} failed, {} cached, now={}".format(n_analysed, n_failed, n_cached, str(datetime.now())))
