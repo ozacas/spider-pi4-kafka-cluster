@@ -113,7 +113,9 @@ def get_script(db, artefact):
    if isinstance(artefact, str):
        js = db.scripts.find_one({ '_id': ObjectId(artefact) })
    elif isinstance(artefact, JavascriptArtefact) and len(artefact.js_id) > 0:
-       return get_script(db, artefact.js_id)
+       ret = get_script(db, artefact.js_id)
+       assert ret[1] == artefact.js_id    # verify we found the right artefact?
+       return ret
    else:
        # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
        d = { 'sha256': artefact.sha256.strip(), 
@@ -121,9 +123,11 @@ def get_script(db, artefact):
              'size_bytes': artefact.size_bytes } # ENSURE we set the right fields so Mongo uses the index
        collection = db.snippets if artefact.inline else db.scripts
        js = collection.find_one(d)
-       if len(artefact.js_id) > 0:
-           assert js.get('_id') == artefact.js_id # ensure we find the right ONE!
-   return (js.get(u'code'), str(js.get('_id'))) if js is not None else (None, None)
+
+   if js is None:
+       return (None, None)
+   id = str(js.get('_id'))
+   return (js.get(u'code'), id)
 
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
    if isinstance(js, bytes):
@@ -253,7 +257,7 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
           if v1_count != v2_count:
               diff_literals.append(k[0:200]) 
               if fail_if_difference:
-                  raise ValueError("Found incorrect case 2 difference: {}".format(k))
+                  raise ValueError("Found incorrect case 2 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
    for k in control_literals.keys():
        if not k in features:          # case 3: k is present in the control but not in origin vector
           features.add(k)
@@ -262,7 +266,7 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
           n_not_in_origin += 1
           diff_literals.append(k[0:200])
           if fail_if_difference:
-              raise ValueError("Found incorrect case 3 difference: {}".format(k))
+              raise ValueError("Found incorrect case 3 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
 
    assert len(v1) == len(v2)       
    assert len(features) == len(v1)
