@@ -54,7 +54,8 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ens
    d.update({ "analysis_bytes": Binary(bytes_content), "byte_content_sha256": expected_hash })
    ret = db.analysis_content.find_one_and_update({ "js_id": jsr.js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
    # compare the BEFORE and AFTER documents for evidence of change (SHOULD NOT happen since js_id should always be new for unique content)
-   assert expected_hash == ret['byte_content_sha256']
+   if ret is not None:  # will be none if mongo performed an insert, since no previous document existed
+       assert expected_hash == ret['byte_content_sha256']
    return expected_hash
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
