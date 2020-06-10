@@ -41,10 +41,10 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
    producer.send(to, d)
    return d
 
-def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, ensure_indexes=False):
+def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ensure_indexes=False):
    assert bytes_content is not None
    assert len(jsr.js_id) > 0
-   assert isinstance(bytes_content, bytes)
+   assert isinstance(bytes_content, bytes) # to ensure correct behaviour
 
    if ensure_indexes:
        db.analysis_content.create_index([( 'js_id', ASCENDING ), ( 'byte_content_sha256', ASCENDING ) ], unique=True)
@@ -52,7 +52,10 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content, ensure_ind
    d = asdict(jsr)
    expected_hash = hashlib.sha256(bytes_content).hexdigest()
    d.update({ "analysis_bytes": Binary(bytes_content), "byte_content_sha256": expected_hash })
-   db.analysis_content.find_one_and_update({ "js_id": jsr.js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
+   ret = db.analysis_content.find_one_and_update({ "js_id": jsr.js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
+   # compare the BEFORE and AFTER documents for evidence of change (SHOULD NOT happen since js_id should always be new for unique content)
+   assert expected_hash == ret['byte_content_sha256']
+   return expected_hash
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     n = 0
@@ -92,8 +95,9 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
        # we only insert if NOT found, if it is found then it must have the same content as what we've just been given
        s = db.scripts.find_one(key)
        if s is None:
-           s = db.scripts.insert_one(value)
-           assert s is not None and '_id' in s
+           ret = db.scripts.insert_one(value)
+           assert ret is not None 
+           s = { '_id': ret.inserted_id } # convert into something that code below can use...
            # FALLTHRU since we've now inserted... and there is nothing to validate for newly seen scripts (rare once you've done a lot of crawling)
        else:
            assert '_id' in s
