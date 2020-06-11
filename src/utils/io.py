@@ -55,7 +55,13 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ens
    ret = db.analysis_content.find_one_and_update({ "js_id": jsr.js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
    # compare the BEFORE and AFTER documents for evidence of change (SHOULD NOT happen since js_id should always be new for unique content)
    if ret is not None:  # will be none if mongo performed an insert, since no previous document existed
-       assert expected_hash == ret['byte_content_sha256']
+       # FIXME as at 8th June 2020: 3944 records do not have byte_content_sha256 record as the code didnt support it when the records were created
+       # some will have bad vectors since analyse_script() didnt correctly manage utf8 encode/decode in concert with java code being run
+       # for now, we dont assert but rather just scream...
+       print("Checking hash for existing db.analysis_content record")
+       if ret['byte_content_sha256'] != expected_hash:
+           print("WARNING: corrupt hash found for artefact JS id: {} (now fixed)".format(jsr.js_id))
+
    return expected_hash
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
