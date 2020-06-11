@@ -119,7 +119,7 @@ def test_analyse_script_utf8_handling(pytestconfig, analyse_utf8_expected_result
        v2 = truncate_literals(analyse_utf8_expected_results['literals_by_count'])
        assert len(v1) == len(v2)
        assert v1 == v2
-       # and that calculate_literal_ distance() is also zero (ie. unicode problems are not screwing up)
+       # and that calculate_literal_ distance() is also zero (ie. unicode handling is robust)
        dist, n_not_in_origin, n_not_in_control, diff_lits = calculate_literal_distance(v1, v2, fail_if_difference=True)
        assert pytest.approx(dist, 0.0)
        assert n_not_in_origin == 0
