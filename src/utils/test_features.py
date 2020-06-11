@@ -82,6 +82,10 @@ def test_compute_ast_vector():
 def analyse_script_expected_results(pytestconfig):
    return load_data("{}/src/utils/fixtures/analyse_script_expected_results.json".format(pytestconfig.rootdir)) 
 
+@pytest.fixture(scope="module")
+def analyse_utf8_expected_results(pytestconfig):
+   return load_data("{}/src/utils/fixtures/analyse_script_utf8_results.json".format(pytestconfig.rootdir))
+
 def test_analyse_script(pytestconfig, analyse_script_expected_results):
    testjs = "{}/src/test-javascript/banners.js".format(pytestconfig.rootdir)
    with open(testjs, "rb") as fp:
@@ -102,6 +106,25 @@ def test_analyse_script_2(pytestconfig):
        assert js['statements_by_count'] == {"FunctionNode":2,"StringLiteral":13,"VariableInitializer":3,"Scope":1,"KeywordLiteral":3,"AstRoot":1,"Assignment":2,"IfStatement":1,"Block":2,"InfixExpression":10,"ExpressionStatement":4,"PropertyGet":14,"ReturnStatement":2,"UnaryExpression":1,"Name":37,"NumberLiteral":2,"ArrayLiteral":1,"VariableDeclaration":3,"FunctionCall":9,"ElementGet":2,"ParenthesizedExpression":3}
        assert js['calls_by_count'] == {"val":1,"F$":3,"addMethod":1,"get":1,"attr":1,"split":1,"add":1}
        assert js['literals_by_count'] == {" ":1,"0":2,"#IsAfterGoLive":1,"INPUT":1,"requiredwhennotaftergolivevalidation":1,"True":1,"class":1,"testrequiredwhennotaftergolivevalidation":3,"SELECT":1}
+
+def test_analyse_script_utf8_handling(pytestconfig, analyse_utf8_expected_results):
+   testjs = "{}/src/test-javascript/ca.js".format(pytestconfig.rootdir)
+   with open(testjs, 'rb') as fp:
+       jsr = JavascriptArtefact(url="file:{}".format(testjs), origin=None, sha256="XXX", md5="XXX")
+       byte_content, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
+       assert not failed
+       js = json.loads(byte_content.decode())
+       # must match results computed by java on the CLI...
+       v1 = truncate_literals(js['literals_by_count'])
+       v2 = truncate_literals(analyse_utf8_expected_results['literals_by_count'])
+       assert len(v1) == len(v2)
+       assert v1 == v2
+       # and that calculate_literal_ distance() is also zero (ie. unicode problems are not screwing up)
+       dist, n_not_in_origin, n_not_in_control, diff_lits = calculate_literal_distance(v1, v2, fail_if_difference=True)
+       assert pytest.approx(dist, 0.0)
+       assert n_not_in_origin == 0
+       assert n_not_in_control == 0
+       assert diff_lits == []
 
 def test_analyse_script_failure(pytestconfig):
    # mozilla rhino cant handle all JS... so check that failure path is as expected
