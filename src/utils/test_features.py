@@ -110,7 +110,7 @@ def test_analyse_script_failure(pytestconfig):
       jsr = JavascriptArtefact(url="file:{}".format(testjs), origin=None, sha256="XXX", md5="XXX")
       json, failed, stderr = analyse_script(fp.read(), jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
       assert failed
-      assert "missing ; after for-loop initializer" in stderr.decode('utf-8')
+      assert "missing ; after for-loop initializer" in stderr
 
 def test_find_feasible_controls():
    #def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0)
