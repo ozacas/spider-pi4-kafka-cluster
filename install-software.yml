@@ -211,8 +211,8 @@
     - cron:
         name: "weekly blacklist sites"
         special_time: weekly
-        user: acas
-        job: /usr/bin/python3.8 /home/acas/src/populate_long_term_blacklist.py --start earliest
+        user: lowpriv
+        job: /usr/bin/python3.8 /home/acas/src/populate_long_term_blacklist.py --start earliest --group populate-long-term-blacklist
     - cron:
         user: lowpriv
         name: PASSWORD
@@ -223,6 +223,11 @@
         special_time: weekly
         user: lowpriv  # to reduce security risk of fetching from bad sites
         job: /usr/bin/python3.8  /home/acas/src/retry_broken_downloads.py --v --start earliest --dbuser rw
+    - cron:
+        name: "publish hits"
+        special_time: weekly
+        user: lowpriv
+        job: /usr/bin/python3.8 /home/acas/src/etl_publish_hits.py --v --tail --bad --dbuser rw
     - file:
         path: /home/acas
         state: directory
