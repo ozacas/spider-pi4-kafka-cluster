@@ -74,7 +74,7 @@ def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
    jsr = JavascriptArtefact(url=artefact_url, sha256='XXX', md5='XXX', inline=False)
    byte_content, failed, stderr = analyse_script(artefact_fname, jsr)
    if failed:
-      raise ValueError("Unable to analyse script: {}".format(artefact_url))
+      raise ValueError("Unable to analyse script: {}\n{}".format(artefact_url, stderr))
    ret = json.loads(byte_content.decode())
    assert 'literals_by_count' in ret
    assert 'statements_by_count' in ret 
