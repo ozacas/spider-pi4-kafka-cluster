@@ -151,8 +151,9 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
           raise ValueError("Failed to fetch [{}] {}".format(resp.status_code, url))
       content = resp.content
 
-   jsr = JavascriptArtefact(when=str(datetime.utcnow()), sha256=hashlib.sha256(content).hexdigest(),
-                             md5 = hashlib.md5(content).hexdigest(), url=url,
+   sha256 = hashlib.sha256(content).hexdigest()
+   md5 = hashlib.md5(content).hexdigest()
+   jsr = JavascriptArtefact(when=str(datetime.utcnow()), sha256=sha256, md5=md5 , url=url,
                              inline=False, content_type='text/javascript', size_bytes=len(content))
    if jsr.size_bytes < 1000:
        print("Refusing artefact as too small to enable meaningful vector comparison: {}".format(jsr))
@@ -166,10 +167,13 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
    if failed:
        raise ValueError('Could not analyse script {} - {}'.format(jsr.url, stderr))
    ret = json.loads(bytes_content.decode())
-   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 
+   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'sha256': sha256, 'md5': md5,
                 'do_not_load': False,  # all controls loaded by default except alpha/beta/release candidate
                 'provider': provider, 'subfamily': identify_control_subfamily(jsr.url) })
    #print(ret)
+   assert 'sha256' in ret
+   assert 'md5' in ret
+
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
    resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family },
                                                      { "$set": ret }, upsert=True)
@@ -177,15 +181,26 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
                                                      { "$set": { 'origin': url, 'code': Binary(content), 
                                                        'analysis_bytes': bytes_content, 'analysis_vectors_sha256': hashlib.sha256(bytes_content).hexdigest(),
                                                        "last_updated": jsr.when } }, upsert=True)
-
-   vector, total_sum = calculate_ast_vector(ret['statements_by_count'])
-   assert total_sum >= 50   # vectors smaller than this are too small to match accurately - and may indicate an issue with the download/code
-   sum_of_function_calls = sum(ret['calls_by_count'].values())
-   sum_of_literals = sum(ret['literals_by_count'].values())
-   vs = JavascriptVectorSummary(origin=url, sum_of_ast_features=total_sum,
-                                 sum_of_functions=sum_of_function_calls, sum_of_literals=sum_of_literals, last_updated=jsr.when)
-   db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
+   update_control_summary(db, url, 
+                          ret['statements_by_count'], 
+                          ret['calls_by_count'],
+                          ret['literals_by_count'])
    return jsr
+
+def update_control_summary(db, url, ast_vector, function_call_vector, literal_vector, defensive=False):
+   assert isinstance(url, str) and url.startswith("http")
+
+   vector, total_sum = calculate_ast_vector(ast_vector)
+   if defensive:
+       assert total_sum >= 50   # vectors smaller than this are too small to match accurately - and may indicate an issue with the download/code
+   sum_of_function_calls = sum(function_call_vector.values())
+   sum_of_literals = sum(literal_vector.values())
+   vs = JavascriptVectorSummary(origin=url, 
+                                 sum_of_ast_features=total_sum,
+                                 sum_of_functions=sum_of_function_calls, 
+                                 sum_of_literals=sum_of_literals, 
+                                 last_updated=str(datetime.utcnow()))
+   ret = db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
 
 def load_controls(db, min_size=1500, all_vectors=False, verbose=False):
    # NB: vectors come from javascript_control_code where integrity is better implemented
