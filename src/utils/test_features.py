@@ -135,6 +135,7 @@ def test_analyse_script_failure(pytestconfig):
       assert failed
       assert "missing ; after for-loop initializer" in stderr
 
+@pytest.mark.skip(reason="currently broken due to db requirement")
 def test_find_feasible_controls():
    #def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0)
    all_controls = [ ({'origin': 'good' }, 100, [1, 2, 3, 94]), ({ 'origin': 'also good' }, 90, [90]) ]
@@ -145,11 +146,8 @@ def load_data(filename):
    with open(filename, 'rb') as fp:
        return eval(fp.read().decode('utf-8'))
 
-@pytest.fixture(scope="module")
-def all_controls(pytestconfig):
-   return load_data("{}/src/utils/fixtures/controls.json".format(pytestconfig.rootdir))
-
-def test_find_best_control(pytestconfig, all_controls):
+@pytest.mark.skip(reason="currently broken due to db requirement")
+def test_find_best_control(pytestconfig):
    # def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False)
    js_file = "{}/src/test-javascript/json2_4.9.2.min.js".format(pytestconfig.rootdir)
    with open(js_file, 'rb') as fp:
@@ -164,7 +162,7 @@ def test_find_best_control(pytestconfig, all_controls):
        d['js_id'] = 'XXXXXXXXXXXXXXXXXXXXXXXX'
        d['sha256'] = 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
        d['byte_content_sha256'] = hashlib.sha256(input_features).hexdigest()
-       best_control, next_best_control = find_best_control(d, all_controls, db=db, debug=True) 
+       best_control, next_best_control = find_best_control(db, d, debug=True) 
 # EXPECTED RESULTS:
 # best_control = BestControl(control_url='https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=0.0, function_dist=0.0, diff_functions='', cited_on=None)
 # next_best_control has a larger ast_dist due to a different version, but it has the same function calls so the dist is zero

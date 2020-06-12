@@ -5,6 +5,7 @@ import re
 import math 
 import hashlib
 import pylru
+from itertools import chain
 from bson.objectid import ObjectId
 from dataclasses import asdict
 from utils.models import BestControl, JavascriptArtefact
@@ -294,15 +295,61 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
       print(t)
    return t
 
-def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0):
-   if desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
+def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=100.0, control_cache=None, debug=False):
+   assert ast_desired_sum >= 0
+   assert function_call_sum >= 0
+
+   if ast_desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
        return []
 
    # only those controls within max_distance (either side) from the desired feature sum (from the AST vector under test) are considered feasible
    # all others need not be searched. This could be tighter.
-   lb = desired_sum - max_distance
-   ub = desired_sum + max_distance
-   feasible_controls = [tuple for tuple in filter(lambda t: t[1] >= lb and t[1] <= ub, controls_to_search)]
+   lb = ast_desired_sum - max_distance
+   ub = ast_desired_sum + max_distance
+   # but we now also consider function call distance (only use third max_distance since function calls are less frequent than AST features)
+   lb_fc = function_call_sum - (max_distance / 3)
+   ub_fc = function_call_sum + (max_distance / 3)
+
+   n = n_cached = 0
+   ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub } }) 
+   fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc } })
+   feasible_controls = []
+   seen = set()
+   for rec in chain(ast_hits, fcall_hits): 
+       n += 1
+       control_url = rec.get('origin')
+       if control_url in seen:
+           continue # de-dupe if function call hit was also hit by ast_hits
+       seen.add(control_url)
+
+       if control_cache is not None and control_url in control_cache:
+           t = control_cache[control_url]
+           feasible_controls.append(t)
+           control_cache[control_url] = t # mark record as MRU ie. least likely to be evicted, since it is being hit 
+           n_cached += 1
+       else:
+           ast_sum = rec.get('sum_of_ast_features')
+           control_doc = db.javascript_controls.find_one({ 'origin': control_url })
+           assert isinstance(control_doc, dict)
+           vector_doc = db.javascript_control_code.find_one({ 'origin': control_url }, { 'code': 0 })
+           assert vector_doc is not None
+           assert 'analysis_bytes' in vector_doc
+           vectors = json.loads(vector_doc.get('analysis_bytes'))
+           ast_vector, calc_sum = calculate_ast_vector(vectors['statements_by_count'])
+           assert calc_sum == ast_sum # database must match calculated or something is very wrong...
+           t = (control_doc, ast_sum, ast_vector, vectors['calls_by_count']) 
+           if control_cache is not None:
+               control_cache[control_url] = t
+           feasible_controls.append(t)
+
+   if debug:
+       print("find_feasible_controls():")
+       print("ast range [{:.2f}, {:.2f}] function call range [{:.2f}, {:.2f}]".format(lb, ub, lb_fc, ub_fc))
+       if n > 0:
+           print("Considered {} controls - cache hit rate {}".format(n, (float(n_cached) / n)*100.0))
+       else:
+           print("No feasible controls found.")
+
    return feasible_controls
 
 def fix_literals(literals_to_encode):
@@ -320,12 +367,13 @@ def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False):
    call_dist, diff_functions = calc_function_dist(origin_calls, control_calls)
    return ((ast_dist * call_dist) + ast_dist + call_dist, ast_dist, call_dist, diff_functions)
 
-def find_best_control(input_features, controls_to_search, max_distance=100.0, db=None, debug=False, control_cache=None):
+def find_best_control(db, input_features, max_distance=100.0, debug=False, control_cache=None):
    """
    Search all controls with AST vector magnitudes within max_distance and find the best hit (lowest product of AST*call distance)
    against suitable controls. Does not currently use literal distance for the calculation. Could be improved.... returns up to two hits
    representing the best and next best hits (although the latter may be None).
    """
+   assert db is not None
    origin_url = input_features.get('url', input_features.get('id')) # LEGACY: url field used to be named id field
    cited_on = input_features.get('origin', None)     # report owning HTML page also if possible (useful for data analysis)
    origin_js_id = input_features.get("js_id", None)  # ensure we can find the script directly without URL lookup
@@ -335,7 +383,8 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    assert 'byte_content_sha256' in input_features
 
    best_distance = float('Inf')
-   input_ast_vector, total_sum = calculate_ast_vector(input_features['statements_by_count'])
+   input_ast_vector, ast_sum = calculate_ast_vector(input_features['statements_by_count'])
+   fcall_sum = sum(input_features['calls_by_count'].values())
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
                               sha256_matched=False, 
                               ast_dist=float('Inf'), 
@@ -347,7 +396,7 @@ def find_best_control(input_features, controls_to_search, max_distance=100.0, db
    second_best_control = None
 
    # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
-   feasible_controls = find_feasible_controls(total_sum, controls_to_search, max_distance=max_distance * 2) 
+   feasible_controls = find_feasible_controls(db, ast_sum, fcall_sum, max_distance=max_distance, debug=debug, control_cache=control_cache) 
    for fc_tuple in feasible_controls:
        control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple
        assert isinstance(control, dict)
