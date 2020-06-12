@@ -45,6 +45,8 @@ for dir, dirs, files in os.walk(args.local, topdown=True):
            rest = ''
            release = remnant
         wp_url = "https://plugins.svn.wordpress.org/{}/tags/{}/{}{}".format(args.family, release, rest, js_file)
+        if '/i18n/'  in wp_url:
+            continue
         with open("{}/{}".format(dir, js_file), "rb") as fp:
             tuple = (wp_url, args.family, release, release, "plugins.svn.wordpress.org", fp.read())
             controls_to_save.append(tuple)
