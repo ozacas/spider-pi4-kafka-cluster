@@ -45,12 +45,13 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ens
    assert isinstance(bytes_content, bytes) # to ensure correct behaviour
 
    if ensure_indexes:
-       db.analysis_content.create_index([( 'js_id', ASCENDING ), ( 'byte_content_sha256', ASCENDING ) ], unique=True)
+       db.analysis_content.create_index([( 'js_id', ASCENDING ) ], unique=True)
 
    d = asdict(jsr)
    expected_hash = hashlib.sha256(bytes_content).hexdigest()
    d.update({ "analysis_bytes": Binary(bytes_content), "byte_content_sha256": expected_hash, 'last_updated': datetime.utcnow() })
-   ret = db.analysis_content.find_one_and_update({ "js_id": jsr.js_id, 'byte_content_sha256': expected_hash }, { "$set": d }, upsert=True)
+   # lookup artefact by ID - altered content will get a new ID as long as its sha256 hash isnt already known
+   ret = db.analysis_content.find_one_and_update({ "js_id": jsr.js_id }, { "$set": d }, upsert=True)
 
    # compare the BEFORE and AFTER documents for evidence of change (SHOULD NOT happen since js_id should always be new for unique content)
    if ret is not None:  # will be none if mongo performed an insert, since no previous document existed
@@ -165,7 +166,9 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
    if failed:
        raise ValueError('Could not analyse script {} - {}'.format(jsr.url, stderr))
    ret = json.loads(bytes_content.decode())
-   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'provider': provider, 'subfamily': identify_control_subfamily(jsr.url) })
+   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 
+                'do_not_load': False,  # all controls loaded by default except alpha/beta/release candidate
+                'provider': provider, 'subfamily': identify_control_subfamily(jsr.url) })
    #print(ret)
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
    resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family },
@@ -187,7 +190,7 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
 def load_controls(db, min_size=1500, all_vectors=False, verbose=False):
    # NB: vectors come from javascript_control_code where integrity is better implemented
    n = 0
-   for control in db.javascript_controls.find({ "size_bytes": { "$gte": min_size } }, { 'literals_by_count': 0, 'calls_by_count': 0 }):
+   for control in db.javascript_controls.find({ "size_bytes": { "$gte": min_size }, "do_not_load": False }, { 'literals_by_count': 0, 'calls_by_count': 0 }):
        ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
        
        if all_vectors: 
