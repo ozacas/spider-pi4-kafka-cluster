@@ -27,6 +27,7 @@ class CDNJS:
 
    def fetch(self, family, variant, version, ignore_i18n=True, provider=None):
       url = "{}/{}".format(self.base, family)
+      print(url)
       resp = requests.get(url, headers={ 'Content-Type': 'application/json' }) 
       j = resp.json()
       if len(j.keys()) == 0:
