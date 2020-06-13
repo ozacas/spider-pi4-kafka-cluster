@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ -*- coding: utf-8 -*-
 import json
 import argparse
 import socket
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     consumer = KafkaConsumer(args.consume_from, value_deserializer=lambda m: json.loads(m.decode('utf-8')), 
                              consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
 
-    save_pidfile('pid.upload.artefacts')
+    save_pidfile('pid.upload.artefacts', root='/home/spider')
     my_hostname = socket.gethostname()
     print("Loading records matching {} from kafka topic".format(my_hostname))
     batch = sorted([DownloadArtefact(**r) for r in next_artefact(consumer, 
@@ -69,4 +69,4 @@ if __name__ == "__main__":
                                            verbose=args.v)])
     print("Loaded {} records.".format(len(batch)))
     save_batch(db, batch, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v, defensive=args.defensive)
-    rm_pidfile('pid.upload.artefacts')
+    rm_pidfile('pid.upload.artefacts', root='/home/spider')
