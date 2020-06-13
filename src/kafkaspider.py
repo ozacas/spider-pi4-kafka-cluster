@@ -251,7 +251,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        # populate the over-represented sites (~1 month visitation blacklist)
        self.overrepresented_hosts = self.init_overrepresented_hosts(self.disinterest_topic, bs)
        # write a PID file so that ansible wont start duplicates on this host
-       save_pidfile("pid.kafkaspider")
+       save_pidfile("pid.kafkaspider", root=settings.get('SPIDER_ROOT'))
 
     def save_settings_for_mongo(self, db, settings):
        s = { k:str(v) for k,v in settings.items() if isinstance(k, str) }  # YUK, better way to be safe for mongo?
@@ -277,8 +277,7 @@ class KafkaSpider(KafkaSpiderMixin, scrapy.Spider):
        spider.producer.flush()
        spider.producer.close()
        spider.consumer.close()
-       rm_pidfile("pid.kafkaspider")
-
+       rm_pidfile("pid.kafkaspider", root=get_project_settings().get('SPIDER_ROOT'))
 
     def init_recent_sites(self, cache, bootstrap_servers):
        # populate recent_sites from most-recent message in kafka topic

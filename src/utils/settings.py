@@ -54,6 +54,7 @@ MONGO_DB   = 'au_js'
 ONEURL_MAXMIND_DB = '/opt/GeoLite2-City_20200114/GeoLite2-City.mmdb'
 LRU_MAX_PAGES_PER_SITE = 20   # only 20 pages per recent_sites cache entry ie. 20 pages per site for at least 500 sites spidered
 # kafkaspider: specific settings
+SPIDER_ROOT = '/home/spider' # where PID files and log files for the run are kept
 ONEURL_KAFKA_BOOTSTRAP = 'kafka2'
 ONEURL_KAFKA_CONSUMER_GROUP = 'scrapy-thug2'
 ONEURL_KAFKA_URL_TOPIC = 'thug.gen5'
