@@ -87,8 +87,8 @@
      - pip:
          requirements: /home/acas/src/requirements.txt
 
-- name: setup low-privilege account to reduce risk
-  hosts: thug_hosts
+- name: setup thug low-privilege account to reduce risk
+  hosts: pi1 pi2 x86_thug_hosts
   become: yes
   tasks:
      - group:
@@ -100,6 +100,17 @@
          group: lowpriv
          password_lock: yes # account must be enabled to have a crontab and run processes
          state: present
+
+- name: setup spider low-privilege account (kafkaspider and snippetspider)
+  hosts: pi2 x86_thug_hosts
+  become: yes
+  tasks:
+    - user:
+         create_home: yes
+         name: spider
+         group: lowpriv
+         password_lock: yes
+         state: present 
 
 - name: ensure thug pip3 pre-reqs are installed
   hosts: thug_hosts x86_thug_hosts
@@ -228,9 +239,3 @@
         special_time: weekly
         user: lowpriv
         job: /usr/bin/python3.8 /home/acas/src/etl_publish_hits.py --v --tail --bad --dbuser rw
-    - file:
-        path: /home/acas
-        state: directory
-        owner: acas
-        group: lowpriv
-        mode: '0750'
