@@ -217,12 +217,12 @@ def calc_function_dist(origin_calls, control_calls):
    commonality_factor = (1 / common) * (len(vec1)-common) if common > 0 else 10 
    return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
 
-def lookup_control_literals(db, control_url, cache, debug=True):
+def lookup_control_literals(db, control_url, debug=True):
    assert db is not None
    assert isinstance(control_url, str) and len(control_url) > 0
 
    # vector length is len of union of literals encountered in either vector. Count will differentiate.
-   control_literals_doc = db.javascript_control_code.find_one({ 'origin': control_url }) # NB: includes literal vector
+   control_literals_doc = db.javascript_control_code.find_one({ 'origin': control_url }, {'code': 0}) # NB: includes literal vector
    assert control_literals_doc is not None # should not happen as it means control has been deleted??? maybe bad io???
    assert 'analysis_bytes' in control_literals_doc
    analysis_bytes = control_literals_doc.get('analysis_bytes')
@@ -329,8 +329,10 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
            n_cached += 1
        else:
            ast_sum = rec.get('sum_of_ast_features')
-           control_doc = db.javascript_controls.find_one({ 'origin': control_url })
+           control_doc = db.javascript_controls.find_one({ 'origin': control_url }, { 'statements_by_count': 0, 'literals_by_count': 0, 'calls_by_count': 0 })
            assert isinstance(control_doc, dict)
+           if 'do_not_load' in control_doc and control_doc['do_not_load']: # ignore those controls which are do_not_load == True
+               continue
            vector_doc = db.javascript_control_code.find_one({ 'origin': control_url }, { 'code': 0 })
            assert vector_doc is not None
            assert 'analysis_bytes' in vector_doc
@@ -346,7 +348,7 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
        print("find_feasible_controls():")
        print("ast range [{:.2f}, {:.2f}] function call range [{:.2f}, {:.2f}]".format(lb, ub, lb_fc, ub_fc))
        if n > 0:
-           print("Considered {} controls - cache hit rate {}".format(n, (float(n_cached) / n)*100.0))
+           print("Considered {} controls - cache hit rate {:.2f}%".format(n, (float(n_cached) / n)*100.0))
        else:
            print("No feasible controls found.")
 
@@ -442,6 +444,28 @@ def find_best_control(db, input_features, max_distance=100.0, debug=False, contr
 
    # NB: literal fields in best_control/next_best_control are updated elsewhere... not here
    return (best_control, second_best_control)
+
+def update_literal_distance(db, hit: BestControl, ovec, fail_if_difference=False):
+    assert hit is not None
+    assert ovec is not None
+    control_literal_vector = lookup_control_literals(db, hit.control_url, debug=fail_if_difference)
+    if control_literal_vector is None:
+         hit.literal_dist = -1.0
+         hit.literals_not_in_origin = -1
+         hit.literals_not_in_control = -1
+         hit.n_diff_literals = -1
+         hit.diff_literals = ''
+         return
+    v1 = truncate_literals(control_literal_vector)
+    v2 = truncate_literals(ovec)
+    try:
+        t = calculate_literal_distance(v1, v2, fail_if_difference=fail_if_difference)
+        hit.literal_dist, hit.literals_not_in_origin, hit.literals_not_in_control, diff_literals = t
+        hit.n_diff_literals = len(diff_literals)
+        hit.diff_literals = fix_literals(diff_literals)
+    except ValueError as ve:
+        print(hit)  # ensure we dump the full hit details to investigate what went wrong...
+        raise ve
 
 def identify_control_subfamily(cntl_url):
    """

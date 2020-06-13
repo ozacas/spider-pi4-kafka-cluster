@@ -84,45 +84,55 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
    assert isinstance(artefact, DownloadArtefact)
    assert len(artefact.checksum) == 32  # length of an md5 hexdigest
 
-   # compute hashes to search for
-   sha256 = hashlib.sha256(script).hexdigest()
-   md5 = hashlib.md5(script).hexdigest()
-   if md5 != artefact.checksum:
-       raise ValueError("Expected MD5 and MD5 hash do not match: {} {} != {}".format(artefact.url, md5, artefact.checksum))
+   # 0. compute hashes to search for
+   sum256 = hashlib.sha256(script).hexdigest()
+   sum5 = hashlib.md5(script).hexdigest()
+   if sum5 != artefact.checksum:
+       raise ValueError("Expected MD5 and MD5 hash do not match: {} {} != {}".format(artefact.url, sum5, artefact.checksum))
 
-   # check to see if in mongo already
+   # 1. save the url for this artefact
    url_id = save_url(db, artefact)
 
    script_len = len(script)
-   key = { 'sha256': sha256, 'md5': md5, 'size_bytes': script_len }  
+   key = { 'sha256': sum256, 'md5': sum5, 'size_bytes': script_len }  
    value = key.copy() # NB: shallow copy is sufficient for this application
    value.update({ 'code': Binary(script) })
 
-   if defensive:
-       # we only insert if NOT found, if it is found then it must have the same content as what we've just been given
-       s = db.scripts.find_one(key)
-       if s is None:
-           ret = db.scripts.insert_one(value)
-           assert ret is not None 
-           s = { '_id': ret.inserted_id } # convert into something that code below can use...
-           # FALLTHRU since we've now inserted... and there is nothing to validate for newly seen scripts (rare once you've done a lot of crawling)
-       else:
-           assert '_id' in s
-           assert 'code' in s
-           assert s.get('size_bytes') == s['size_bytes']
-           code = s.get('code')
-           assert hashlib.sha256(code).hexdigest() == sha256
-           assert hashlib.md5(code).hexdigest() == md5
-           print(artefact, " is ok: ", sha256, md5, s['size_bytes'])
-           # FALLTHRU since its a match...
-   else:
-       # this update should have no effect if already inserted since the hashes have already matched for an index lookup!
-       s = db.scripts.find_one_and_update(key, { '$set': value }, 
-                                      upsert=True, 
-                                      projection={ 'code': False },
-                                      return_document=ReturnDocument.AFTER)
+   # NB: to fix a data corruption bug from May 2020 - we implement this as follows:
+   # 1) call find_one()
+   # 2) if we find an existing record its sha256, md5 and size (in bytes) are validated
+   #    a) if valid, we return this js_id
+   #    b) if not valid, we create a new document and return that, reporting a corrupt ID
+   # 3) if nothing is found in step (1) we insert a new document
+   # In this way the corrupt records are left untouched and new code will just refer to clean records. A separate program will cleanup corrupt records.
+   s = db.scripts.find_one(key)
+   invalid_record = False
+   if s is not None:
+       assert '_id' in s
+       assert 'code' in s
+       code = s.get('code')
+       invalid_record = any([ s.get('size_bytes') != script_len,
+                              hashlib.sha256(code).hexdigest() != sum256,
+                              hashlib.md5(code).hexdigest() == sum5 ])
+       if invalid_record:
+           print("WARNING: corrupt db.scripts record seen: JS ID {} - will create new record for new data.".format(s['_id']))
+       # FALLTHRU...
+
+   # 3. persist a new db.scripts record?
+   if s is None or invalid_record:
+       print(len(value['md5']))
+       assert len(value['md5']) > 0
+       assert len(value['sha256']) > 0
+       assert value['size_bytes'] >= 0  # should we permit zero-byte scripts (yes... they do happen!)
+       assert isinstance(value['code'], Binary)
+       ret = db.scripts.insert_one(value)
+       assert ret is not None 
+       s = { '_id': ret['inserted_id'] } # convert into something that code below can use...
+       # FALLTHRU since we've now inserted... and there is nothing to validate for newly inserted scripts (rare once you've done a lot of crawling)
+
    js_id = str(s.get('_id'))
-   db.script_url.insert_one({ 'url_id': url_id, 'script': js_id })
+   ret = db.script_url.insert_one({ 'url_id': url_id, 'script': js_id })
+   assert ret is not None 
    assert len(js_id) > 0
    return (key, js_id)
 
@@ -167,12 +177,13 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
    if failed:
        raise ValueError('Could not analyse script {} - {}'.format(jsr.url, stderr))
    ret = json.loads(bytes_content.decode())
-   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'sha256': sha256, 'md5': md5,
+   ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'sha256': sha256, 'md5': md5, 'size_bytes': len(content),
                 'do_not_load': False,  # all controls loaded by default except alpha/beta/release candidate
                 'provider': provider, 'subfamily': identify_control_subfamily(jsr.url) })
    #print(ret)
    assert 'sha256' in ret
    assert 'md5' in ret
+   assert 'size_bytes' in ret
 
    # NB: only one control per url/family pair (although in theory each CDN url is enough on its own)
    resp = db.javascript_controls.find_one_and_update({ 'origin': url, 'family': family },

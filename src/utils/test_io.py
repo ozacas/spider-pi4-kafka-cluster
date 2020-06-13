@@ -72,16 +72,18 @@ def test_save_url():
 
 def test_save_script_correct_checksum():
    m = Mock()
-   m.scripts.find_one_and_update.return_value = { '_id': "abc123" }
+   m.scripts.find_one.return_value = { '_id': "abc123", 'code': b'abc' }
+   m.scripts.insert_one.return_value = { 'inserted_id': 'abc123ff' }
 
    # checksum corresponds to the rubbish code below...
    jsr = DownloadArtefact(url='X', path='full/foo.js', checksum='f8f4392b9ce13de380ecdbe256030807', host='pi1', origin='foo.html', when='2020-04-20')
    ret, js_id = save_script(m, jsr, 'console.write.(blah blah)'.encode())
    assert isinstance(ret, dict)
-   assert js_id == "abc123"
+   assert js_id == "abc123ff"
    assert 'sha256' in ret
    assert 'md5' in ret
    assert 'size_bytes' in ret 
+   assert len(m.method_calls) == 4 # db.urls.insert_one(), db.scripts.find_one(), db.scripts.insert_one(), db.script_url.insert_one()
 
 def test_save_script_incorrect_checksum():
    m = Mock()
