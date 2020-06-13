@@ -448,7 +448,7 @@ def find_best_control(db, input_features, max_distance=100.0, debug=False, contr
 def update_literal_distance(db, hit: BestControl, ovec, fail_if_difference=False):
     assert hit is not None
     assert ovec is not None
-    control_literal_vector = lookup_control_literals(db, hit.control_url, debug=fail_if_difference)
+    control_literal_vector = lookup_control_literals(db, hit.control_url, debug=fail_if_difference) if len(hit.control_url) > 0 else None
     if control_literal_vector is None:
          hit.literal_dist = -1.0
          hit.literals_not_in_origin = -1
