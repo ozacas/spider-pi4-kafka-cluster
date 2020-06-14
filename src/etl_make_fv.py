@@ -102,7 +102,6 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
               continue
           if args.defensive:
               # validate that the data from mongo matches the expected hash or die trying...
-              assert js_id == jsr.js_id
               assert hashlib.sha256(js).hexdigest() == jsr.sha256
               assert hashlib.md5(js).hexdigest() == jsr.md5
               assert len(js) == jsr.size_bytes
@@ -117,15 +116,11 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
           if fv_cache is not None:
               fv_cache[js_id] = (byte_content, js_id)
 
+      assert js_id == jsr.js_id
       assert len(jsr.js_id) > 0
-      required_vector_hash = save_analysis_content(db, jsr, byte_content, ensure_indexes=is_first)
-
+      save_analysis_content(db, jsr, byte_content, ensure_indexes=is_first)
+      save_to_kafka(producer, asdict(jsr), to=args.to)
       is_first = False
-      results = asdict(jsr)
-      results.update({ 'js_id': js_id })  # this will be sufficient to load the vector from Mongo by the receiving application
-      results.update({ 'byte_content_sha256': required_vector_hash })
-      assert required_vector_hash == hashlib.sha256(byte_content).hexdigest()
-      save_to_kafka(producer, results, to=args.to)
 
    print("Analysed {} artefacts, {} failed, {} cached, now={}".format(n_analysed, n_failed, n_cached, str(datetime.now())))
    cleanup([mongo, consumer])
