@@ -8,7 +8,7 @@ import hashlib
 import argparse
 import pylru
 from datetime import datetime
-from utils.features import analyse_script, get_script, safe_for_mongo
+from utils.features import analyse_script, get_script
 from datetime import datetime
 from utils.io import save_analysis_content, next_artefact
 from utils.models import JavascriptArtefact
