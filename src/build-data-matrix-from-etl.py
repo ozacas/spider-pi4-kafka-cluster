@@ -7,6 +7,8 @@ from collections import namedtuple
 from typing import List
 from statistics import mean, stdev
 from utils.misc import *
+from utils.io import load_controls
+from etl_update_probabilities import ControlProbability
 
 @dataclass
 class FunctionProbability:
@@ -24,80 +26,6 @@ def dump_pretty(result):
     import pprint
     for rec in result:
         pprint.pprint(rec)
-
-def dump_rare_diff_functions(db, pretty=False, threshold=20.0):
-    # 1. compute function probability across each family of controls (per differentially expressed function)
-    #print("Applying threshold of {} to hits (either ast_dist or function_dist below threshold)".format(threshold))
-
-    sites_by_function_count = db.etl_hits.aggregate([
-        { "$addFields": {
-            "dist_prod" : { "$multiply": [ "$ast_dist", "$function_dist" ] }
-        }},
-        { "$match": { "dist_prod": { "$lt": threshold } } },
-        { "$group": 
-             { "_id": { "family": "$control_url" },
-               "diff_function": { "$unwind": "$diff_functions" },
-               "sites": { "$addToSet": "$cited_on_host" },
-               "unique_pages": { "$addToSet": "$cited_on" },
-               "ast_dist": { "$push": "$ast_dist" },
-               "function_dist": { "$push": "$function_dist" },
-             }
-        },
-        { "$project": { # POST-CONDITION: exactly the same fields as for FunctionProbability model
-            "_id": 0,
-            "control_family": "$_id.family",
-            "function_name": "$diff_function",
-            "n_sites": { "$size": "$sites" },
-            "n_pages": { "$size": "$unique_pages" },
-            "sites": 1,
-            "ast_dist": 1,
-            "function_dist": 1,
-        }},
-        { "$sort": { "control_family": 1, "function_name": 1 } },
-    ], allowDiskUse=True)
-
-    final_result = [FunctionProbability(**rec) for rec in sites_by_function_count]
-    #print("Len final_result is {}".format(len(final_result)))
-
-    # 2. and update with the values for number of unique sites and pages for each family
-    family_results = db.etl_hits.aggregate([
-        { "$addFields": {
-            "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] }
-        }},
-        { "$match": { "dist_prod": { "$lt": threshold } }},
-        { "$group": 
-             { "_id": { "family": "$control_url" },
-               "sites": { "$addToSet": "$cited_on_host" },
-               "unique_pages": { "$addToSet": "$cited_on" }
-             }
-        },
-        { "$project": {
-             "family": "$_id.family",
-             "n_sites": { "$size": "$sites" },
-             "n_pages": { "$size": "$unique_pages" },
-        }},
-    ], allowDiskUse=True)
-    result = { rec['family']: rec for rec in family_results }
-
-    # 3. merge into final_result dataclasses
-    print('\t'.join(['control_url', 'function', 'n_sites', 'n_sites_with_control', 'n_pages', 'n_pages_with_control', 'ast_max', 'ast_stdev', 'function_max', 'function_stdev']))
-
-    for fp in final_result:
-         if fp.control_family not in result: # maybe not any diff functions for a given control?
-            continue
-         obj = result[fp.control_family]
-         fp.n_sites_for_family = obj.get('n_sites')
-         fp.n_pages_for_family = obj.get('n_pages')
-         assert fp.n_pages_for_family > 0 and fp.n_sites_for_family <= fp.n_pages_for_family
-         rare_site = (fp.n_sites / fp.n_sites_for_family) < 0.05
-         rare_page = (fp.n_pages / fp.n_pages_for_family) < 0.05
-         rare = rare_site or rare_page
-         if fp.n_pages >= 5 and fp.n_sites_for_family >= 5 and fp.n_pages_for_family >= 15 and rare:
-             assert len(fp.ast_dist) > 0
-             assert len(fp.function_dist) > 0
-             l = [fp.control_family, fp.function_name, str(fp.n_sites), str(fp.n_sites_for_family), str(fp.n_pages), str(fp.n_pages_for_family),
-                  str(max(fp.ast_dist)), str(stdev(fp.ast_dist)), str(max(fp.function_dist)), str(stdev(fp.function_dist)) ]
-             print('\t'.join(l))
 
 
 def dump_distances(db, pretty=False, threshold=10.0):
@@ -130,7 +58,7 @@ def dump_distances(db, pretty=False, threshold=10.0):
                  str(sorted(list(rec.get('diff_functions')))), id['control_url'], id['origin_url'] ]
            print('\t'.join(l))
 
-def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, min_sites=5):
+def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, min_sites=15):
     result = db.etl_bad_hits.aggregate([
                  { "$match": { "sha256": { "$ne": None } } },
                  { "$group":
@@ -147,6 +75,7 @@ def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, m
                       "n_sites": { "$size": "$sites" },
                       "n_unique_js": { "$size": "$unique_js" },
                  } } ,
+                 { "$match": { "n_sites": { "$gte": min_sites } }},
                  { "$sort": { "n_sites": -1, "n_unique_js": -1 } }
     ], allowDiskUse=True)
  
@@ -163,8 +92,6 @@ def dump_unresolved_clusters(db, pretty=False, threshold=50.0, want_set=False, m
         for rec in filter(lambda v: v['sha256'] not in existing_controls, result):
              n_sites = rec.get('n_sites')
              n_js = rec.get("n_unique_js")
-             if n_sites < min_sites:
-                 continue
              l = [rec['sha256'], str(n_js), str(n_sites)]
              if want_set:
                  l.append(' '.join(rec.get('sites')))
@@ -222,18 +149,26 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
                 l.append(','.join(t.hosts))
             print('\t'.join(l))
 
-def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_dist_prod=200.0): # origin must be specified or ValueError
+def dump_family(db, family, pretty=False):
+   assert len(family) > 0
+   control_urls = [rec.get('origin') for rec in db.javascript_controls.find({ 'family': family })]
+   is_first = True
+   for u in control_urls:
+       assert len(u) > 0
+       dump_control_hits(db, u, pretty=pretty, dump_headers=is_first)
+       is_first = False
+
+def dump_control_hits(db, control_url, pretty=False, dump_headers=True): # origin must be specified or ValueError
    cntrl = db.javascript_controls.find_one({ 'origin': control_url })
    if cntrl is None:
        raise ValueError('No control matching: {}'.format(control_url))
    hits = db.etl_hits.aggregate([ 
                     { "$match": { "control_url": control_url } },
-                    { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
-                    { "$match": { "dist_prod": { "$lt": threshold } } },
-                    { "$addFields": { "diff_function": { "$unwind": "$diff_functions" } }},
+                    { "$unwind": { "path": "$diff_functions", "preserveNullAndEmptyArrays": True } },
                     { "$group": { 
                           "_id": { "control_url": "$control_url", "origin_url": "$origin_url" },
-                          "changed_functions": { "$addToSet": "$diff_function" },
+                          "changed_functions": { "$addToSet": "$diff_functions" },
+                          "xrefs": { "$addToSet": "$xref" },
                           "min_ast": { "$min": "$ast_dist" },
                           "max_ast": { "$max": "$ast_dist" },
                           "min_function_dist": { "$min": "$function_dist" },
@@ -246,6 +181,7 @@ def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_di
                     }},
                     { "$project": {
                           "_id": 0,
+                          "xrefs": 1,
                           "control_url": "$_id.control_url",
                           "origin_url": "$_id.origin_url",
                           "min_ast": "$min_ast",
@@ -261,16 +197,14 @@ def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_di
                     }},
                     { "$sort": { "min_ast": 1, "min_fdist": 1 } }
           ], allowDiskUse=True)
-   headers = ['control_url', 'origin_url', 'changed_functions', 
+   if dump_headers:
+       headers = ['xrefs', 'origin_url', 'changed_functions', 
               'min_ast_dist', 'min_function_dist', 'min_ldist', 
               "max_literals_not_in_origin", "max_literals_not_in_control", "max_n_diff_literals"]
 
-   print('\t'.join(headers))
+       print('\t'.join(headers))
    for hit in hits:
-       if hit.get('min_ast') * hit.get('min_fdist') * hit.get('min_ldist') > max_dist_prod: # usually bad hits have this characteristic
-           continue
-
-       data = [ hit.get('control_url'), 
+       data = [ ' '.join(hit.get('xrefs')), 
                 hit.get('origin_url'), 
                 ','.join(sorted(hit.get('changed_functions'))), 
                 str(hit.get('min_ast')), 
@@ -285,10 +219,9 @@ def dump_control_hits(db, pretty=False, threshold=50.0, control_url=None, max_di
 def list_controls(db, pretty=False):
    headers =  ['control_url', 'provider', 'family', 'release', 'size_bytes', 'sha256', 'md5', 'total_calls', 'total_literals', 'total_ast' ]
    print('\t'.join(headers))
-   for c in sorted(db.javascript_controls.find({}), key=lambda c: c.get('family')):
-      total_ast = sum(c.get('statements_by_count').values())
-      total_literals = sum(c.get('literals_by_count').values())
-      total_calls = sum(c.get('calls_by_count').values()) 
+   for c, total_ast, ast_vector, function_call_vector, literal_vector in load_controls(db, all_vectors=True):
+      total_literals = sum(literal_vector.values())
+      total_calls = sum(function_call_vector.values()) 
       prov = c.get('provider')
       if prov is None:
           prov = ''
@@ -329,8 +262,7 @@ def dump_hosts(db, pretty=False, threshold=50.0):
       { "$match": { "dist_prod": { "$lt": threshold } } },
       { "$unwind": { "path": "$diff_functions" } },
       { "$group": {
-           "_id": { "host": "$cited_on_host" },
-           "controls": { "$addToSet": "$control_url" },
+           "_id": { "control": "$control_url", "host": "$cited_on_host" },
            "pages": { "$addToSet": "$cited_on" },
            "max_diff_literals": { "$max": "$n_diff_literals" },
            "diff_literals": { "$addToSet": "$diff_literals" },
@@ -338,47 +270,84 @@ def dump_hosts(db, pretty=False, threshold=50.0):
       }},
       { "$project": {
            "host": "$_id.host",
-           "n_controls": { "$size": "$controls" },
+           "control_url": "$_id.control",
            "n_pages": { "$size": "$pages" },
            "max_diff_literals": 1,
            "diff_functions": 1,
            "diff_literals": 1,
            "n_diff_functions": { "$size": "$diff_functions" },
       }},
-      { "$sort": { "host": 1, "n_controls": -1, "max_diff_literals": -1 } },
+      { "$sort": { "host": 1, "max_diff_literals": -1 } },
    ], allowDiskUse=True)
 
-   print('\t'.join(['n_controls_hit', 'unique_pages_visited', 'max_diff_literals', 
+   print('\t'.join(['unique_pages_visited', 'max_diff_literals', 
                     'n_diff_functions', 'n_suspicious_functions', 'n_suspicious_literals',
-                    'len_diff_literals', 'host']))
+                    'len_diff_literals', 'rarest_probability', 'rarest_diff_function', 'host', 'control_url']))
    for hit in hits:
-       print('\t'.join([str(hit.get('n_controls')), 
-                        str(hit.get('n_pages')), 
+       hit['rarest_probability'], hit['rarest_diff_function'] = calc_rarest_function(db, hit)
+       print('\t'.join([str(hit.get('n_pages')), 
                         str(hit.get('max_diff_literals')), 
                         str(hit.get('n_diff_functions')), 
                         str(calc_suspicious(hit.get('diff_functions'))),
                         str(calc_suspicious(hit.get('diff_literals'))),
                         str(calc_len_diff_literals(hit.get('diff_literals'))),
-                        hit.get('host')
+                        str(hit.get('rarest_probability')),
+                        hit.get('rarest_diff_function'),
+                        hit.get('host'),
+                        hit.get('control_url')
        ]))
 
+def calc_rarest_function(db, hit):
+   assert hit is not None
+   assert 'control_url' in hit and 'diff_functions' in hit
+   diff_fns = hit.get('diff_functions', None)
+   if diff_fns is None or len(diff_fns) < 1:
+       return (None, None)
+
+   min_prob = float('Inf')
+   best_fn = None
+   for fn in diff_fns:
+       doc = db.function_probabilities.find_one({ 'control_url': hit.get('control_url'), 'function_name': fn })
+       if doc is None:
+           if min_prob > 1.0: # function not known? we consider it not very rare, but will report it if nothing better comes along
+               min_prob = 1.0
+               best_fn = fn
+           continue
+      
+       doc.pop('_id', None) 
+       cp = ControlProbability(**doc)
+       prob = cp.subfamily_probability()
+       if prob < min_prob:
+           best_fn = fn 
+           min_prob = prob
+
+   assert min_prob == float('Inf') or (min_prob >= 0.0 and min_prob <= 1.0)
+   return (min_prob, best_fn)
+
 def dump_host(db, hostspec, pretty=False, threshold=50.0):
+   if hostspec is None:
+       raise ValueError('No host specified via --extra!')
+
    regexp = '.*{}.*'.format(hostspec.replace('.', '\.'))
    hits = db.etl_hits.aggregate([
       { "$addFields": {  "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] }}},
       { "$match": { "dist_prod": { "$lt": threshold }}},
+      { "$match": { "sha256_matched": False }},   # sha256 matches are boring, dont want them
       { "$match": { "cited_on_host": { "$regex": regexp } } },
       { "$group": { "_id": { "xref": "$xref" },
                     "hit": { "$first": "$$ROOT" },
       }},
+      { "$project": { "origin_js_id": 0 } }, # we dont want this since xref is better for use with meld.py
       { "$sort": { "dist_prod": 1 } },
    ])
    first = True
    for hit in hits:
        h = hit.get('hit')
+       h['rarest_function_probability'], h['rarest_function'] = calc_rarest_function(db, h)
        if first:
            first = False
            fields = list(filter(lambda k: not k in ['_id'], sorted(h.keys())))
+           fields.extend(['rarest_function_probability', 'rarest_function'])
            print('\t'.join(fields))
        v = []
        for k in fields:
@@ -389,27 +358,27 @@ a = argparse.ArgumentParser(description="Process results for a given query onto 
 add_mongo_arguments(a, default_user='ro') # running queries is basically always read-only role
 add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
-a.add_argument("--query", help="Run specified query, one of: function_probabilities|unresolved_clusters|distances|sitesbycontrol|functionsbycontrol", type=str, 
-                          choices=['unresolved_clusters', 'sitesbycontrol', 'distances', 'function_probabilities', 
-                                   'list_controls', 'control_hits', 'hosts', 'host'])
+a.add_argument("--query", help="Run specified query, one of above choices: [None]", type=str, 
+                          choices=['unresolved_clusters', 'sites_by_control', 'distances', 
+                                   'list_controls', 'control_hits', 'family_hits', 'hosts', 'host'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 a.add_argument("--threshold", help="Maximum distance product (AST distance * function call distance) to permit [100.0]", type=float, default=100.0)
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
 db = mongo[args.dbname]
-if args.query == "sitesbycontrol":
+if args.query == "sites_by_control":
     dump_sites_by_control(db, want_set=args.v)
 elif args.query == "distances":
     dump_distances(db, pretty=args.pretty, threshold=args.threshold)
 elif args.query == "unresolved_clusters":
     dump_unresolved_clusters(db, pretty=args.pretty, threshold=args.threshold, want_set=args.v) # distances over 100 will be considered for clustering
-elif args.query == "function_probabilities":
-    dump_rare_diff_functions(db, pretty=args.pretty, threshold=args.threshold)
 elif args.query == "list_controls":
     list_controls(db, pretty=args.pretty)
 elif args.query == "control_hits":
-    dump_control_hits(db, pretty=args.pretty, control_url=args.extra)
+    dump_control_hits(db, args.extra, pretty=args.pretty, control_url=args.extra)
+elif args.query == "family_hits":
+    dump_family(db, args.extra, pretty=args.pretty)
 elif args.query == "hosts":
     dump_hosts(db, pretty=args.pretty, threshold=args.threshold)
 elif args.query == "host": # host to dump is supplied in args.extra (partial matching is performed) eg. blah.com.au will match <anything>blah.com.au
