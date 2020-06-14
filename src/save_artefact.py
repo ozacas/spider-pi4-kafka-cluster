@@ -2,10 +2,12 @@
 import pymongo
 import argparse
 import json
+import hashlib
 from bson.objectid import ObjectId
 from utils.misc import add_mongo_arguments
 from utils.models import JavascriptArtefact
-from utils.features import analyse_script, get_script
+from utils.features import get_script
+from utils.io import find_or_update_analysis_content
 
 a = argparse.ArgumentParser(description="Save the specified artefact to disk as the specified filename")
 add_mongo_arguments(a, default_access="read-only", default_user='ro')
@@ -35,18 +37,18 @@ with open(args.file, 'wb+') as fp:
    fp.write(code)
 
 if args.artefact:
-   jsr = JavascriptArtefact(url='foo', sha256='XXX', md5='YYY', inline=False) # doesnt matter from the perspective of dumping the literals
-   byte_content, failed, stderr = analyse_script(args.file, jsr)
-   if failed:
-      raise ValueError("Unable to analyse script: {}\n{}".format(args.file, stderr))
-   vectors = json.loads(byte_content)
+   m = { 'sha256': hashlib.sha256(code).hexdigest(), 'md5': hashlib.md5(code).hexdigest(),
+         'size_bytes': len(code), 'js_id': args.artefact, 'byte_content_sha256': 'XXX', 'url': 'XXX' }
+   vectors = find_or_update_analysis_content(db, m, fail_iff_not_found=True, defensive=True)
+   assert isinstance(vectors, dict)
+   print("Vectors computed from: {}".format(vectors.get('id')))
 else:
    vectors = json.loads(ret.get('analysis_bytes'))
 
 assert 'literals_by_count' in vectors
 if vectors is not None and args.literals:
-   for k,v in vectors.get('literals_by_count').items():
-       print(v, " ", k)
-
+   lv = vectors.get('literals_by_count')
+   print("literals seen (sorted): {}".format(', '.join(sorted(lv.keys()))))
+   print("values seen (unsorted): {}".format(' '.join(lv.values())))
 mongo.close()
 exit(0)
