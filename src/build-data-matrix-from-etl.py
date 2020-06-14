@@ -36,7 +36,7 @@ def dump_distances(db, pretty=False, threshold=10.0):
                         "origin_url": "$origin_url",
                         "cited_on_host": "$cited_on_host" },
                "distances": { "$addToSet": "$ast_dist" },
-               "diff_functions": { "$addToSet": { "$unwind": "$diff_functions" } },
+               "diff_functions": { "$addToSet": { "$unwind": "$diff_functions", "preserveNullAndEmptyArrays": True } },
                "min_function_dist": { "$min": "$function_dist" },
                "pages": { "$addToSet": "$cited_on_path" }
              }
@@ -260,7 +260,7 @@ def dump_hosts(db, pretty=False, threshold=50.0):
    hits = db.etl_hits.aggregate([
       { "$addFields": { "dist_prod": { "$multiply": [ "$ast_dist", "$function_dist" ] } } },
       { "$match": { "dist_prod": { "$lt": threshold } } },
-      { "$unwind": { "path": "$diff_functions" } },
+      { "$unwind": { "path": "$diff_functions", "preserveNullAndEmptyArrays": True } },
       { "$group": {
            "_id": { "control": "$control_url", "host": "$cited_on_host" },
            "pages": { "$addToSet": "$cited_on" },
