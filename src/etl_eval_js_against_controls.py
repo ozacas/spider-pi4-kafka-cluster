@@ -72,14 +72,6 @@ if args.file:
        print(next_best_control)
        cleanup()
 
-group = args.group
-if len(group) < 1:
-    group = None
-consumer = KafkaConsumer(args.consume_from, group_id=group, auto_offset_reset=args.start, 
-                         bootstrap_servers=args.bootstrap, value_deserializer=json_value_deserializer())
-producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
-setup_signals(cleanup)
-
 def save_vetting(db, hit: BestControl):
     d = asdict(hit)
     assert 'cited_on' in d and len(d['cited_on']) > 0
@@ -99,75 +91,109 @@ def save_vetting(db, hit: BestControl):
     d['xref'] = xref
     return d
 
-# 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
-save_pidfile('pid.eval.controls')
-print("Creating required index in vet_against_control collection... please wait")
-db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING), ('control_url', pymongo.ASCENDING )], unique=True)
-print("Index creation complete.")
+def process_hit(db, m, args):
+    """
+    Process a message (m) indicating an artefact under test and identify the best available control
+    May raise ValueError if the result is illogical: sha256_matched but literal differences identified (often this is an 
+    indicator of data error inside the MongoDB). Results are published to kafka (args.to topic) and db.vet_against_control in Mongo
+    """
+    assert db is not None
+    assert isinstance(m, dict)
+    # example m: {'url': 'https://homes.mirvac.com/-/media/Project/Mirvac/Residential/Base-Residential-Site/Base-Residential-Site-Theme/scripts/navigationmin.js', 
+    #             'sha256': 'd6941fcfdd12069e20f4bb880ecbab12d797d9696cae1b05ec9d59fb9bd90b51', 'md5': '2b10377115ab0747535acb1ad38b26bd', 
+    #             'inline': False, 'content_type': 'text/javascript', 'when': '2020-06-04 03:28:28.483855', 'size_bytes': 14951, 
+    #             'origin': 'https://homes.mirvac.com/homes-portfolio',  'js_id': '5e8ef7df582045cdd24ce8ae' }
+    best_control, next_best_control = find_best_control(db, m, debug=args.v, control_cache=vector_cache,
+                                                        max_distance=args.max_distance)
+    ovec = m['literals_by_count']
+    if best_control is None or len(best_control.control_url) == 0:
+        pass 
+    else:
+        # 2. check that sha256's match each artefact iff find_best_control() said the hashes matched 
+        #    (since next_best_control has distance it cannot be a hash match)
+        if args.defensive and best_control.sha256_matched:
+            cntl_doc = db.javascript_controls.find_one({ 'origin': best_control.control_url })
+            assert cntl_doc is not None
+            ######### Vet the control URL
+            # temporarily printed as assert's are rarely failing - most likely an error elsewhere in the pipeline
+            print("artefact hash: ", m['sha256'], m['md5'], " control_hashes: ", cntl_doc.get('sha256'), cntl_doc.get('md5'))
+            assert cntl_doc.get('size_bytes') == m['size_bytes']
+            assert cntl_doc.get('sha256') == m['sha256']  # these exist to catch sha256 hash collisions if any, to verify whether if they happen in production...
+            assert cntl_doc.get('md5') == m['md5']
 
-vector_cache = pylru.lrucache(10 * 1000) # bigger the better since we want to avoid large-scale mongo queries
+        update_literal_distance(db, best_control, ovec, fail_if_difference=args.defensive and best_control.sha256_matched)
 
-# sorting speeds performance by enhancing feasible control cache performance, just make sure n is big enough - 2k is a good start
-for message_batch in batch(next_artefact(consumer, args.n, 
-                                    filter_cb=lambda m: m.get('size_bytes') >= 1500, verbose=args.v), n=2000): 
+    d = save_vetting(db, best_control)
+    best_control.xref = d['xref']
+    assert best_control.xref is not None
+    producer.send(args.to, d) 
 
-    print("Processing batch of {} records.".format(len(message_batch)))
-    for m in sorted(message_batch, key=lambda v: v['sha256']):
-        js_id = m.get('js_id')
-        vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive,
-                                                          java=args.java, extractor=args.extractor)
-        assert isinstance(vectors_as_dict, dict)
-        for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
-            m[t] = vectors_as_dict[t]
-    
-        # example m: {'url': 'https://homes.mirvac.com/-/media/Project/Mirvac/Residential/Base-Residential-Site/Base-Residential-Site-Theme/scripts/navigationmin.js', 
-        #             'sha256': 'd6941fcfdd12069e20f4bb880ecbab12d797d9696cae1b05ec9d59fb9bd90b51', 'md5': '2b10377115ab0747535acb1ad38b26bd', 
-        #             'inline': False, 'content_type': 'text/javascript', 'when': '2020-06-04 03:28:28.483855', 'size_bytes': 14951, 
-        #             'origin': 'https://homes.mirvac.com/homes-portfolio',  'js_id': '5e8ef7df582045cdd24ce8ae' }
-        best_control, next_best_control = find_best_control(db, m, debug=args.v, control_cache=vector_cache,
-                                                            max_distance=args.max_distance)
-        ovec = m['literals_by_count']
-        if best_control is None or len(best_control.control_url) == 0:
-            pass 
-        else:
-            # 2. check that sha256's match each artefact iff find_best_control() said the hashes matched 
-            #    (since next_best_control had non-zero distance it cannot be a hash match)
-            if args.defensive and best_control.sha256_matched:
-                cntl_doc = db.javascript_controls.find_one({ 'origin': best_control.control_url })
-                assert cntl_doc is not None
-                ######### Vet the control URL
-                # temporarily printed as assert's are rarely failing - most likely an error elsewhere in the pipeline
-                print("artefact hash: ", m['sha256'], m['md5'], " control_hashes: ", cntl_doc.get('sha256'), cntl_doc.get('md5'))
-                assert cntl_doc.get('size_bytes') == m['size_bytes']
-                assert cntl_doc.get('sha256') == m['sha256']  # these exist to catch sha256 hash collisions if any, to verify whether if they happen in production...
-                assert cntl_doc.get('md5') == m['md5']
-    
-            update_literal_distance(db, best_control, ovec, fail_if_difference=args.defensive and best_control.sha256_matched)
-        d = save_vetting(db, best_control)
-        best_control.xref = d['xref']
-        assert best_control.xref is not None
-        producer.send(args.to, d) 
-    
-        if (args.report_bad or args.report_all) and len(best_control.control_url) == 0:
-            print(best_control)
-        if (args.report_good or args.report_all) and len(best_control.control_url) > 0:
-            print(best_control)
-    
-        if next_best_control is not None and len(next_best_control.control_url) > 0:
-            assert not next_best_control.sha256_matched  # must not be true since it would have been the best_control if it were
-            update_literal_distance(db, next_best_control, ovec)
-            d2 = save_vetting(db, next_best_control)
-            next_best_control.xref = d2['xref']
-            assert len(next_best_control.xref) > 0
-            if next_best_control.literal_dist < 0.0: # if the literal distance calculation fails (eg. missing control features) we ignore the hit
-                continue
-    
-            best_mult = best_control.distance()
-            next_best_mult = next_best_control.distance()
-            if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
-                print("NOTE: next best control looks as good as best control")
-                print(next_best_control) 
-                producer.send(args.to, d2)
-                assert d2['xref'] != d['xref']  # xref must not be the same document otherwise something has gone wrong 
+    if (args.report_bad or args.report_all) and len(best_control.control_url) == 0:
+        print(best_control)
+    if (args.report_good or args.report_all) and len(best_control.control_url) > 0:
+        print(best_control)
 
-cleanup()
+    if next_best_control is not None and len(next_best_control.control_url) > 0:
+        assert not next_best_control.sha256_matched  # must not be true since it would have been the best_control if it were
+        update_literal_distance(db, next_best_control, ovec)
+        d2 = save_vetting(db, next_best_control)
+        next_best_control.xref = d2['xref']
+        assert len(next_best_control.xref) > 0
+        if next_best_control.literal_dist < 0.0: # if the literal distance calculation fails (eg. missing control features) we ignore the hit
+            return
+
+        best_mult = best_control.distance()
+        next_best_mult = next_best_control.distance()
+        if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
+            print("NOTE: next best control looks as good as best control")
+            print(next_best_control) 
+            producer.send(args.to, d2)
+            assert d2['xref'] != d['xref']  # xref must not be the same document otherwise something has gone wrong 
+
+if __name__ == "__main__":
+    group = args.group
+    if len(group) < 1:
+        group = None
+    consumer = KafkaConsumer(args.consume_from, group_id=group, auto_offset_reset=args.start, 
+                             bootstrap_servers=args.bootstrap, value_deserializer=json_value_deserializer())
+    producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
+    setup_signals(cleanup)
+    # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
+    save_pidfile('pid.eval.controls')
+    print("Creating required index in vet_against_control collection... please wait")
+    db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING), ('control_url', pymongo.ASCENDING )], unique=True)
+    print("Index creation complete.")
+    
+    vector_cache = pylru.lrucache(10 * 1000) # bigger the better since we want to avoid large-scale mongo queries
+
+    # sorting speeds performance by enhancing feasible control cache performance, just make sure n is big enough - 2k is a good start
+    for message_batch in batch(next_artefact(consumer, args.n, 
+                                        filter_cb=lambda m: m.get('size_bytes') >= 1500, verbose=args.v), n=2000): 
+
+        print("Processing batch of {} records.".format(len(message_batch)))
+        for m in sorted(message_batch, key=lambda v: v['sha256']):
+            js_id = m.get('js_id')
+            vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive,
+                                                              java=args.java, extractor=args.extractor)
+            assert isinstance(vectors_as_dict, dict)
+            for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
+                m[t] = vectors_as_dict[t]
+            try:
+                process_hit(db, m, args)
+            except ValueError as ve:
+                # if we get a ValueError with args.defensive it likely means data corruption since
+                # there should be no literal differences when sha256 matches. So we update the database record and try again.
+                # Otherwise raise as per normal
+                if args.defensive:
+                    print(str(ve))
+                    print("WARNING: recalculating db entry in case of data-corruption:")
+                    vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive, 
+                                                                  force=True, java=args.java, 
+                                                                  extractor=args.extractor)
+                    assert isinstance(vectors_as_dict, dict)
+                    for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
+                        m[t] = vectors_as_dict[t]
+                    process_hit(db, m, args)
+                else:
+                    raise ve
+    cleanup()

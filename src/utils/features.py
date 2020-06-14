@@ -302,8 +302,8 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
    lb = ast_desired_sum - max_distance 
    ub = ast_desired_sum + max_distance
    # but we now also consider function call distance (only use third max_distance since function calls are less frequent than AST features)
-   lb_fc = function_call_sum - (max_distance / 3)
-   ub_fc = function_call_sum + (max_distance / 3)
+   lb_fc = function_call_sum - (max_distance / 2)
+   ub_fc = function_call_sum + (max_distance / 2)
 
    n = n_cached = 0
    ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub } }) 
@@ -444,12 +444,12 @@ def update_literal_distance(db, hit: BestControl, ovec, fail_if_difference=False
     assert ovec is not None
     control_literal_vector = lookup_control_literals(db, hit.control_url, debug=fail_if_difference) if len(hit.control_url) > 0 else None
     if control_literal_vector is None:
-         hit.literal_dist = -1.0
-         hit.literals_not_in_origin = -1
-         hit.literals_not_in_control = -1
-         hit.n_diff_literals = -1
-         hit.diff_literals = ''
-         return
+        hit.literal_dist = -1.0
+        hit.literals_not_in_origin = -1
+        hit.literals_not_in_control = -1
+        hit.n_diff_literals = -1
+        hit.diff_literals = ''
+        return
     v1 = truncate_literals(control_literal_vector)
     v2 = truncate_literals(ovec)
     try:
@@ -458,7 +458,6 @@ def update_literal_distance(db, hit: BestControl, ovec, fail_if_difference=False
         hit.n_diff_literals = len(diff_literals)
         hit.diff_literals = fix_literals(diff_literals)
     except ValueError as ve:
-        print(hit)  # ensure we dump the full hit details to investigate what went wrong...
         raise ve
 
 def identify_control_subfamily(cntl_url):

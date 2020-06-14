@@ -11,7 +11,7 @@ from utils.models import JavascriptArtefact, JavascriptVectorSummary, DownloadAr
 
 
 def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=False,
-                                           java=None, extractor=None):
+                                           java=None, extractor=None, force=False):
     assert isinstance(m, dict)
     assert all(['js_id' in m, 'url' in m, 'sha256' in m, 'md5' in m, 
                 'size_bytes' in m, 'byte_content_sha256' in m])
@@ -20,12 +20,12 @@ def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=F
     assert len(js_id) > 0
 
     # NB: due to an error in processing, I had to throw away the db.analysis_content collection, so records may be missing. Sigh 8th June 2020
-    byte_content_doc = db.analysis_content.find_one({ 'js_id': js_id })
-    if fail_iff_not_found and byte_content_doc is None:   # prevent infinite recursion
-       raise ValueError("No data for {}".format(js_id))
+    if not force:
+       byte_content_doc = db.analysis_content.find_one({ 'js_id': js_id })
+       if fail_iff_not_found and byte_content_doc is None:   # prevent infinite recursion
+           raise ValueError("No data for {}".format(js_id))
 
     if byte_content_doc is None:
-        print("WARNING: analysis data could not be found: {} - recalculating...".format(m))
         code_bytes, js_id = get_script(db, js_id)
         assert code_bytes is not None
         jsr = JavascriptArtefact(url=m.get('url'), sha256=m.get('sha256'), md5=m.get('md5'), size_bytes=m.get('size_bytes'), js_id=js_id)
