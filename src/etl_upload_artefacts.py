@@ -7,7 +7,7 @@ from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from utils.misc import *
 from utils.models import DownloadArtefact
-from utils.io import next_artefact, save_artefact
+from utils.io import next_artefact, save_artefact, batch
 
 def save_batch(db, batch_of_artefacts, producer, root, fail_on_error=False, to=None, verbose=False, defensive=False): # eg. root='/data/kafkaspider2'
    # finally process each record via mongo
@@ -59,8 +59,6 @@ if __name__ == "__main__":
     consumer = KafkaConsumer(args.consume_from, value_deserializer=lambda m: json.loads(m.decode('utf-8')), 
                              consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
 
-    save_pidfile('pid.upload.artefacts', root='/home/spider')
-
     my_hostname = socket.gethostname()
     print("Loading records matching {} from kafka topic".format(my_hostname))
     for b in batch(next_artefact(consumer, args.n, lambda v: v['host'] == my_hostname and not v['origin'] is None, verbose=args.v), n=10000):
@@ -68,5 +66,3 @@ if __name__ == "__main__":
         print("Loaded {} artefacts.".format(len(artefacts)))
         save_batch(db, artefacts, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v, defensive=args.defensive)
         print("Uploaded {} artefacts. {}".format(len(artefacts), str(datetime.utcnow())))
-
-    rm_pidfile('pid.upload.artefacts', root='/home/spider')
