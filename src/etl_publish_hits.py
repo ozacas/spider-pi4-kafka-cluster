@@ -110,12 +110,6 @@ if __name__ == "__main__":
     stats = {}
     for r in consumer: 
         n += 1
-        if 'origin_vectors_sha256' not in r.value:
-            if not 'missing_vectors' in stats:
-                stats['missing_vectors'] = 0
-            stats['missing_vectors'] += 1 
-            continue
-
         hit = BestControl(**r.value)
 
         if args.v:
