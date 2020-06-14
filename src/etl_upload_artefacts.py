@@ -61,8 +61,15 @@ if __name__ == "__main__":
 
     my_hostname = socket.gethostname()
     print("Loading records matching {} from kafka topic".format(my_hostname))
+    total = 0
     for b in batch(next_artefact(consumer, args.n, lambda v: v['host'] == my_hostname and not v['origin'] is None, verbose=args.v), n=10000):
         artefacts = sorted([DownloadArtefact(**r) for r in b])
         print("Loaded {} artefacts.".format(len(artefacts)))
         save_batch(db, artefacts, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v, defensive=args.defensive)
-        print("Uploaded {} artefacts. {}".format(len(artefacts), str(datetime.utcnow())))
+        print("Uploaded {} artefacts in batch. {}".format(len(artefacts), str(datetime.utcnow())))
+        total += len(artefacts)
+
+    print("Uploaded {} artefacts in total.".format(total))
+    mongo.close()
+    consumer.close()
+    exit(0)
