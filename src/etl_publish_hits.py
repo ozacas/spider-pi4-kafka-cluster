@@ -3,6 +3,7 @@ import os
 import json
 import argparse
 import pymongo
+import hashlib
 from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from utils.io import load_controls
@@ -37,16 +38,9 @@ def process_hit(db, all_controls, hit: BestControl, producer, stats=None):
 
     d = asdict(hit)
     d.pop('diff_functions', None)
-    content_doc = db.analysis_content.find_one({ 'js_id': d['origin_js_id'], 'byte_content_sha256': d['origin_vectors_sha256'] })
-    assert content_doc is not None and 'analysis_bytes' in content_doc
-    rec = json.loads(content_doc['analysis_bytes'].decode())
-    fv_origin = rec.get('calls_by_count')
-    if fv_origin is None:
-        return False
 
     u = hit.control_url
     assert u in all_controls # should have been checked before call
-    fv_control = all_controls[u].get('calls_by_count')
     d.update(origin_fields)
 
     # cited_on URL (aka. HTML page) iff specified
