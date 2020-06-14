@@ -9,6 +9,41 @@ from itertools import chain, islice
 from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily, safe_for_mongo
 from utils.models import JavascriptArtefact, JavascriptVectorSummary, DownloadArtefact
 
+
+def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=False,
+                                           java=None, extractor=None):
+    assert isinstance(m, dict)
+    assert all(['js_id' in m, 'url' in m, 'sha256' in m, 'md5' in m, 
+                'size_bytes' in m, 'byte_content_sha256' in m])
+
+    js_id = m.get('js_id')
+    assert len(js_id) > 0
+
+    # NB: due to an error in processing, I had to throw away the db.analysis_content collection, so records may be missing. Sigh 8th June 2020
+    byte_content_doc = db.analysis_content.find_one({ 'js_id': js_id })
+    if fail_iff_not_found and byte_content_doc is None:   # prevent infinite recursion
+       raise ValueError("No data for {}".format(js_id))
+
+    if byte_content_doc is None:
+        print("WARNING: analysis data could not be found: {} - recalculating...".format(m))
+        code_bytes, js_id = get_script(db, js_id)
+        assert code_bytes is not None
+        jsr = JavascriptArtefact(url=m.get('url'), sha256=m.get('sha256'), md5=m.get('md5'), size_bytes=m.get('size_bytes'), js_id=js_id)
+        vector_as_bytes, failed, stderr = analyse_script(code_bytes, jsr, java=java, feature_extractor=extractor)
+        if failed:
+            raise ValueError("Could not analyse artefact: js_id={}\n{}".format(js_id, stderr))
+        expected_hash = save_analysis_content(db, jsr, vector_as_bytes)
+
+        if defensive:
+            # check that artefact hashes match the actual content 
+            assert hashlib.sha256(code_bytes).hexdigest() == m.get('sha256')
+        return find_or_update_analysis_content(db, m, fail_iff_not_found=True) # this time it should be found!
+
+    assert 'analysis_bytes' in byte_content_doc
+    byte_content = byte_content_doc.get('analysis_bytes')
+    assert isinstance(byte_content, bytes)
+    return json.loads(byte_content.decode())
+
 def save_artefact(db, producer, artefact, root, to, content=None, inline=False, content_type='text/javascript', defensive=False):
    """
    Saves the content to Mongo as specified by root/artefact.path and then the record of the save to Kafka (topic to) for downstream processing
@@ -48,21 +83,9 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ens
        db.analysis_content.create_index([( 'js_id', ASCENDING ) ], unique=True)
 
    d = asdict(jsr)
-   expected_hash = hashlib.sha256(bytes_content).hexdigest()
-   d.update({ "analysis_bytes": Binary(bytes_content), "byte_content_sha256": expected_hash, 'last_updated': datetime.utcnow() })
+   d.update({ "analysis_bytes": Binary(bytes_content), 'last_updated': datetime.utcnow() })
    # lookup artefact by ID - altered content will get a new ID as long as its sha256 hash isnt already known
    ret = db.analysis_content.find_one_and_update({ "js_id": jsr.js_id }, { "$set": d }, upsert=True)
-
-   # compare the BEFORE and AFTER documents for evidence of change (SHOULD NOT happen since js_id should always be new for unique content)
-   if ret is not None:  # will be none if mongo performed an insert, since no previous document existed
-       # FIXME as at 8th June 2020: 3944 records do not have byte_content_sha256 record as the code didnt support it when the records were created
-       # some will have bad vectors since analyse_script() didnt correctly manage utf8 encode/decode in concert with java code being run
-       # for now, we dont assert but rather just scream...
-       print("Checking hash for existing db.analysis_content record")
-       if ret['byte_content_sha256'] != expected_hash:
-           print("WARNING: corrupt hash found for artefact JS id: {} (now fixed)".format(jsr.js_id))
-
-   return expected_hash
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     n = 0
@@ -111,23 +134,26 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
        assert '_id' in s
        assert 'code' in s
        code = s.get('code')
+       print("actual bytes={} md5={} sha256={}".format(script_len, sum5, sum256))
+       on_disk256 = hashlib.sha256(code).hexdigest()
+       on_disk5 = hashlib.md5(code).hexdigest()
+       print("expected bytes={} md5={} sha256={}".format(s.get('size_bytes'), on_disk5, on_disk256))
        invalid_record = any([ s.get('size_bytes') != script_len,
-                              hashlib.sha256(code).hexdigest() != sum256,
-                              hashlib.md5(code).hexdigest() == sum5 ])
+                              on_disk256 != sum256,
+                              on_disk5 != sum5 ])
        if invalid_record:
            print("WARNING: corrupt db.scripts record seen: JS ID {} - will create new record for new data.".format(s['_id']))
        # FALLTHRU...
 
    # 3. persist a new db.scripts record?
    if s is None or invalid_record:
-       print(len(value['md5']))
        assert len(value['md5']) > 0
        assert len(value['sha256']) > 0
        assert value['size_bytes'] >= 0  # should we permit zero-byte scripts (yes... they do happen!)
        assert isinstance(value['code'], Binary)
        ret = db.scripts.insert_one(value)
        assert ret is not None 
-       s = { '_id': ret['inserted_id'] } # convert into something that code below can use...
+       s = { '_id': ret.inserted_id } # convert into something that code below can use...
        # FALLTHRU since we've now inserted... and there is nothing to validate for newly inserted scripts (rare once you've done a lot of crawling)
 
    js_id = str(s.get('_id'))
@@ -190,7 +216,7 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
                                                      { "$set": ret }, upsert=True)
    db.javascript_control_code.find_one_and_update({ 'origin': url },
                                                      { "$set": { 'origin': url, 'code': Binary(content), 
-                                                       'analysis_bytes': bytes_content, 'analysis_vectors_sha256': hashlib.sha256(bytes_content).hexdigest(),
+                                                       'analysis_bytes': bytes_content, 
                                                        "last_updated": jsr.when } }, upsert=True)
    update_control_summary(db, url, 
                           ret['statements_by_count'], 
@@ -226,9 +252,6 @@ def load_controls(db, min_size=1500, all_vectors=False, verbose=False):
                continue
            assert bytes_content_doc is not None
            assert 'analysis_bytes' in bytes_content_doc
-           assert 'analysis_vectors_sha256' in bytes_content_doc
-           if verbose:
-               assert hashlib.sha256(bytes_content_doc.get('analysis_bytes')).hexdigest() == bytes_content_doc.get('analysis_vectors_sha256')
            vectors = json.loads(bytes_content_doc.get('analysis_bytes'))
            assert vectors is not None and 'statements_by_count' in vectors
            tuple = (control, ast_sum, ast_vector, vectors['calls_by_count'], vectors['literals_by_count'])

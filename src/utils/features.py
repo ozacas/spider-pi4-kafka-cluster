@@ -151,7 +151,7 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
    # turn process stdout into something we can save
    ret = process.stdout
    assert isinstance(ret, str)
-   bytes_content = ret.encode('utf-8') # although this is double-encoding, if there are any errors - at least we will detect them here!
+   bytes_content = ret.encode('utf-8', errors='strict') # any errors will hopefully get caught, despite double-encoding
    assert isinstance(bytes_content, bytes)
 
    # cleanup
@@ -226,11 +226,6 @@ def lookup_control_literals(db, control_url, debug=True):
    assert control_literals_doc is not None # should not happen as it means control has been deleted??? maybe bad io???
    assert 'analysis_bytes' in control_literals_doc
    analysis_bytes = control_literals_doc.get('analysis_bytes')
-   assert 'analysis_vectors_sha256' in control_literals_doc
-
-   if debug:
-       # integrity check: verify that bytes hashed matches the expected hash
-       assert hashlib.sha256(analysis_bytes).hexdigest() == control_literals_doc['analysis_vectors_sha256']
 
    control_literals = json.loads(analysis_bytes.decode('utf-8')).get('literals_by_count')
    assert control_literals is not None
@@ -393,8 +388,7 @@ def find_best_control(db, input_features, max_distance=100.0, debug=False, contr
                               function_dist=float('Inf'), 
                               literal_dist=0.0,
                               diff_functions='',
-                              origin_js_id=origin_js_id,
-                              origin_vectors_sha256=input_features['byte_content_sha256'])
+                              origin_js_id=origin_js_id)
    second_best_control = None
 
    # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
@@ -415,7 +409,6 @@ def find_best_control(db, input_features, max_distance=100.0, debug=False, contr
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
                                       origin_url=origin_url, # JS at spidered site 
                                       origin_js_id=origin_js_id,
-                                      origin_vectors_sha256=input_features['byte_content_sha256'],
                                       cited_on=cited_on,
                                       sha256_matched=False, 
                                       ast_dist=ast_dist, 
