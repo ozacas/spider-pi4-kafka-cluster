@@ -6,7 +6,7 @@ import json
 import requests
 from bson.binary import Binary
 from itertools import chain, islice
-from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily, safe_for_mongo
+from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily, get_script
 from utils.models import JavascriptArtefact, JavascriptVectorSummary, DownloadArtefact
 
 
@@ -32,7 +32,7 @@ def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=F
         vector_as_bytes, failed, stderr = analyse_script(code_bytes, jsr, java=java, feature_extractor=extractor)
         if failed:
             raise ValueError("Could not analyse artefact: js_id={}\n{}".format(js_id, stderr))
-        expected_hash = save_analysis_content(db, jsr, vector_as_bytes)
+        save_analysis_content(db, jsr, vector_as_bytes)
 
         if defensive:
             # check that artefact hashes match the actual content 
@@ -137,7 +137,7 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
        print("actual bytes={} md5={} sha256={}".format(script_len, sum5, sum256))
        on_disk256 = hashlib.sha256(code).hexdigest()
        on_disk5 = hashlib.md5(code).hexdigest()
-       print("expected bytes={} md5={} sha256={}".format(s.get('size_bytes'), on_disk5, on_disk256))
+       #print("expected bytes={} md5={} sha256={}".format(s.get('size_bytes'), on_disk5, on_disk256))
        invalid_record = any([ s.get('size_bytes') != script_len,
                               on_disk256 != sum256,
                               on_disk5 != sum5 ])

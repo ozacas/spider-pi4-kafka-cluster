@@ -7,9 +7,9 @@ from bson.objectid import ObjectId
 from datetime import datetime
 from utils.models import JavascriptArtefact, JavascriptVectorSummary
 
-def test_safe_for_mongo():
-   assert safe_for_mongo({ 'a': 0, '$': 1 }) == { 'a': 0, 'F$': 1 }
-   assert safe_for_mongo({ '_id': 7 }) == { 'F_id': 7 }
+#def test_safe_for_mongo():
+#   assert safe_for_mongo({ 'a': 0, '$': 1 }) == { 'a': 0, 'F$': 1 }
+#   assert safe_for_mongo({ '_id': 7 }) == { 'F_id': 7 }
 
 def test_as_url_fields():
    assert as_url_fields('https://www.google.com') == { 'has_query': False, 'host': 'www.google.com', 'path': '', 'port': 443,  'scheme': 'https' }

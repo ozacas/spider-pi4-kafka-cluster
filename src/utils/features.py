@@ -299,7 +299,7 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
 
    # only those controls within max_distance (either side) from the desired feature sum (from the AST vector under test) are considered feasible
    # all others need not be searched. This could be tighter.
-   lb = ast_desired_sum - max_distance
+   lb = ast_desired_sum - max_distance 
    ub = ast_desired_sum + max_distance
    # but we now also consider function call distance (only use third max_distance since function calls are less frequent than AST features)
    lb_fc = function_call_sum - (max_distance / 3)
@@ -361,10 +361,12 @@ def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False):
        assert isinstance(control_calls, dict)
        assert len(origin_ast) == len(control_ast)
    ast_dist = compute_distance(origin_ast, control_ast, short_vector_penalty=True)
+   assert ast_dist >= 0.0
    call_dist, diff_functions = calc_function_dist(origin_calls, control_calls)
+   assert call_dist >= 0.0
    return ((ast_dist * call_dist) + ast_dist + call_dist, ast_dist, call_dist, diff_functions)
 
-def find_best_control(db, input_features, max_distance=100.0, debug=False, control_cache=None):
+def find_best_control(db, input_features, max_distance=200.0, debug=False, control_cache=None):
    """
    Search all controls with AST vector magnitudes within max_distance and find the best hit (lowest product of AST*call distance)
    against suitable controls. Does not currently use literal distance for the calculation. Could be improved.... returns up to two hits
@@ -377,7 +379,6 @@ def find_best_control(db, input_features, max_distance=100.0, debug=False, contr
    if isinstance(origin_js_id, tuple) or isinstance(origin_js_id, list): # BUG FIXME: should not be a tuple but is... where is that coming from??? so...
        origin_js_id = origin_js_id[0]
    assert isinstance(origin_js_id, str) and len(origin_js_id) == 24
-   assert 'byte_content_sha256' in input_features
 
    best_distance = float('Inf')
    input_ast_vector, ast_sum = calculate_ast_vector(input_features['statements_by_count'])
@@ -392,7 +393,7 @@ def find_best_control(db, input_features, max_distance=100.0, debug=False, contr
    second_best_control = None
 
    # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
-   feasible_controls = find_feasible_controls(db, ast_sum, fcall_sum, max_distance=max_distance, debug=debug, control_cache=control_cache) 
+   feasible_controls = find_feasible_controls(db, ast_sum, fcall_sum, debug=debug, control_cache=control_cache) 
    for fc_tuple in feasible_controls:
        control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple
        assert isinstance(control, dict)
@@ -403,7 +404,7 @@ def find_best_control(db, input_features, max_distance=100.0, debug=False, contr
        # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
        new_distance, ast_dist, call_dist, diff_functions = distance(input_ast_vector, control_ast_vector, 
                                                                     input_features['calls_by_count'], control_call_vector, debug=debug)
-       if new_distance < best_distance and new_distance <= max_distance: 
+       if new_distance < best_distance and new_distance <= max_distance:
            if debug:
                print("Got good distance {} for {} (was {}, max={})".format(new_distance, control_url, best_distance, max_distance)) 
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)

@@ -73,7 +73,9 @@ def test_save_url():
 def test_save_script_correct_checksum():
    m = Mock()
    m.scripts.find_one.return_value = { '_id': "abc123", 'code': b'abc' }
-   m.scripts.insert_one.return_value = { 'inserted_id': 'abc123ff' }
+   m2 = Mock()
+   m2.inserted_id = 'abc123ff'
+   m.scripts.insert_one.return_value = m2
 
    # checksum corresponds to the rubbish code below...
    jsr = DownloadArtefact(url='X', path='full/foo.js', checksum='f8f4392b9ce13de380ecdbe256030807', host='pi1', origin='foo.html', when='2020-04-20')
