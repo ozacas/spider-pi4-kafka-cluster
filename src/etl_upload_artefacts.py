@@ -1,10 +1,9 @@
- -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import json
 import argparse
 import socket
 import pymongo
-from collections import namedtuple
-from bson.binary import Binary
+from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from utils.misc import *
 from utils.models import DownloadArtefact
@@ -61,12 +60,13 @@ if __name__ == "__main__":
                              consumer_timeout_ms=10000, bootstrap_servers=args.bootstrap, group_id=gid, auto_offset_reset=args.start) 
 
     save_pidfile('pid.upload.artefacts', root='/home/spider')
+
     my_hostname = socket.gethostname()
     print("Loading records matching {} from kafka topic".format(my_hostname))
-    batch = sorted([DownloadArtefact(**r) for r in next_artefact(consumer, 
-                                           args.n, 
-                                           lambda v: v['host'] == my_hostname and not v['origin'] is None, 
-                                           verbose=args.v)])
-    print("Loaded {} records.".format(len(batch)))
-    save_batch(db, batch, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v, defensive=args.defensive)
+    for b in batch(next_artefact(consumer, args.n, lambda v: v['host'] == my_hostname and not v['origin'] is None, verbose=args.v), n=10000):
+        artefacts = sorted([DownloadArtefact(**r) for r in b])
+        print("Loaded {} artefacts.".format(len(artefacts)))
+        save_batch(db, artefacts, producer, args.root, fail_on_error=args.fail, to=args.to, verbose=args.v, defensive=args.defensive)
+        print("Uploaded {} artefacts. {}".format(len(artefacts), str(datetime.utcnow())))
+
     rm_pidfile('pid.upload.artefacts', root='/home/spider')
