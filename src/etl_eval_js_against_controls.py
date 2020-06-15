@@ -164,36 +164,31 @@ if __name__ == "__main__":
     db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING), ('control_url', pymongo.ASCENDING )], unique=True)
     print("Index creation complete.")
     
-    vector_cache = pylru.lrucache(10 * 1000) # bigger the better since we want to avoid large-scale mongo queries
-
-    # sorting speeds performance by enhancing feasible control cache performance, just make sure n is big enough - 2k is a good start
-    for message_batch in batch(next_artefact(consumer, args.n, 
-                                        filter_cb=lambda m: m.get('size_bytes') >= 1500, verbose=args.v), n=2000): 
-
-        print("Processing batch of {} records.".format(len(message_batch)))
-        for m in sorted(message_batch, key=lambda v: v['sha256']):
-            js_id = m.get('js_id')
-            vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive,
-                                                              java=args.java, extractor=args.extractor)
-            assert isinstance(vectors_as_dict, dict)
-            for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
-                m[t] = vectors_as_dict[t]
-            try:
+    vector_cache = pylru.lrucache(20 * 1000) # bigger the better since we want to avoid large-scale mongo queries
+    for m in next_artefact(consumer, args.n,
+                                 filter_cb=lambda m: m.get('size_bytes') >= args.min_size, verbose=args.v):
+        js_id = m.get('js_id')
+        vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive,
+                                                          java=args.java, extractor=args.extractor)
+        assert isinstance(vectors_as_dict, dict)
+        for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
+            m[t] = vectors_as_dict[t]
+        try:
+            process_hit(db, m, args)
+        except ValueError as ve:
+            # if we get a ValueError with args.defensive it likely means data corruption since
+            # there should be no literal differences when sha256 matches. So we update the database record and try again.
+            # Otherwise raise as per normal
+            if args.defensive:
+                print(str(ve))
+                print("WARNING: recalculating db entry in case of data-corruption:")
+                vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive, 
+                                                              force=True, java=args.java, 
+                                                              extractor=args.extractor)
+                assert isinstance(vectors_as_dict, dict)
+                for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
+                    m[t] = vectors_as_dict[t]
                 process_hit(db, m, args)
-            except ValueError as ve:
-                # if we get a ValueError with args.defensive it likely means data corruption since
-                # there should be no literal differences when sha256 matches. So we update the database record and try again.
-                # Otherwise raise as per normal
-                if args.defensive:
-                    print(str(ve))
-                    print("WARNING: recalculating db entry in case of data-corruption:")
-                    vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive, 
-                                                                  force=True, java=args.java, 
-                                                                  extractor=args.extractor)
-                    assert isinstance(vectors_as_dict, dict)
-                    for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
-                        m[t] = vectors_as_dict[t]
-                    process_hit(db, m, args)
-                else:
-                    raise ve
+            else:
+                raise ve
     cleanup()
