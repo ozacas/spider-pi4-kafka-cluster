@@ -10,7 +10,7 @@ import pylru
 from datetime import datetime
 from utils.features import analyse_script, get_script
 from datetime import datetime
-from utils.io import save_analysis_content, next_artefact
+from utils.io import save_analysis_content, next_artefact, batch
 from utils.models import JavascriptArtefact
 from utils.misc import *
 
@@ -50,10 +50,12 @@ def save_to_kafka(producer, results, to='analysis-results', key=None):
    producer.send(to, results, key=key)
 
 def iterate(consumer, max, cache, verbose=False):
-   for r in next_artefact(consumer, max, lambda v: 'javascript' in v.get('content-type', ''), verbose=verbose):
-       jsr = JavascriptArtefact(**r)
-       if not jsr.url in cache:
-           yield jsr
+   for message_batch in batch(next_artefact(consumer, max, lambda v: 'javascript' in v.get('content-type', ''), verbose=verbose), n=1000):
+       # sort each batch in order to maximise performance of fv_cache
+       for r in sorted(message_batch, key=lambda v: v['sha256']):
+           jsr = JavascriptArtefact(**r)
+           if not jsr.url in cache:
+               yield jsr
 
 def main(args, consumer=None, producer=None, db=None, cache=None):
    if args.v:
