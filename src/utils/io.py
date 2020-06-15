@@ -24,6 +24,8 @@ def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=F
        byte_content_doc = db.analysis_content.find_one({ 'js_id': js_id })
        if fail_iff_not_found and byte_content_doc is None:   # prevent infinite recursion
            raise ValueError("No data for {}".format(js_id))
+    else:
+       byte_content_doc = None
 
     if byte_content_doc is None:
         code_bytes, js_id = get_script(db, js_id)
