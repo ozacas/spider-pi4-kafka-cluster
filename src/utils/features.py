@@ -141,6 +141,11 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
        fname = js
        tmpfile = None
 
+   # TODO FIXME add support for packed JS here... with autounpacking (just changes the feature vectors but NOT the script content in Mongo)
+   # import jsbeatify.unpackers.packer as packer
+   # is_packed = packer.detect(source)
+   # if is_packed....
+
    # ensure we get lossless output using recommendations reported at: https://bugs.python.org/issue34618
    environ = os.environ.copy()
    environ['PYTHONIOENCODING'] = 'utf-8' 

@@ -161,7 +161,6 @@ def test_find_best_control(pytestconfig):
        d = json.loads(input_features.decode())
        d['js_id'] = 'XXXXXXXXXXXXXXXXXXXXXXXX'
        d['sha256'] = 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
-       d['byte_content_sha256'] = hashlib.sha256(input_features).hexdigest()
        best_control, next_best_control = find_best_control(db, d, debug=True) 
 # EXPECTED RESULTS:
 # best_control = BestControl(control_url='https://cdn.jsdelivr.net/gh/WordPress/WordPress@5.2.5//wp-includes/js/json2.min.js', origin_url='/home/acas/src/pi-cluster-ansible-cfg-mgmt/src/test-javascript/json2_4.9.2.min.js', sha256_matched=False, ast_dist=0.0, function_dist=0.0, diff_functions='', cited_on=None)

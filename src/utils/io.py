@@ -13,8 +13,7 @@ from utils.models import JavascriptArtefact, JavascriptVectorSummary, DownloadAr
 def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=False,
                                            java=None, extractor=None, force=False):
     assert isinstance(m, dict)
-    assert all(['js_id' in m, 'url' in m, 'sha256' in m, 'md5' in m, 
-                'size_bytes' in m, 'byte_content_sha256' in m])
+    assert all(['js_id' in m, 'url' in m, 'sha256' in m, 'md5' in m, 'size_bytes' in m])
 
     js_id = m.get('js_id')
     assert len(js_id) > 0

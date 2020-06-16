@@ -38,7 +38,7 @@ with open(args.file, 'wb+') as fp:
 
 if args.artefact:
    m = { 'sha256': hashlib.sha256(code).hexdigest(), 'md5': hashlib.md5(code).hexdigest(),
-         'size_bytes': len(code), 'js_id': args.artefact, 'byte_content_sha256': 'XXX', 'url': 'XXX' }
+         'size_bytes': len(code), 'js_id': args.artefact, 'url': 'XXX' }
    vectors = find_or_update_analysis_content(db, m, fail_iff_not_found=True, defensive=True)
    assert isinstance(vectors, dict)
    print("Vectors computed from: {}".format(vectors.get('id')))
