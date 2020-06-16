@@ -110,7 +110,9 @@ if __name__ == "__main__":
     stats = {}
     for r in consumer: 
         n += 1
-        hit = BestControl(**r.value)
+        d = r.value
+        d.pop('origin_vectors_sha256', None) 
+        hit = BestControl(**d)
 
         if args.v:
             if n % 10000 == 0:
@@ -126,8 +128,9 @@ if __name__ == "__main__":
 
         # 2. bad AST*function call product (over threshold)? Or not a hit? reject entire record
         if (len(hit.control_url) == 0 or hit.ast_dist * hit.function_dist >= args.threshold or 
-            not hit.is_good_hit(max_distance=args.threshold)) and args.bad:
-            db.etl_bad_hits.insert_one(asdict(hit))
+            not hit.is_good_hit(max_distance=args.threshold)):
+            if args.bad:
+                db.etl_bad_hits.insert_one(asdict(hit))
             n_not_good += 1
             continue
 
