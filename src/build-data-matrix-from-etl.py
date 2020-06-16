@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import pymongo
 import sys
+import re
 import argparse
 from dataclasses import dataclass, field
 from collections import namedtuple
@@ -149,9 +150,17 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
                 l.append(','.join(t.hosts))
             print('\t'.join(l))
 
-def dump_family(db, family, pretty=False):
+def dump_subfamily(db, subfamily, pretty=False):
+   assert len(subfamily) > 0
+   subfamily_regexp = re.compile('.*{}.*'.format(subfamily), re.IGNORECASE)
+   cu = [rec.get('origin') for rec in db.javascript_controls.find({ 'subfamily': subfamily_regexp })]
+   print("Found {} suitable controls to look for subfamily hits".format(len(cu)))
+   dump_family(db, subfamily, pretty=pretty, control_urls=cu)
+
+def dump_family(db, family, pretty=False, control_urls=None):
    assert len(family) > 0
-   control_urls = [rec.get('origin') for rec in db.javascript_controls.find({ 'family': family })]
+   if control_urls is None:
+       control_urls = [rec.get('origin') for rec in db.javascript_controls.find({ 'family': family })]
    is_first = True
    for u in control_urls:
        assert len(u) > 0
@@ -198,21 +207,21 @@ def dump_control_hits(db, control_url, pretty=False, dump_headers=True): # origi
                     { "$sort": { "min_ast": 1, "min_fdist": 1 } }
           ], allowDiskUse=True)
    if dump_headers:
-       headers = ['xrefs', 'origin_url', 'changed_functions', 
+       headers = ['xrefs', 'changed_functions', 
               'min_ast_dist', 'min_function_dist', 'min_ldist', 
-              "max_literals_not_in_origin", "max_literals_not_in_control", "max_n_diff_literals"]
+              "max_literals_not_in_origin", "max_literals_not_in_control", "max_n_diff_literals", "origin_url"]
 
        print('\t'.join(headers))
    for hit in hits:
        data = [ ' '.join(hit.get('xrefs')), 
-                hit.get('origin_url'), 
                 ','.join(sorted(hit.get('changed_functions'))), 
                 str(hit.get('min_ast')), 
                 str(hit.get('min_fdist')),
                 str(hit.get('min_ldist')),
                 str(hit.get('max_literals_not_in_origin')),
                 str(hit.get('max_literals_not_in_control')),
-                str(hit.get('max_n_diff_literals'))
+                str(hit.get('max_n_diff_literals')),
+                hit.get('origin_url')
                ]
        print('\t'.join(data)) 
 
@@ -359,7 +368,7 @@ add_mongo_arguments(a, default_user='ro') # running queries is basically always 
 add_debug_arguments(a)
 a.add_argument("--pretty", help="Use pretty-printed JSON instead of TSV as stdout format", action="store_true")
 a.add_argument("--query", help="Run specified query, one of above choices: [None]", type=str, 
-                          choices=['unresolved_clusters', 'sites_by_control', 'distances', 
+                          choices=['unresolved_clusters', 'sites_by_control', 'distances', "subfamily_hits",
                                    'list_controls', 'control_hits', 'family_hits', 'hosts', 'host'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 a.add_argument("--threshold", help="Maximum distance product (AST distance * function call distance) to permit [100.0]", type=float, default=100.0)
@@ -379,6 +388,8 @@ elif args.query == "control_hits":
     dump_control_hits(db, args.extra, pretty=args.pretty, control_url=args.extra)
 elif args.query == "family_hits":
     dump_family(db, args.extra, pretty=args.pretty)
+elif args.query == "subfamily_hits":
+    dump_subfamily(db, args.extra, pretty=args.pretty)
 elif args.query == "hosts":
     dump_hosts(db, pretty=args.pretty, threshold=args.threshold)
 elif args.query == "host": # host to dump is supplied in args.extra (partial matching is performed) eg. blah.com.au will match <anything>blah.com.au
