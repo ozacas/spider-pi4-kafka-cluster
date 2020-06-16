@@ -81,7 +81,7 @@ if __name__ == "__main__":
     add_mongo_arguments(a, default_access="read-write", default_user='rw')
     add_extractor_arguments(a)
     add_debug_arguments(a)
-    a.add_argument("--threshold", help="Ignore hits with AST * Function call distance greater than this [150.0]", type=float, default=150.0)
+    a.add_argument("--threshold", help="Ignore hits with AST * Function call distance greater than this [300.0]", type=float, default=300.0)
     a.add_argument("--tail", help="Dont terminate if we've read all the messages. Wait for new ones", action="store_true")
     a.add_argument("--bad", help="Save hits which fail threshold to db.etl_bad_hits", action='store_true')
     args = a.parse_args()
@@ -127,8 +127,7 @@ if __name__ == "__main__":
             continue
 
         # 2. bad AST*function call product (over threshold)? Or not a hit? reject entire record
-        if (len(hit.control_url) == 0 or hit.ast_dist * hit.function_dist >= args.threshold or 
-            not hit.is_good_hit(max_distance=args.threshold)):
+        if (len(hit.control_url) == 0 or not hit.is_good_hit(max_distance=args.threshold)):
             if args.bad:
                 db.etl_bad_hits.insert_one(asdict(hit))
             n_not_good += 1
