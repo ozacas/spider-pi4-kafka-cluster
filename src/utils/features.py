@@ -498,6 +498,21 @@ def identify_control_subfamily(cntl_url):
       subfamily = "tiny-mce"
    if subfamily.endswith("-dev"):
       subfamily = subfamily[:-4]
+   mapping = ( ('admin-', 'admin'), ('chunk-googlesitekit-adminbar-', 'googlesitekit-adminbar'),
+               ('chunk-googlesitekit-setup-wizard-', 'googlesitekit-setup-wizard'), ('chunk-googlesitekit-setup-wrapper-', 'googlesitekit-setup-wrapper'),
+               ('date-', 'date'), ('editor', 'editor'), ('edit-', 'edit'), ('editor-', 'editor'), ('eland-tracker-', 'eland-tracker'),
+               ('jquery-spservices-', 'jquery-spservices'), ('login-', 'login'), ('modernizr-', 'modernizr'), 
+               ('moment-timezone-with-data-', 'moment-timezone-with-data'), ('chunk-googlesitekit-', 'googlesitekit'),
+               ('admin-ajaxwatcher-', 'admin-ajaxwatcher'), ('authorizenet-accept-', 'authorizenet'),
+               ('jquery-ui-timepicker-addon-', 'jquery-ui-timepicker-addon'), ('ui-bootstrap-', 'ui-bootstrap'),
+               ('vendors-chunk-googlesitekit-adminbar-', 'googlesitekit-adminbar'),
+               ('woocommerce-admin-', 'woocommerce-admin'), ('woocommerce-product-', 'woocommerce-product'),
+   )
 
+   for t in mapping:
+       starts_with, replace_with = t
+       if subfamily.startswith(starts_with):
+           subfamily = replace_with
+ 
    assert subfamily is not None # POST-CONDITION: must not be true or we will have problems accurately computing a probability  
    return (cntl_url, subfamily)
