@@ -6,4 +6,5 @@ pymongo
 pylru
 scrapy
 dnspython
+jsbeautifier>1.10.2
 #sqlite3
