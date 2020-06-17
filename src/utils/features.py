@@ -151,17 +151,20 @@ def is_artefact_packed(filename, byte_content):
        is_dean_edwards_packed = packer.detect(source)
        if is_dean_edwards_packed:
            ret = packer.unpack(source)
-           result = decode(encode(ret, 'utf-8', 'backslashreplace'), 'unicode-escape')
+           result = decode(encode(ret, 'utf-8', 'backslashreplace'), 'unicode-escape').encode()
            assert isinstance(result, bytes)
+           assert len(result) > 0
            return (True, result)
        # else 
        return (False, byte_content)
    except Exception as e:
-       # if an exception is thrown, we assume it is not packed.... hmm....
-       print(str(e)) 
-       return (False, byte_content)
+       # we fail an artefact that is purportedly packed, but which cannot be unpacked...
+       raise e
 
 def save_temp_file(byte_content):
+    assert isinstance(byte_content, bytes)
+    assert len(byte_content) > 0
+
     tmpfile = NamedTemporaryFile(delete=False)
     tmpfile.write(byte_content)
     tmpfile.close()
@@ -176,12 +179,18 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
        tmpfile = None
 
    # TODO FIXME add support for packed JS here... with autounpacking (just changes the feature vectors but NOT the script content in Mongo)
-   is_packed, unpacked_byte_content = is_artefact_packed(fname, js if is_bytes else None)
-   if is_packed:
-       if tmpfile is not None:
-           os.unlink(tmpfile.name)
-       tmpfile, fname = save_temp_file(unpacked_byte_content)
-       # FALLTHRU... although it will probably fail since unpacker is VERY unreliable... and often produces syntax errors
+   try:
+       is_packed, unpacked_byte_content = is_artefact_packed(fname, js if is_bytes else None)
+       if is_packed:
+           if tmpfile is not None:
+              os.unlink(tmpfile.name)
+           assert len(unpacked_byte_content) > 0
+           tmpfile, fname = save_temp_file(unpacked_byte_content)
+           # FALLTHRU... although it will probably fail since unpacker is VERY unreliable... and often produces syntax errors
+   except Exception as e:
+       # if we get an exception, we assume that its bad packed artefact and reject the whole analysis
+       print("WARNING: unpack failed for {} - ignored.".format(jsr))
+       return (None, True, str(e)) # (no bytes, failed, stderr == str(e))
 
    # ensure we get lossless output using recommendations reported at: https://bugs.python.org/issue34618
    environ = os.environ.copy()
