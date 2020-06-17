@@ -3,8 +3,10 @@ kafka-python
 certifi
 wheel
 pymongo
+pytest
 pylru
 scrapy
 dnspython
+BeautifulSoup4
 jsbeautifier>1.10.2
 #sqlite3
