@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
-from enforce_typing import enforce_types
 import getpass
 import scrapy
 import os
@@ -28,7 +27,6 @@ class Password:
     def __str__(self):
         return self.value
 
-@enforce_types
 @dataclass
 class PageStats:
    url: str
@@ -51,7 +49,6 @@ class DownloadFailure:
    http_status: int # eg. 404 
    when: str # UTC timestamp
 
-@enforce_types
 @dataclass
 class JavascriptLocation:
    country: str # NB: first non AU/US/na country reported only
@@ -74,7 +71,6 @@ class DownloadArtefact:
    def __lt__(self, other):
        return self.checksum < other.checksum
 
-@enforce_types
 @dataclass
 class JavascriptArtefact: # definition corresponds to visited kafka topic record schema
     # responsible for record official details of each download
@@ -119,7 +115,6 @@ class ThugLog:
     when: str # UTC timestamp
     thug_analysis_id: str # objectId (ie. foreign key) into thug mongoDB with JSON and other logging
 
-@enforce_types
 @dataclass
 class BestControl:
     control_url: str        # chosen control URL with best ast_dist (from CDNJS typically)
@@ -228,7 +223,6 @@ class FeatureVector:
     ElementGet: int = 0
     Name: int = 0
 
-@enforce_types
 @dataclass 
 class JavascriptVectorSummary:
     origin: str                 # control CDN url
