@@ -5,6 +5,9 @@ import re
 import math 
 import hashlib
 import pylru
+from codecs import encode, decode
+from bs4 import UnicodeDammit
+import jsbeautifier.unpackers.packer as packer
 from itertools import chain
 from bson.objectid import ObjectId
 from dataclasses import asdict
@@ -130,21 +133,55 @@ def get_script(db, artefact):
    id = str(js.get('_id'))
    return (js.get(u'code'), id)
 
+def is_artefact_packed(filename, byte_content):
+   """
+   Returns a tuple (is_packed, unpacked_byte_content) if the artefact is packed using an algorithm
+   similar to Dave Edward's p.a.c.k.e.r algorithm. This appears to generate syntax errors compounding feature analysis,
+   but we try anyway...
+   """
+   # dont load the file again if we already have the byte-content...
+   if byte_content is None:
+       with open(filename, 'rb') as fp:
+           byte_content = fp.read()
+
+   try:
+       # https://stackoverflow.com/questions/436220/how-to-determine-the-encoding-of-text
+       encoding = UnicodeDammit(byte_content)
+       source = byte_content.decode(encoding.original_encoding, errors='strict')
+       is_dean_edwards_packed = packer.detect(source)
+       if is_dean_edwards_packed:
+           ret = packer.unpack(source)
+           result = decode(encode(ret, 'utf-8', 'backslashreplace'), 'unicode-escape')
+           assert isinstance(result, bytes)
+           return (True, result)
+       # else 
+       return (False, byte_content)
+   except Exception as e:
+       # if an exception is thrown, we assume it is not packed.... hmm....
+       print(str(e)) 
+       return (False, byte_content)
+
+def save_temp_file(byte_content):
+    tmpfile = NamedTemporaryFile(delete=False)
+    tmpfile.write(byte_content)
+    tmpfile.close()
+    return (tmpfile, tmpfile.name)
+    
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
-   if isinstance(js, bytes):
-       # save code to a file
-       tmpfile = NamedTemporaryFile(delete=False)
-       tmpfile.write(js)
-       tmpfile.close()
-       fname = tmpfile.name
+   is_bytes = isinstance(js, bytes)
+   if is_bytes:
+       tmpfile, fname = save_temp_file(js)
    else:
        fname = js
        tmpfile = None
 
    # TODO FIXME add support for packed JS here... with autounpacking (just changes the feature vectors but NOT the script content in Mongo)
-   # import jsbeatify.unpackers.packer as packer
-   # is_packed = packer.detect(source)
-   # if is_packed....
+   is_packed, unpacked_byte_content = is_artefact_packed(fname, js if is_bytes else None)
+   if is_packed:
+       if tmpfile is not None:
+           os.unlink(tmpfile.name)
+       tmpfile, fname = save_temp_file(unpacked_byte_content)
+       # FALLTHRU... although it will probably fail since unpacker is VERY unreliable... and often produces syntax errors
 
    # ensure we get lossless output using recommendations reported at: https://bugs.python.org/issue34618
    environ = os.environ.copy()

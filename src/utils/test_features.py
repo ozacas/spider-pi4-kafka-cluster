@@ -96,6 +96,16 @@ def test_analyse_script(pytestconfig, analyse_script_expected_results):
       js.pop('id', None) # not interested in this field anymore -- obsolete
       assert js == analyse_script_expected_results
 
+def test_analyse_script_unpacker(pytestconfig):
+   expected_results = {'packed1.js': False, 'packed2.js': False, 'packed3.js': False}
+
+   for testjs in ["packed1.js", "packed2.js", "packed3.js"]:
+      filename = "{}/src/test-javascript/{}".format(pytestconfig.rootdir, testjs)
+      jsr = JavascriptArtefact(url="file:{}".format(filename), origin=None, sha256='XXX', md5='XXX')
+      byte_content, failed, stderr = analyse_script(filename, jsr, feature_extractor="{}/src/extract-features.jar".format(pytestconfig.rootdir))
+      assert failed == expected_results[testjs]
+      assert byte_content[0] == ord('{')
+
 def test_analyse_script_2(pytestconfig):
    testjs = "{}/src/test-javascript/fieldRequiredWhenNotAfterGoLiveValidation.js".format(pytestconfig.rootdir)
    with open(testjs, "rb") as fp:
