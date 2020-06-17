@@ -135,7 +135,7 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
        assert '_id' in s
        assert 'code' in s
        code = s.get('code')
-       print("actual bytes={} md5={} sha256={}".format(script_len, sum5, sum256))
+       #print("actual bytes={} md5={} sha256={}".format(script_len, sum5, sum256))
        on_disk256 = hashlib.sha256(code).hexdigest()
        on_disk5 = hashlib.md5(code).hexdigest()
        #print("expected bytes={} md5={} sha256={}".format(s.get('size_bytes'), on_disk5, on_disk256))
