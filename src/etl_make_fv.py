@@ -54,6 +54,8 @@ def iterate(consumer, max, cache, verbose=False):
        # sort each batch in order to maximise performance of fv_cache
        for r in sorted(message_batch, key=lambda v: v['sha256']):
            jsr = JavascriptArtefact(**r)
+           if jsr.size_bytes < 1:  # nothing to analyse?
+               continue
            if not jsr.url in cache:
                yield jsr
 
