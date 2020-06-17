@@ -150,29 +150,31 @@ def dump_sites_by_control(db, pretty=False, want_set=False, threshold=10.0):
                 l.append(','.join(t.hosts))
             print('\t'.join(l))
 
-def dump_subfamily(db, subfamily, pretty=False):
+def dump_subfamily(db, subfamily, pretty=False, exclude_hash_matches=False):
    assert len(subfamily) > 0
    subfamily_regexp = re.compile('.*{}.*'.format(subfamily), re.IGNORECASE)
    cu = [rec.get('origin') for rec in db.javascript_controls.find({ 'subfamily': subfamily_regexp })]
-   print("Found {} suitable controls to look for subfamily hits".format(len(cu)))
-   dump_family(db, subfamily, pretty=pretty, control_urls=cu)
+   dump_family(db, subfamily, pretty=pretty, control_urls=cu, exclude_hash_matches=exclude_hash_matches)
 
-def dump_family(db, family, pretty=False, control_urls=None):
+def dump_family(db, family, pretty=False, control_urls=None, exclude_hash_matches=False):
    assert len(family) > 0
    if control_urls is None:
        control_urls = [rec.get('origin') for rec in db.javascript_controls.find({ 'family': family })]
    is_first = True
    for u in control_urls:
        assert len(u) > 0
-       dump_control_hits(db, u, pretty=pretty, dump_headers=is_first)
+       dump_control_hits(db, u, pretty=pretty, dump_headers=is_first, exclude_hash_matches=exclude_hash_matches)
        is_first = False
 
-def dump_control_hits(db, control_url, pretty=False, dump_headers=True): # origin must be specified or ValueError
+def dump_control_hits(db, control_url, pretty=False, dump_headers=True, exclude_hash_matches=False): # origin must be specified or ValueError
    cntrl = db.javascript_controls.find_one({ 'origin': control_url })
    if cntrl is None:
        raise ValueError('No control matching: {}'.format(control_url))
+   d = { "control_url": control_url }
+   if exclude_hash_matches:
+      d.update({ 'sha256_matched': False })
    hits = db.etl_hits.aggregate([ 
-                    { "$match": { "control_url": control_url } },
+                    { "$match": d },
                     { "$unwind": { "path": "$diff_functions", "preserveNullAndEmptyArrays": True } },
                     { "$group": { 
                           "_id": { "control_url": "$control_url", "origin_url": "$origin_url" },
@@ -207,11 +209,11 @@ def dump_control_hits(db, control_url, pretty=False, dump_headers=True): # origi
                     { "$sort": { "min_ast": 1, "min_fdist": 1 } }
           ], allowDiskUse=True)
    if dump_headers:
-       headers = ['xrefs', 'changed_functions', 
-              'min_ast_dist', 'min_function_dist', 'min_ldist', 
-              "max_literals_not_in_origin", "max_literals_not_in_control", "max_n_diff_literals", "origin_url"]
-
+       headers = ['xrefs', 'changed_functions', 'min_ast_dist', 'min_function_dist', 'min_ldist', 
+                  "max_literals_not_in_origin", "max_literals_not_in_control", "max_n_diff_literals", 
+                  "origin_url", "control_url"]
        print('\t'.join(headers))
+
    for hit in hits:
        data = [ ' '.join(hit.get('xrefs')), 
                 ','.join(sorted(hit.get('changed_functions'))), 
@@ -221,7 +223,8 @@ def dump_control_hits(db, control_url, pretty=False, dump_headers=True): # origi
                 str(hit.get('max_literals_not_in_origin')),
                 str(hit.get('max_literals_not_in_control')),
                 str(hit.get('max_n_diff_literals')),
-                hit.get('origin_url')
+                hit.get('origin_url'),
+                control_url
                ]
        print('\t'.join(data)) 
 
@@ -372,6 +375,7 @@ a.add_argument("--query", help="Run specified query, one of above choices: [None
                                    'list_controls', 'control_hits', 'family_hits', 'hosts', 'host'])
 a.add_argument("--extra", help="Parameter for query", type=str)
 a.add_argument("--threshold", help="Maximum distance product (AST distance * function call distance) to permit [100.0]", type=float, default=100.0)
+a.add_argument("--exclude-hash-matches", help="Exclude hits which hash match a control [False]", action="store_true")
 args = a.parse_args()
 
 mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
@@ -385,11 +389,11 @@ elif args.query == "unresolved_clusters":
 elif args.query == "list_controls":
     list_controls(db, pretty=args.pretty)
 elif args.query == "control_hits":
-    dump_control_hits(db, args.extra, pretty=args.pretty, control_url=args.extra)
+    dump_control_hits(db, args.extra, pretty=args.pretty, control_url=args.extra, exclude_hash_matches=args.exclude_hash_matches)
 elif args.query == "family_hits":
-    dump_family(db, args.extra, pretty=args.pretty)
+    dump_family(db, args.extra, pretty=args.pretty, exclude_hash_matches=args.exclude_hash_matches)
 elif args.query == "subfamily_hits":
-    dump_subfamily(db, args.extra, pretty=args.pretty)
+    dump_subfamily(db, args.extra, pretty=args.pretty, exclude_hash_matches=args.exclude_hash_matches)
 elif args.query == "hosts":
     dump_hosts(db, pretty=args.pretty, threshold=args.threshold)
 elif args.query == "host": # host to dump is supplied in args.extra (partial matching is performed) eg. blah.com.au will match <anything>blah.com.au
