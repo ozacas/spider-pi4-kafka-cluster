@@ -204,9 +204,10 @@ def save_control(db, url, family, variant, version, force=False, refuse_hashes=N
    if failed:
        raise ValueError('Could not analyse script {} - {}'.format(jsr.url, stderr))
    ret = json.loads(bytes_content.decode())
+   cntrl_url, subfamily = identify_control_subfamily(jsr.url)
    ret.update({ 'family': family, 'release': version, 'variant': variant, 'origin': url, 'sha256': sha256, 'md5': md5, 'size_bytes': len(content),
                 'do_not_load': False,  # all controls loaded by default except alpha/beta/release candidate
-                'provider': provider, 'subfamily': identify_control_subfamily(jsr.url) })
+                'provider': provider, 'subfamily': subfamily })
    #print(ret)
    assert 'sha256' in ret
    assert 'md5' in ret
