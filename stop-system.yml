@@ -1,8 +1,9 @@
 - name: tell processes to gracefully shutdown
   hosts: thug_hosts x86_thug_hosts
   gather_facts: no
+  become: yes
   tasks:
-    - shell: for f in "{{ PID_ROOT }}"/pid.*; do cat $f; echo; done
+    - shell: for f in "{{ PID_ROOT }}"/pid.* "{{ SPIDER_ROOT }}"/pid.* "{{ LOWPRIV_ROOT }}"/pid.*; do cat $f; echo; done
       register: proc
     - debug: msg="{{ proc }}"
     - shell: kill -INT {{ item }}
