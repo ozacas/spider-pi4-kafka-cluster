@@ -2,6 +2,7 @@ from scrapy import Request
 from scrapy.pipelines.files import FilesPipeline, FileException
 from scrapy.utils.project import get_project_settings
 from scrapy.utils.request import referer_str
+from scrapy.exceptions import IgnoreRequest
 from kafka import KafkaProducer
 from urllib.parse import urlparse
 import json
