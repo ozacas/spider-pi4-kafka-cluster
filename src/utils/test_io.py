@@ -72,20 +72,30 @@ def test_save_url():
 
 def test_save_script_correct_checksum():
    m = Mock()
-   m.scripts.find_one.return_value = { '_id': "abc123", 'code': b'abc' }
+   # hash values must correspond to the script_bytes... or else the code-under-test will think the mock database is "corrupt"
+   script_bytes = 'console.write.(blah blah)'.encode()
+   m.scripts.find_one.return_value = { '_id': "abc123", 'sha256': 'd76a62e336adcdda817ad46287d08b616ccdbfd4e771b08cfeba864626433081', 'md5': 'f8f4392b9ce13de380ecdbe256030807', 'size_bytes': 25, 'code': script_bytes }
    m2 = Mock()
    m2.inserted_id = 'abc123ff'
    m.scripts.insert_one.return_value = m2
 
    # checksum corresponds to the rubbish code below...
+   #[call.urls.insert_one({'url': 'X', 'last_visited': '2020-04-20', 'origin': 'foo.html'}),
+   # call.scripts.find_one({'sha256': 'd76a62e336adcdda817ad46287d08b616ccdbfd4e771b08cfeba864626433081', 
+   #                        'md5': 'f8f4392b9ce13de380ecdbe256030807', 'size_bytes': 25}),
+   # call.scripts.insert_one({'sha256': 'd76a62e336adcdda817ad46287d08b616ccdbfd4e771b08cfeba864626433081', 
+   #                          'md5': 'f8f4392b9ce13de380ecdbe256030807', 'size_bytes': 25, 'code': Binary(b'console.write.(blah blah)', 0)}),
+   # call.script_url.insert_one({'url_id': <Mock name='mock.urls.insert_one().inserted_id' id='139913264531296'>, 'script': 'abc123ff'})]
+
    jsr = DownloadArtefact(url='X', path='full/foo.js', checksum='f8f4392b9ce13de380ecdbe256030807', host='pi1', origin='foo.html', when='2020-04-20')
-   ret, js_id = save_script(m, jsr, 'console.write.(blah blah)'.encode())
+   ret, js_id = save_script(m, jsr, script_bytes)
    assert isinstance(ret, dict)
-   assert js_id == "abc123ff"
+   assert js_id == "abc123"  # since it is "already in the database"
    assert 'sha256' in ret
    assert 'md5' in ret
    assert 'size_bytes' in ret 
-   assert len(m.method_calls) == 4 # db.urls.insert_one(), db.scripts.find_one(), db.scripts.insert_one(), db.script_url.insert_one()
+   print(m.method_calls)
+   assert len(m.method_calls) == 3 # db.urls.insert_one(), db.scripts.find_one(), db.script_url.insert_one()
 
 def test_save_script_incorrect_checksum():
    m = Mock()
