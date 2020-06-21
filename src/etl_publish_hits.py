@@ -26,10 +26,11 @@ def cleanup(*args):
     exit(0)
 
 
-def process_hit(db, all_controls, hit: BestControl, producer, stats=None):
+def process_hit(db, all_controls, hit: BestControl, producer, reason, stats=None):
     assert stats is not None
     dist = hit.ast_dist
     assert dist >= 0.0
+    assert len(reason) > 0
 
     origin_fields = as_url_fields(hit.origin_url, prefix='origin')
     host = origin_fields.get('origin_host')
@@ -41,6 +42,7 @@ def process_hit(db, all_controls, hit: BestControl, producer, stats=None):
 
     u = hit.control_url
     assert u in all_controls # should have been checked before call
+    assert len(u) > 0        # bad hits should not come to process_hit()
     d.update(origin_fields)
 
     # cited_on URL (aka. HTML page) iff specified
@@ -48,27 +50,21 @@ def process_hit(db, all_controls, hit: BestControl, producer, stats=None):
     d['control_family'] = all_controls[u].get('family')
 
     # good hits get sent to the suspicious analysis pipeline
-    ok, reason = hit.good_hit_as_tuple()
-    if ok:
-        if not reason in stats:
-            stats[reason] = 0
-        stats[reason] += 1
-        dc = d.copy()
-        dc.pop('_id', None)
-        dc['diff_functions'] = hit.diff_functions_as_list()
-        assert isinstance(dc['diff_functions'], list)
-        if dc['cited_on_host'] is None:   # some buggy records - rare
-            print("Bad data - skipping... {}".format(dc))
-            return False
-        producer.send('etl-good-hits', dc)
-        # sanity check: if different literals are found then the string must be greater than zero length
-        assert (hit.n_diff_literals > 0 and len(dc.get('diff_literals')) > 0) or hit.n_diff_literals <= 0 
-        db.etl_hits.insert_one(dc) # BREAKING CHANGE: dc['diff_functions'] is now a list not a comma separated string, but literals is still a string
-        return True
-    else:
-        if args.bad:
-            db.etl_bad_hits.insert_one(d)
-        return False
+    if not reason in stats:
+        stats[reason] = 0
+    stats[reason] += 1
+    dc = d.copy()
+    dc.pop('_id', None)
+    dc['diff_functions'] = hit.diff_functions_as_list()
+    assert isinstance(dc['diff_functions'], list)
+    if dc['cited_on_host'] is None:   # some buggy records - rare
+        print("Bad data - skipping... {}".format(dc))
+        return
+
+    producer.send('etl-good-hits', dc)
+    # sanity check: if different literals are found then the string must be greater than zero length
+    assert (hit.n_diff_literals > 0 and len(dc.get('diff_literals')) > 0) or hit.n_diff_literals <= 0 
+    db.etl_hits.insert_one(dc) # BREAKING CHANGE: dc['diff_functions'] is now a list not a comma separated string, but literals is still a string
 
 if __name__ == "__main__":
     a = argparse.ArgumentParser(description="Reconcile all data from control, origin and artefacts into a query-ready collection")
@@ -91,8 +87,8 @@ if __name__ == "__main__":
     db = mongo[args.dbname]
     timeout = float('Inf') if args.tail else 10000
     consumer = KafkaConsumer(args.consume_from, bootstrap_servers=args.bootstrap, group_id=args.group, 
-                 auto_offset_reset=args.start, consumer_timeout_ms=timeout,
-                 value_deserializer=json_value_deserializer())
+                             auto_offset_reset=args.start, consumer_timeout_ms=timeout,
+                             value_deserializer=json_value_deserializer())
     producer = KafkaProducer(bootstrap_servers=args.bootstrap, value_serializer=json_value_serializer())
     setup_signals(cleanup)
     n_ok = n_bad = 0
@@ -105,7 +101,6 @@ if __name__ == "__main__":
         assert isinstance(t[0], dict)
         assert 'origin' in t[0]
         all_controls[t[0].get('origin')] = t[0]
-
 
     stats = {}
     for r in consumer: 
@@ -127,7 +122,8 @@ if __name__ == "__main__":
             continue
 
         # 2. bad AST*function call product (over threshold)? Or not a hit? reject entire record
-        if (len(hit.control_url) == 0 or not hit.is_good_hit(max_distance=args.threshold)):
+        ok, reason = hit.good_hit_as_tuple(max_distance=args.threshold)
+        if not ok or len(hit.control_url) < 1:
             if args.bad:
                 db.etl_bad_hits.insert_one(asdict(hit))
             n_not_good += 1
@@ -140,11 +136,8 @@ if __name__ == "__main__":
             n_bad += 1
             continue   # control no longer in database? ok, skip further work
 
-        ret = process_hit(db, all_controls, hit, producer, stats=stats)
-        if ret:
-            n_ok += 1
-        else:
-            n_bad += 1 
+        process_hit(db, all_controls, hit, producer, reason, stats=stats)
+        n_ok += 1
 
     print("Run completed: processed {} records with AST*function_call threshold <= {}".format(n, args.threshold))
     print("{} records had a problem which could not be ignored.".format(n_bad))
