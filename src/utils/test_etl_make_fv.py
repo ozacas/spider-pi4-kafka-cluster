@@ -42,7 +42,7 @@ def test_send_to_kafka():
 
 def test_iterate():
    m1 = mock.Mock()
-   m1.value = { 'size_bytes': 2041, 'content-type': 'text/javascript', 'url': 'http://blah.blah/...', 'sha256': 'XXX', 'md5': 'YYY', 'inline': False }
+   m1.value = { 'js_id': '1111', 'size_bytes': 2041, 'content-type': 'text/javascript', 'url': 'http://blah.blah/...', 'sha256': 'XXX', 'md5': 'YYY', 'inline': False }
    m2 = mock.Mock()
    m2.value = { 'content-type': 'application/json' }
    consumer = [ m1, m2 ]

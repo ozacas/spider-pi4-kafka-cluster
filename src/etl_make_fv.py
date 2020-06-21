@@ -30,14 +30,14 @@ a.add_argument("--defensive", help="Enable extra checks to check data integrity 
 def signal_handler(num, frame):
     global consumer
     global mongo
-    print("Control-C pressed. Terminating... may take a while for current batch to complete")
+    print("Control-C pressed. Terminating... may take a while")
     cleanup([mongo, consumer])
     exit(1)
 
 def cleanup(items_to_close, pidfile='pid.make.fv'):
     for c in items_to_close:
         c.close()
-    rm_pidfile(pidfile)
+    rm_pidfile(pidfile, root=os.getcwd())
 
 def report_failure(producer, artefact, reason):
     d = asdict(artefact)
@@ -49,14 +49,25 @@ def save_to_kafka(producer, results, to='analysis-results', key=None):
    assert 'js_id' in results and '_id' not in results
    producer.send(to, results, key=key)
 
+def javascript_only():
+   return lambda v: 'javascript' in v.get('content-type', '')
+
 def iterate(consumer, max, cache, verbose=False):
-   for message_batch in batch(next_artefact(consumer, max, lambda v: 'javascript' in v.get('content-type', ''), verbose=verbose), n=1000):
-       # sort each batch in order to maximise performance of fv_cache
-       for r in sorted(message_batch, key=lambda v: v['sha256']):
+   assert consumer is not None
+   assert cache is not None
+   assert max > 0
+   # NB: sort each batch in order to maximise performance of fv_cache (sha256 should be sufficient)
+   batch_size = 2000
+   for batch_of_messages in batch(next_artefact(consumer, max, javascript_only(), verbose=verbose), n=batch_size):
+       if len(batch_of_messages) < batch_size:
+           print("WARNING: expected {} messages, got {}".format(batch_size, len(batch_of_messages)))
+       for r in sorted(batch_of_messages, key=lambda v: v['sha256']):
            jsr = JavascriptArtefact(**r)
-           if jsr.size_bytes < 1:  # nothing to analyse?
+           if jsr.size_bytes < 1:  # ignore artefacts with nothing to analyse
                continue
            if not jsr.url in cache:
+               if verbose:
+                   print(jsr)
                yield jsr
 
 def main(args, consumer=None, producer=None, db=None, cache=None):
@@ -83,19 +94,14 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
       #       'when': '2020-02-06 02:51:46.016314', 'sha256': 'c38bd5db9472fa920517c48dc9ca7c556204af4dee76951c79fec645f5a9283a', 
       #        'md5': '4714b9a46307758a7272ecc666bc88a7', 'origin': 'XXXX' }  NB: origin may be none for old records (sadly)
       assert isinstance(jsr, JavascriptArtefact)
-      #assert len(jsr.js_id) > 0
-      cache[jsr.url] = 1
 
-      # 1. verbose?
-      if args.v:
-          print(jsr)
+      # dont analyse the same artefact over and over... (cache is checked in iterate())
+      cache[jsr.url] = 1
 
       # 2. got results cache hit ??? Saves computing it again and hitting the DB, which is slow...
       if fv_cache is not None and jsr.js_id in fv_cache:
           byte_content, js_id = fv_cache[jsr.js_id]
           n_cached += 1
-          # falsely "update" the cache to ensure it is rewarded for being hit ie. becomes MRU
-          fv_cache[js_id] = (byte_content, js_id)
           # FALLTHRU
       else:
           # 3. obtain and analyse the JS from MongoDB and add to list of analysed artefacts topic. On failure lodge to feature extraction failure topic
@@ -131,7 +137,8 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
    return 0
 
 if __name__ == "__main__":
-   save_pidfile('pid.make.fv')
+   root=os.getcwd()
+   save_pidfile('pid.make.fv', root=root)
    setup_signals(signal_handler)
    global mongo
    global consumer
