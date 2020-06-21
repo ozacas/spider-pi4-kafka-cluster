@@ -1,6 +1,7 @@
 import subprocess
 import json
 import os
+from io import StringIO
 import re
 import math 
 import hashlib
@@ -133,6 +134,20 @@ def get_script(db, artefact):
    id = str(js.get('_id'))
    return (js.get(u'code'), id)
 
+def fast_decode(byte_content):
+   """
+   We assume that most AU artefacts will be utf-8 encoded (for speed). If that errors, we go thru a slow process but more universal process to decode....
+   """
+   assert isinstance(byte_content, bytes)
+   try:
+       source = byte_content.decode('utf-8', errors='strict')
+       return source
+   except:
+       # https://stackoverflow.com/questions/436220/how-to-determine-the-encoding-of-text
+       encoding = UnicodeDammit(byte_content)
+       source = byte_content.decode(encoding.original_encoding, errors='strict')
+       return source
+
 def is_artefact_packed(filename, byte_content):
    """
    Returns a tuple (is_packed, unpacked_byte_content) if the artefact is packed using an algorithm
@@ -145,12 +160,12 @@ def is_artefact_packed(filename, byte_content):
            byte_content = fp.read()
 
    try:
-       # https://stackoverflow.com/questions/436220/how-to-determine-the-encoding-of-text
-       encoding = UnicodeDammit(byte_content)
-       source = byte_content.decode(encoding.original_encoding, errors='strict')
-       is_dean_edwards_packed = packer.detect(source)
-       if is_dean_edwards_packed:
+       source = fast_decode(byte_content)
+       is_packed = packer.detect(source) 
+       if is_packed:
            ret = packer.unpack(source)
+           # TODO FIXME... yuk this is so silly! But we have to return bytes since extract-features.jar program expects that... 
+           # fortunately most artefacts arent packed so this is not as expensive as it could be...
            result = decode(encode(ret, 'utf-8', 'backslashreplace'), 'unicode-escape').encode()
            assert isinstance(result, bytes)
            assert len(result) > 0
@@ -404,7 +419,7 @@ def fix_literals(literals_to_encode):
    ret = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
    return ','.join(ret)
 
-def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False):
+def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False, additive_weight=0.5):
    if debug:
        assert isinstance(origin_ast, list)
        assert isinstance(control_ast, list)
@@ -415,7 +430,8 @@ def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False):
    assert ast_dist >= 0.0
    call_dist, diff_functions = calc_function_dist(origin_calls, control_calls)
    assert call_dist >= 0.0
-   return ((ast_dist * call_dist) + ast_dist + call_dist, ast_dist, call_dist, diff_functions)
+   # the additive term is not taken entirely: only up to the additive weight fraction, since we must manage total distance to not reject legitimate hits
+   return ((ast_dist * call_dist) + (ast_dist + call_dist)*additive_weight, ast_dist, call_dist, diff_functions)
 
 def find_best_control(db, input_features, max_distance=200.0, debug=False, control_cache=None):
    """
@@ -444,6 +460,8 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
    second_best_control = None
 
    # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
+   if debug:
+       print("find_best_control({})".format(origin_url))
    feasible_controls = find_feasible_controls(db, ast_sum, fcall_sum, debug=debug, control_cache=control_cache) 
    for fc_tuple in feasible_controls:
        control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple
@@ -472,8 +490,9 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
            #     (with accidental ast hits) as the number of controls in the database increases
            if best_control.is_better(new_control, max_distance=max_distance):
                second_dist = second_best_control.distance() if second_best_control is not None else 0.0
-               if second_best_control is None or second_dist > best_control.distance():
-                   #print("NOTE: improved second_best control")
+               if second_best_control is None or second_dist > new_control.distance():
+                   if debug:
+                       print("NOTE: improved second_best control was {} now is {}".format(second_best_control, new_control))
                    second_best_control = new_control
                # NB: dont update best_* since we dont consider this hit a replacement for current best_control
            else: 
@@ -485,7 +504,7 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
                    assert control_url == best_control.control_url
                    hash_match = (control['sha256'] == input_features['sha256'])
                    best_control.sha256_matched = hash_match
-                   break    # save time since we've likely found the best control
+                   break    # save time since we've likely found the best control but this may mean next_best_control is not second best in rare cases
 
    # NB: literal fields in best_control/next_best_control are updated elsewhere... not here
    return (best_control, second_best_control)
@@ -566,4 +585,5 @@ def identify_control_subfamily(cntl_url):
            subfamily = replace_with
  
    assert subfamily is not None # POST-CONDITION: must not be true or we will have problems accurately computing a probability  
+   assert isinstance(subfamily, str)
    return (cntl_url, subfamily)
