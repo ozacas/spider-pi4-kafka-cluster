@@ -61,7 +61,7 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
             content = fp.read()
             assert isinstance(content, bytes)
 
-   d, js_id = save_script(db, artefact, content, defensive=defensive)
+   d, js_id = save_script(db, artefact, content)
    assert len(js_id) > 0
    assert 'sha256' in d
    assert 'md5' in d
@@ -103,7 +103,7 @@ def save_url(db, artefact):
    assert result is not None
    return result.inserted_id
 
-def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
+def save_script(db, artefact: DownloadArtefact, script: bytes):
    # NB: we work hard here to avoid mongo calls which will cause performance problems (hashing too)
    assert isinstance(artefact, DownloadArtefact)
    assert len(artefact.checksum) == 32  # length of an md5 hexdigest
@@ -118,6 +118,9 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
    url_id = save_url(db, artefact)
 
    script_len = len(script)
+   assert len(sum256) > 0
+   assert len(sum5) > 0
+
    key = { 'sha256': sum256, 'md5': sum5, 'size_bytes': script_len }  
    value = key.copy() # NB: shallow copy is sufficient for this application
    value.update({ 'code': Binary(script) })
@@ -144,6 +147,10 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
                               on_disk5 != sum5 ])
        if invalid_record:
            print("WARNING: corrupt db.scripts record seen: JS ID {} - will create new record for new data.".format(s['_id']))
+           # NB: keep track of how often we do this, to spot problematic records which for some reason are being "fixed" multiple times...
+           db.analysis_content.find_and_update_one({ 'js_id': s['_id'] }, { "$inc": { "corruption_fix_count": 1 } })
+       else:
+           print("Using existing record for sha256={}: JS ID {}".format(sum256, s['_id']))
        # FALLTHRU...
 
    # 3. persist a new db.scripts record?
@@ -151,12 +158,13 @@ def save_script(db, artefact: DownloadArtefact, script: bytes, defensive=False):
        assert len(value['md5']) > 0
        assert len(value['sha256']) > 0
        assert value['size_bytes'] >= 0  # should we permit zero-byte scripts (yes... they do happen!)
-       assert isinstance(value['code'], Binary)
+       assert isinstance(value['code'], bytes)
        ret = db.scripts.insert_one(value)
        assert ret is not None 
        s = { '_id': ret.inserted_id } # convert into something that code below can use...
        # FALLTHRU since we've now inserted... and there is nothing to validate for newly inserted scripts (rare once you've done a lot of crawling)
 
+   # 4. and finally ensure the url -> script record is present also
    js_id = str(s.get('_id'))
    ret = db.script_url.insert_one({ 'url_id': url_id, 'script': js_id })
    assert ret is not None 
