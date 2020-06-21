@@ -148,9 +148,8 @@ def test_analyse_script_failure(pytestconfig):
 
 @pytest.mark.skip(reason="currently broken due to db requirement")
 def test_find_feasible_controls():
-   #def find_feasible_controls(desired_sum, controls_to_search, max_distance=100.0)
-   all_controls = [ ({'origin': 'good' }, 100, [1, 2, 3, 94]), ({ 'origin': 'also good' }, 90, [90]) ]
-   ret = list(find_feasible_controls(100, all_controls))
+   #def find_feasible_controls(desired_sum, ast_sum, fcall_sum, **kwargs)
+   ret = list(find_feasible_controls(100, 2000, 200))
    assert len(ret) == 2
 
 def load_data(filename):
