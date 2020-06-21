@@ -4,6 +4,7 @@ from kafka import KafkaProducer
 import csv
 import json
 import uuid
+from utils.misc import json_value_serializer
 
 producer = KafkaProducer(bootstrap_servers='kafka2', value_serializer=json_value_serializer())
 
