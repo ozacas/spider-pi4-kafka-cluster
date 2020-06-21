@@ -145,7 +145,7 @@ class BestControl:
            return []
        return self.diff_functions.split(' ')
 
-    def good_hit_as_tuple(self, max_distance=200.0):
+    def good_hit_as_tuple(self, max_distance):
        n_diff = self.diff_functions.count(' ') 
        dist = self.ast_dist
        if (dist < 10.0 or (dist < 20.0 and n_diff < 10)) and (dist > 0.0 and self.function_dist > 0.0):
@@ -162,7 +162,7 @@ class BestControl:
        return (False, 'failed_every_test')
 
     def is_good_hit(self, max_distance=200.0):
-       ok, reason = self.good_hit_as_tuple(max_distance=max_distance)
+       ok, reason = self.good_hit_as_tuple(max_distance)
        return ok
 
     def is_better(self, other, max_distance=200.0):

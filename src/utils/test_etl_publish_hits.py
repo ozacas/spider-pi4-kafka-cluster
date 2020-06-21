@@ -4,14 +4,6 @@ import mock
 from etl_publish_hits import process_hit
 from utils.models import BestControl
 
-def test_process_hit_failure():
-   # check that a call to process_hit() returns False or raises an Exception (depending on the test as expected)
-   db = mock.Mock()
-   producer = mock.Mock()
-   bc = BestControl(control_url='XXX', origin_url='YYY', sha256_matched=False, diff_functions='', ast_dist=10.0, literal_dist=5.0, function_dist=8.0)
-   all_controls = { 'XXX': { 'control_url': 'XXX', 'literals_by_count': { 'a': 1 } }}
-   assert process_hit(db, all_controls, bc, producer, stats={}) == False
-
 def test_process_hit_success():
    db = mock.Mock()
    producer = mock.Mock()
@@ -22,7 +14,7 @@ def test_process_hit_success():
                     sha256_matched=True, diff_functions='', ast_dist=0.0, literal_dist=0.0, function_dist=0.0)
    all_controls = { control_url: { 'control_url': control_url, 'literals_by_count': { 'a': 1 } }}
    db.analysis_content.find_one.return_value = { 'analysis_bytes': b'{"calls_by_count":{}}' }
-   assert process_hit(db, all_controls, bc, producer, stats={}) == True
+   process_hit(db, all_controls, bc, producer, 'distance_lt_200.0', stats={}) 
    #expected_find_call = mock.call.analysis_content.find_one({'js_id': '12345' })
    expected_insert_call = mock.call.etl_hits.insert_one({'control_url': 'https://cdn.com/path/to/artefact.js', 
                                                         'origin_url': 'https://some.web.site/somewhere.js', 'sha256_matched': True, 
