@@ -3,6 +3,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from subprocess import run
 from utils.thug_parse import ThugLogParser
 from utils.models import JavascriptLocation, Password
+from utils.misc import json_value_deserializer, json_value_serializer
 from utils.geo import AustraliaGeoLocator
 from urllib.parse import urlparse
 from datetime import datetime
