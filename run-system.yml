@@ -21,7 +21,6 @@
         state: directory
         owner: spider
         group: lowpriv
-        recurse: yes
         mode: '0750'
       with_items:
         - /data/kafkaspider16
@@ -55,20 +54,25 @@
 - name: compute feature vectors and ingest into MongoDB
   hosts: pi2 
   gather_facts: no
+  become_user: lowpriv
+  become: yes
   tasks: 
      - command: 
-         chdir: "{{ PID_ROOT }}"
-         creates: "{{ PID_ROOT }}/pid.make.fv"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 etl_make_fv.py --dbuser rw --cache 5000 --v
+         chdir: "{{ LOWPRIV_ROOT }}"
+         creates: "{{ LOWPRIV_ROOT }}/pid.make.fv"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ LOWPRIV_ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 "{{ ROOT }}/etl_make_fv.py" --cache 5000 --v
+
 
 - name: run extra feature vector instance when backlogging
   hosts: pi1 x86_thug_hosts
   gather_facts: no
+  become_user: lowpriv
+  become: yes
   tasks:
     - command:
-         chdir: "{{ PID_ROOT }}"
-         creates: "{{ PID_ROOT }}/pid.make.fv"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 1,2 python3 etl_make_fv.py --dbuser rw --cache 5000 --v
+         chdir: "{{ LOWPRIV_ROOT }}"
+         creates: "{{ LOWPRIV_ROOT }}/pid.make.fv"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ LOWPRIV_ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 1,2 python3 "{{ ROOT }}/etl_make_fv.py" --dbuser rw --cache 5000 --v
       when: SPIDER == 2
 
 - name: process JS artefacts and assign best control (if any)
@@ -77,7 +81,16 @@
      - command: 
          chdir: "{{ PID_ROOT }}"
          creates: "{{ PID_ROOT }}/pid.eval.controls"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --dbuser rw --v --defensive
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --report-good --max-distance 300.0
+
+- name: extra instance if falling behind on control evaluation
+  hosts: x86_thug_hosts
+  tasks:
+    - command:
+         chdir: "{{ PID_ROOT }}"
+         creates: "{{ PID_ROOT }}/pid.eval.controls"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --report-good --max-distance 300.0
+      when: SPIDER == 3
 
 - name: store javascript snippets embedded on HTML pages limited to only 1 CPU core
   hosts: x86_thug_hosts
@@ -85,7 +98,7 @@
   become_user: spider
   tasks:
      - command: 
-         chdir: "{{ PID_ROOT }}"
-         creates: "{{ PID_ROOT }}/pid.snippetspider"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.snippetspider -e log.err.snippetspider /usr/bin/taskset -c 2 scrapy  runspider snippet_spider.py -L INFO
+         chdir: "{{ SPIDER_ROOT }}"
+         creates: "{{ SPIDER_ROOT }}/pid.snippetspider"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ SPIDER_ROOT }}" -o log.out.snippetspider -e log.err.snippetspider /usr/bin/taskset -c 2 scrapy  runspider /home/acas/src/snippet_spider.py -L INFO
        when: SPIDER == 1 
