@@ -46,8 +46,9 @@ def test_iterate():
    m2 = mock.Mock()
    m2.value = { 'content-type': 'application/json' }
    consumer = [ m1, m2 ]
-                
-   ret = list(iterate(consumer, 2, [], verbose=False))
+   
+   cache = {}
+   ret = list(iterate(consumer, 2, cache, verbose=False))
    assert len(ret) == 1  # only text/javascript is to be returned
    assert isinstance(ret[0], JavascriptArtefact)
    assert ret[0].url == 'http://blah.blah/...'
