@@ -11,11 +11,16 @@ from utils.io import next_artefact, save_artefact, batch
 
 def save_batch(db, batch_of_artefacts, producer, root, fail_on_error=False, to=None, verbose=False, defensive=False): # eg. root='/data/kafkaspider2'
    # finally process each record via mongo
-   cnt = 0
+   cnt = n_cached = 0
    for artefact in batch_of_artefacts:
        try:
-           save_artefact(db, producer, artefact, root, to, defensive=defensive)
+           ret, was_cached = save_artefact(db, artefact, root, defensive=defensive)
+           # NB: ensure all records with a given hash are in same partition for the downstream consumer to optimise cache access, although the 
+           # risk is that this is uneven allocation (but hopefully there are enough hashes to be ok)
+           producer.send(to, ret, key=ret.get('sha256').encode('utf-8')) 
            cnt += 1
+           if was_cached: # script already present in database?
+              n_cached += 1
            if verbose:
                print(artefact)
            if cnt % 10000 == 0:
@@ -24,6 +29,7 @@ def save_batch(db, batch_of_artefacts, producer, root, fail_on_error=False, to=N
            if fail_on_error:
               raise(e)
            print(e)
+   print("Uploaded {} artefacts, {} scripts already present in database\n".format(cnt, n_cached))
            
 if __name__ == "__main__":
     a = argparse.ArgumentParser(description="Process JS artefact topic records and filesystem JS into specified mongo host")
