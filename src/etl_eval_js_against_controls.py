@@ -26,7 +26,7 @@ add_debug_arguments(a)
 a.add_argument("--file", help="Debug specified file and exit []", type=str, default=None)
 a.add_argument("--min-size", help="Skip all controls less than X bytes [1500]", type=int, default=1500)
 a.add_argument("--defensive", help="Validate each message from kafka for corruption (slow)", action="store_true")
-a.add_argument("--max-distance", help="Limit control hits to those with AST*Call distance < [200.0]", type=float, default=200.0)
+a.add_argument("--max-distance", help="Limit control hits to those with AST*Call distance < [300.0]", type=float, default=300.0)
 g = a.add_mutually_exclusive_group(required=False)
 g.add_argument("--report-bad", help="Report artefacts to stdout which dont hit anything [False]", action="store_true")
 g.add_argument("--report-good", help="Report artefacts to stdout which hit a control [False]", action="store_true")
@@ -150,6 +150,13 @@ def process_hit(db, m, args):
             producer.send(args.to, d2)
             assert d2['xref'] != d['xref']  # xref must not be the same document otherwise something has gone wrong 
 
+def calculate_vectors(db, m, defensive, java, extractor, force=False):
+    vectors_as_dict = find_or_update_analysis_content(db, m, defensive=defensive, force=force, java=java, extractor=extractor)
+    assert isinstance(vectors_as_dict, dict)
+    for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
+         m[t] = vectors_as_dict[t]  # YUK... side effect m
+    return vectors_as_dict  # most callers wont use it... but hey why not...
+
 if __name__ == "__main__":
     group = args.group
     if len(group) < 1:
@@ -167,13 +174,8 @@ if __name__ == "__main__":
     vector_cache = pylru.lrucache(20 * 1000) # bigger the better since we want to avoid large-scale mongo queries
     for m in next_artefact(consumer, args.n,
                                  filter_cb=lambda m: m.get('size_bytes') >= args.min_size, verbose=args.v):
-        js_id = m.get('js_id')
         try:
-            vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive,
-                                                          java=args.java, extractor=args.extractor)
-            assert isinstance(vectors_as_dict, dict)
-            for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
-                m[t] = vectors_as_dict[t]
+            calculate_vectors(db, m, args.defensive, args.java, args.extractor)
         except ValueError as ve:
             print("WARNNG - ignoring script which could not be analysed: JS ID {}".format(js_id))
             print(str(ve))
@@ -188,12 +190,7 @@ if __name__ == "__main__":
             if args.defensive:
                 print(str(ve))
                 print("WARNING: recalculating db entry in case of data-corruption:")
-                vectors_as_dict = find_or_update_analysis_content(db, m, defensive=args.defensive, 
-                                                              force=True, java=args.java, 
-                                                              extractor=args.extractor)
-                assert isinstance(vectors_as_dict, dict)
-                for t in ['statements_by_count', 'calls_by_count', 'literals_by_count']:
-                    m[t] = vectors_as_dict[t]
+                calculate_vectors(db, m, args.defensive, args.java, args.extractor, force=True)
                 process_hit(db, m, args)
             else:
                 raise ve
