@@ -88,7 +88,7 @@ def test_save_script_correct_checksum():
    # call.script_url.insert_one({'url_id': <Mock name='mock.urls.insert_one().inserted_id' id='139913264531296'>, 'script': 'abc123ff'})]
 
    jsr = DownloadArtefact(url='X', path='full/foo.js', checksum='f8f4392b9ce13de380ecdbe256030807', host='pi1', origin='foo.html', when='2020-04-20')
-   ret, js_id = save_script(m, jsr, script_bytes)
+   ret, js_id, was_cached = save_script(m, jsr, script_bytes)
    assert isinstance(ret, dict)
    assert js_id == "abc123"  # since it is "already in the database"
    assert 'sha256' in ret

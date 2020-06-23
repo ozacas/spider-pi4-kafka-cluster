@@ -5,6 +5,7 @@ import hashlib
 import json
 import requests
 from bson.binary import Binary
+from bson.objectid import ObjectId
 from itertools import chain, islice
 from utils.features import analyse_script, calculate_ast_vector, identify_control_subfamily, get_script
 from utils.models import JavascriptArtefact, JavascriptVectorSummary, DownloadArtefact
@@ -45,14 +46,12 @@ def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=F
     assert isinstance(byte_content, bytes)
     return json.loads(byte_content.decode())
 
-def save_artefact(db, producer, artefact, root, to, content=None, inline=False, content_type='text/javascript', defensive=False):
+def save_artefact(db, artefact, root, content=None, inline=False, content_type='text/javascript', defensive=False):
    """
    Saves the content to Mongo as specified by root/artefact.path and then the record of the save to Kafka (topic to) for downstream processing
    """
    assert db is not None
-   assert producer is not None
    assert content is not None or (root is not None and artefact.path is not None)
-   assert isinstance(to, str) and len(to) > 0
  
    if content is None: 
         path = "{}/{}".format(root, artefact.path)
@@ -61,7 +60,7 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
             content = fp.read()
             assert isinstance(content, bytes)
 
-   d, js_id = save_script(db, artefact, content)
+   d, js_id, was_cached = save_script(db, artefact, content)
    assert len(js_id) > 0
    assert 'sha256' in d
    assert 'md5' in d
@@ -72,12 +71,12 @@ def save_artefact(db, producer, artefact, root, to, content=None, inline=False, 
               'when': artefact.when,
               'origin': artefact.origin,
               'js_id': js_id })
-   producer.send(to, d)
-   return d
+   return (d, was_cached)
 
-def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ensure_indexes=False):
+def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ensure_indexes=False, iff_not_exists=False):
    assert bytes_content is not None
-   assert len(jsr.js_id) > 0
+   js_id = jsr.js_id
+   assert len(js_id) > 0
    assert isinstance(bytes_content, bytes) # to ensure correct behaviour
 
    if ensure_indexes:
@@ -85,8 +84,17 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ens
 
    d = asdict(jsr)
    d.update({ "analysis_bytes": Binary(bytes_content), 'last_updated': datetime.utcnow() })
+
+   # only perform and update if no existing analysis?  
+   if iff_not_exists:
+       # https://blog.serverdensity.com/checking-if-a-document-exists-mongodb-slow-findone-vs-find/ 
+       # dont do the update below if the analysis content already exists...
+       cursor = db.collection.find({'_id': ObjectId(js_id) }, {'_id': 1}).limit(1)
+       if cursor is not None: # data exists, so we dont update
+           return
+
    # lookup artefact by ID - altered content will get a new ID as long as its sha256 hash isnt already known
-   ret = db.analysis_content.find_one_and_update({ "js_id": jsr.js_id }, { "$set": d }, upsert=True)
+   ret = db.analysis_content.find_one_and_update({ "js_id": js_id }, { "$set": d }, upsert=True)
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     n = 0
@@ -134,6 +142,7 @@ def save_script(db, artefact: DownloadArtefact, script: bytes):
    # In this way the corrupt records are left untouched and new code will just refer to clean records. A separate program will cleanup corrupt records.
    s = db.scripts.find_one(key)
    invalid_record = False
+   is_cached = False
    if s is not None:
        assert '_id' in s
        assert 'code' in s
@@ -150,7 +159,8 @@ def save_script(db, artefact: DownloadArtefact, script: bytes):
            # NB: keep track of how often we do this, to spot problematic records which for some reason are being "fixed" multiple times...
            db.analysis_content.find_and_update_one({ 'js_id': s['_id'] }, { "$inc": { "corruption_fix_count": 1 } })
        else:
-           print("Using existing record for sha256={}: JS ID {}".format(sum256, s['_id']))
+           #print("Using existing record for sha256={}: JS ID {}".format(sum256, s['_id']))
+           is_cached = True
        # FALLTHRU...
 
    # 3. persist a new db.scripts record?
@@ -169,7 +179,7 @@ def save_script(db, artefact: DownloadArtefact, script: bytes):
    ret = db.script_url.insert_one({ 'url_id': url_id, 'script': js_id })
    assert ret is not None 
    assert len(js_id) > 0
-   return (key, js_id)
+   return (key, js_id, is_cached)
 
 # https://stackoverflow.com/questions/8290397/how-to-split-an-iterable-in-constant-size-chunks
 # https://stackoverflow.com/questions/24527006/split-a-generator-into-chunks-without-pre-walking-it/24527424
