@@ -76,9 +76,13 @@ def strategy_1_pyrequests(db, producer, artefact_url, cited_on, **kwargs):
         resp = requests.get(artefact_url, headers=headers, verify=False)
         if resp.status_code == 200:
            content = resp.content
-           artefact = JavascriptArtefact(url=artefact_url, sha256=hashlib.sha256(content).hexdigest(),
-                                      md5=hashlib.md5(content).hexdigest(), size_bytes=len(content), origin=cited_on ) 
-           save_artefact(db, producer, artefact, None, kwargs.get('to'), content=content)  # will save to Mongo AND Kafka visited topic
+           sha256 = hashlib.sha256(content).hexdigest()
+           artefact = JavascriptArtefact(url=artefact_url, sha256=sha256,
+                                         md5=hashlib.md5(content).hexdigest(), 
+                                         size_bytes=len(content), origin=cited_on ) 
+           # NB: ignore return result from save_artefact()
+           ret, was_cached = save_artefact(db, artefact, None, content=content)  # will save to Mongo AND Kafka visited topic
+           producer.send(kwargs.get('to'), ret, key=sha256.encode('utf-8'))
            return artefact
         else:
            return None   
