@@ -54,6 +54,7 @@
           - nano 
           - tar
           - rsync
+          - cronie
         state: present
 
 - name: disable swap on kafka/zookeeper hosts and ensure sufficient mmap
