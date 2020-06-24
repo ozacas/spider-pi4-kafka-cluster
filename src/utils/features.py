@@ -372,8 +372,8 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
    ub_fc = function_call_sum + (max_distance / 2)
 
    n = n_cached = 0
-   ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub } }) 
-   fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc } })
+   ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub }, 'do_not_load': False }) 
+   fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc }, 'do_not_load': False })
    feasible_controls = []
    seen = set()
    for rec in chain(ast_hits, fcall_hits): 
