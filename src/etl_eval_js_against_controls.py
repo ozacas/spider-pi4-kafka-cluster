@@ -177,7 +177,7 @@ if __name__ == "__main__":
         try:
             calculate_vectors(db, m, args.defensive, args.java, args.extractor)
         except ValueError as ve:
-            print("WARNNG - ignoring script which could not be analysed: JS ID {}".format(js_id))
+            print("WARNNG - ignoring script which could not be analysed: {}".format(m))
             print(str(ve))
             continue
 
