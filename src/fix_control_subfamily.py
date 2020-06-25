@@ -8,7 +8,7 @@ from utils.io import load_controls
 
 def load_subfamilies(db, verbose=False):
     subfamilies = []
-    for t in sorted(load_controls(db, verbose=args.v), key=lambda t: t[0].get('family')):
+    for t in sorted(load_controls(db, verbose=args.v, load_all=True), key=lambda t: t[0].get('family')):
         u = t[0].get('origin')
         u2, subfamily = identify_control_subfamily(u)
         assert u == u2
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     d = { t[1]: t[0] for t in subfamilies }
     n = 0
     if not args.dry_run:
-        for t in load_controls(db, verbose=args.v):
+        for t in load_controls(db, verbose=args.v, load_all=True):
             assert isinstance(t[0], dict)
             u = t[0].get('origin')
             assert u in d

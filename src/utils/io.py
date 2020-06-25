@@ -259,10 +259,14 @@ def update_control_summary(db, url, ast_vector, function_call_vector, literal_ve
                                  last_updated=str(datetime.utcnow()))
    ret = db.javascript_controls_summary.find_one_and_update({ 'origin': url }, { "$set": asdict(vs) }, upsert=True)
 
-def load_controls(db, min_size=1500, all_vectors=False, verbose=False):
+def load_controls(db, min_size=1500, all_vectors=False, load_all=False, verbose=False):
    # NB: vectors come from javascript_control_code where integrity is better implemented
    n = 0
-   for control in db.javascript_controls.find({ "size_bytes": { "$gte": min_size }, "do_not_load": False }, { 'literals_by_count': 0, 'calls_by_count': 0 }):
+   if load_all:
+       load_constraints = {}
+   else:
+       load_constraints = { "size_bytes": { "$gte": min_size }, "do_not_load": False }
+   for control in db.javascript_controls.find(load_constraints, { 'literals_by_count': 0, 'calls_by_count': 0 }):
        ast_vector, ast_sum = calculate_ast_vector(control['statements_by_count'])
        
        if all_vectors: 
