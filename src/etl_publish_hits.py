@@ -139,7 +139,7 @@ if __name__ == "__main__":
         process_hit(db, all_controls, hit, producer, reason, stats=stats)
         n_ok += 1
 
-    print("Run completed: processed {} records with AST*function_call threshold <= {}".format(n, args.threshold))
+    print("Run completed: processed {} records: applying threshold  <= {}".format(n, args.threshold))
     print("{} records had a problem which could not be ignored.".format(n_bad))
     print("Published {} hits, {} failed is_good_hit() test.".format(n_ok, n_not_good))
     print(stats)
