@@ -45,20 +45,20 @@ class JavascriptControlSummary(m.Model):
 
 class Script(m.Model):
    _id = ObjectIdField(db_column='_id')
-   sha256 = m.CharField(blank=False, null=False, max_length=128, editable=False)
-   md5 = m.CharField(blank=False, null=False, max_length=64, editable=False)
-   size_bytes = m.IntegerField(editable=False)
-   #code = m.BinaryField()  # not editable by default
+   sha256 = m.CharField(blank=False, null=False, max_length=128)
+   md5 = m.CharField(blank=False, null=False, max_length=64)
+   size_bytes = m.IntegerField()
+   code = m.BinaryField()  # not editable by default
 
    # responsibility for this model is up to etl_upload_artefacts.py
    class Meta:
        db_table = "scripts"
        managed = False
 
-class FeatureVector(m.Model):
+class FeaturesModel(m.Model):
    # { "_id" : ObjectId("5ee1f3b8a4b98699c0917c8f"), "js_id" : "5e3cff0baf4b1411a1429ff4", "byte_content_sha256" : "bae214050996634a9a61dae7e12a3afd3fed131db5d90a14abfa66b49dcf7eea", "content_type" : "text/javascript", "inline" : false, "last_updated" : ISODate("2020-06-22T06:37:34.977Z"), "md5" : "2882cbfe23dc5802cf598e7a20409304", "origin" : "https://clubs.canberra.edu.au/Account/Register", "sha256" : "ff0ada03194dbd93b98c88e54b6e1637c2b4b4458907401f869187d90efd08ba", "size_bytes" : 23828, "url" : "https://clubs.canberra.edu.au/Scripts/expressive.annotations.validate.js", "when" : "2020-06-21 22:42:10.323637" }
    _id = ObjectIdField(db_column='_id')
-   js_id = m.ForeignKey(Script, on_delete=m.DO_NOTHING)
+   js_id = m.CharField(max_length=24)
    content_type = m.CharField(max_length=100)
    inline = m.BooleanField()
    last_updated = m.DateTimeField()
@@ -68,7 +68,7 @@ class FeatureVector(m.Model):
    size_bytes = m.IntegerField()
    url = m.CharField(max_length=1024)
    when = m.CharField(max_length=64) 
-   byte_content = m.BinaryField()
+   analysis_bytes = m.BinaryField()
 
    class Meta:
       db_table = "analysis_content"
@@ -78,15 +78,17 @@ class VetAgainstControl(m.Model):
    # unlike ControlHit which is the "best" hit for a given control-origin pair, this is a point-in-time datapoint
    # { "_id" : ObjectId("5ecb5cbed7161ef4963d4498"), "origin_url" : "https://www.playfootball.com.au/sites/play/files/js/js_BaupD1b1RyIB49fG7a7PVMg8ZvbSJmHIlTWnZmKr9L8.js", "ast_dist" : Infinity, "cited_on" : "https://www.playfootball.com.au/?id=172", "control_url" : "", "diff_functions" : "", "diff_literals" : "", "function_dist" : Infinity, "literal_dist" : 0, "literals_not_in_control" : -1, "literals_not_in_origin" : -1, "n_diff_literals" : -1, "origin_js_id" : "5e8da771af53ffdf7ee0b88b", "sha256_matched" : false, "xref" : null, "origin_vectors_sha256" : "8edf3e27259d16c1430b28ee2ad609c0ebda25626d089f4fcc35e6e6911bee0c" }
    _id = ObjectIdField(db_column='_id')
+   control_url = m.CharField(max_length=1024)
    origin_url = m.CharField(max_length=1024)
    ast_dist = m.FloatField()
+   function_dist = m.FloatField()
    literal_dist = m.FloatField()
    literals_not_in_control = m.IntegerField()
    literals_not_in_origin = m.IntegerField()
    n_diff_literals = m.IntegerField()
-   origin_js_id = m.ForeignKey(Script, on_delete=m.DO_NOTHING)
+   origin_js_id = m.CharField(max_length=24)
+   xref = m.CharField(max_length=24)
    sha256_matched = m.BooleanField()
-   xref = m.ForeignKey(FeatureVector, on_delete=m.DO_NOTHING)
 
    class Meta:
        db_table = "vet_against_control"
@@ -102,8 +104,10 @@ class ControlHit(m.Model):
    function_dist = m.FloatField()
    literal_dist = m.FloatField()
    cited_on = m.CharField(blank=False, null=False, max_length=1024)
-   origin_js_id = m.ForeignKey(Script, on_delete=m.DO_NOTHING)
-   xref = m.ForeignKey(VetAgainstControl, on_delete=m.DO_NOTHING)
+   #origin_js_id = m.ForeignKey(Script, on_delete=m.DO_NOTHING)
+   #xref = m.ForeignKey(VetAgainstControl, on_delete=m.DO_NOTHING)
+   origin_js_id = m.CharField(blank=False, null=False, max_length=24)
+   xref = m.CharField(blank=False, null=False, max_length=24)
    literals_not_in_control = m.IntegerField()
    literals_not_in_origin = m.IntegerField()
    n_diff_literals = m.IntegerField()
