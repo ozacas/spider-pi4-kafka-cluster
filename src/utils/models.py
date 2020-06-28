@@ -132,13 +132,15 @@ class BestControl:
     n_diff_literals: int = -1         # literals which are present in both, but not found the same number of times
     diff_literals: str = ''           # comma separated literals (if literal contains a comma it will be entity encoded, max 200 chars per literal)
 
-    def distance(self):
+    def distance(self, ast_weight=0.8, fcall_weight=1.5):
        """ 
        If one vector distance is zero, that is not enough to be sure its not a false positive. So we require two distances to be zero before we do that here.
        We compute the distance product as (ast_dist + function_dist) * (function_dist + literal_dist) 
        """
        assert self.literal_dist >= 0.0 # reject calls if model not initialised fully
-       return (self.ast_dist + self.function_dist) * (self.function_dist + self.literal_dist) + sum([self.ast_dist, self.function_dist, self.literal_dist])
+       ast_prod = self.ast_dist * ast_weight
+       fcall_prod = self.function_dist * fcall_weight
+       return (ast_prod + fcall_prod) * (fcall_prod + self.literal_dist) + sum([ast_prod, fcall_prod, self.literal_dist])
 
     def diff_functions_as_list(self):
        if len(self.diff_functions) < 1:
@@ -166,10 +168,9 @@ class BestControl:
        return ok
 
     def is_better(self, other, max_distance=200.0):
-        other_prod = other.distance()
-        if other_prod > max_distance:
-            return True       # return True since other is a poor hit ie. self is better
-        return self.distance() < other.distance()
+        other_dist = other.distance()
+        self_dist = self.distance() 
+        return self_dist < other_dist
 
 @dataclass
 class FeatureVector:
