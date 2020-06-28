@@ -367,13 +367,13 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
    # all others need not be searched. This could be tighter.
    lb = ast_desired_sum - max_distance 
    ub = ast_desired_sum + max_distance
-   # but we now also consider function call distance (only use third max_distance since function calls are less frequent than AST features)
+   # but we now also consider function call distance (only use half max_distance since function calls are less frequent than AST features)
    lb_fc = function_call_sum - (max_distance / 2)
    ub_fc = function_call_sum + (max_distance / 2)
 
    n = n_cached = 0
-   ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub }, 'do_not_load': False }) 
-   fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc }, 'do_not_load': False })
+   ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub } }) 
+   fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc } })
    feasible_controls = []
    seen = set()
    for rec in chain(ast_hits, fcall_hits): 
@@ -419,19 +419,20 @@ def fix_literals(literals_to_encode):
    ret = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
    return ','.join(ret)
 
-def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False, additive_weight=0.5):
+def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False, additive_weight=0.5, ast_weight=0.8):
    if debug:
        assert isinstance(origin_ast, list)
        assert isinstance(control_ast, list)
        assert isinstance(origin_calls, dict)
        assert isinstance(control_calls, dict)
        assert len(origin_ast) == len(control_ast)
-   ast_dist = compute_distance(origin_ast, control_ast, short_vector_penalty=True)
+   ast_dist = compute_distance(origin_ast, control_ast, short_vector_penalty=True) 
    assert ast_dist >= 0.0
    call_dist, diff_functions = calc_function_dist(origin_calls, control_calls)
    assert call_dist >= 0.0
    # the additive term is not taken entirely: only up to the additive weight fraction, since we must manage total distance to not reject legitimate hits
-   return ((ast_dist * call_dist) + (ast_dist + call_dist)*additive_weight, ast_dist, call_dist, diff_functions)
+   # weight AST distance slightly less than 1 to not weight syntax too highly   
+   return ((ast_dist * ast_weight * call_dist) + (ast_dist + call_dist)*additive_weight, ast_dist, call_dist, diff_functions)
 
 def find_best_control(db, input_features, max_distance=200.0, debug=False, control_cache=None):
    """
