@@ -78,7 +78,8 @@ def iterate(consumer, max, cache, verbose=False):
            else: # sha256 collison where md5 and/or size_bytes was not what was expected
                yield jsr
        print("Processed message batch: n={} cached={}".format(len(batch_of_messages), n_cached))
-       consumer.commit()  # blocking call for now to ensure we only update the consumer offset at the end of a batch (this will cause dupes, but thats better than loss)
+       if not isinstance(consumer, list): # HACK: list is used for testing iterate() and it has no commit...
+           consumer.commit()  # blocking call for now to ensure we only update the consumer offset at the end of a batch (this will cause dupes, but thats better than loss)
 
 def main(args, consumer=None, producer=None, db=None, cache=None):
    if args.v:
