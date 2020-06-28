@@ -1,0 +1,30 @@
+{% load static %}
+<html>
+    <head>
+        <title>AU Javascript Viewer</title>
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+        <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap-theme.min.css">
+        <link rel="stylesheet" href="{% static "/viewer.css" %}">
+    </head>
+    <body>
+        <div class="page-header">
+            <h1><a href="/">AU Javascript Viewer</a></h1>
+        </div>
+
+        <div class="menubar">
+            <ul>{% load menubuilder %}{% menu search %}
+                {% for item in menuitems %}<li><a href="{{ item.url }}" title="{{ item.title|escape }}"{% if item.current %} class='current'{% endif %}>{{ item.title }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="content container">
+            <div class="row">
+                <div class="col-md-auto">
+                {% block content %}
+                {% endblock %}
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

@@ -16,15 +16,24 @@ Including another URLconf
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
+from viewer import views 
 
 urlpatterns = [
     path('admin/', admin.site.urls),
 ]
 
-print(admin.site.urls)
+#print(admin.site.urls)
 
 if settings.DEBUG:
     import debug_toolbar
     urlpatterns = [
         path('__debug__/', include(debug_toolbar.urls)),
+    ] + urlpatterns
+
+urlpatterns = [
+        path('', views.index),
+        path('search/', views.host_search),
+        path('search/host/', views.host_search),
+        path('search/control/', views.control_search),
+        path('search/distance/', views.distance_search),
     ] + urlpatterns

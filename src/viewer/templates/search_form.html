@@ -1,0 +1,39 @@
+
+{% extends "search.html" %}
+
+{% block searchform %}
+    <form action="{{ action_url }}" method="POST">
+    <table>
+       {% csrf_token %}
+       {{ form.as_table }}
+       <tr><td></td><td><input type="submit" value="Submit"></td></tr>
+    </table>
+    </form>
+{% endblock %}
+
+{% block searchresults %}
+   <table>
+       <tr><th>SHA256 match</th><th>AST Feature distance</th>
+           <th>Function call distance</th><th>Literal distance</th>
+           <th>Literals not in control</th><th>Literals not in origin</th>
+           <th>Diff literals</th><th>XREF</th>
+           <th>Origin URL</th><th>Cited on</th><th>Control URL</th>
+       </tr>
+
+       {% for o in page_obj %}
+       <tr>
+           <td>{{ o.sha256_matched }}</td>
+           <td>{{ o.ast_dist|floatformat }}</td>
+           <td>{{ o.function_dist|floatformat }}</td>
+           <td>{{ o.literal_dist|floatformat }}</td>
+           <td>{{ o.literals_not_in_control }}</td>
+           <td>{{ o.literals_not_in_origin }}</td>
+           <td>{{ o.n_diff_literals }}</td>
+           <td>{{ o.xref }}</td>
+           <td>{{ o.origin_url }}</td>
+           <td>{{ o.cited_on }}</td>
+           <td>{{ o.control_url }}</td>
+       </tr>
+       {% endfor %}
+   </table>
+{% endblock %}
