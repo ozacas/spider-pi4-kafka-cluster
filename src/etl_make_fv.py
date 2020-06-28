@@ -31,7 +31,8 @@ def signal_handler(num, frame):
     global consumer
     global mongo
     print("Control-C pressed. Terminating... may take a while")
-    cleanup([mongo, consumer])
+    consumer.close(autocommit=False)
+    cleanup([mongo])
     exit(1)
 
 def cleanup(items_to_close, pidfile='pid.make.fv'):
@@ -59,7 +60,7 @@ def iterate(consumer, max, cache, verbose=False):
    assert cache is not None
    assert max > 0
    # NB: sort each batch in order to maximise performance of fv_cache (sha256 should be sufficient)
-   batch_size = 5000
+   batch_size = 2000
    for batch_of_messages in batch(next_artefact(consumer, max, javascript_only(), verbose=verbose), n=batch_size):
        if len(batch_of_messages) < batch_size:
            print("WARNING: expected {} messages, got {}".format(batch_size, len(batch_of_messages)))
@@ -77,6 +78,7 @@ def iterate(consumer, max, cache, verbose=False):
            else: # sha256 collison where md5 and/or size_bytes was not what was expected
                yield jsr
        print("Processed message batch: n={} cached={}".format(len(batch_of_messages), n_cached))
+       consumer.commit()  # blocking call for now to ensure we only update the consumer offset at the end of a batch (this will cause dupes, but thats better than loss)
 
 def main(args, consumer=None, producer=None, db=None, cache=None):
    if args.v:
@@ -144,7 +146,8 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
       last_sha256 = jsr.sha256
 
    print("Analysed {} artefacts, {} failed, {} cached, now={}".format(n_analysed, n_failed, n_cached, str(datetime.now())))
-   cleanup([mongo, consumer])
+   consumer.close(autocommit=False)
+   cleanup([mongo])
    return 0
 
 if __name__ == "__main__":
@@ -160,6 +163,7 @@ if __name__ == "__main__":
    consumer = KafkaConsumer(args.consume_from, 
                             bootstrap_servers=args.bootstrap, 
                             group_id=args.group, 
+                            enable_auto_commit=False,  # Control-C in the middle of a batch will lose messages since the offset is the entire batch iff True
                             auto_offset_reset=args.start,
                             value_deserializer=json_value_deserializer(),
                             max_poll_interval_ms=30000000) # crank max poll to ensure no kafkapython timeout
