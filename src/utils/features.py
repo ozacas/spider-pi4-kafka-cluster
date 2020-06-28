@@ -259,7 +259,8 @@ def calc_function_dist(origin_calls, control_calls):
    fns = c_calls.union(o_calls)
    # we regard zero calls as no-evidence and thus safest to consider the distance infinite. Some may regard it as zero. Its rare for the control artefacts
    # to have no function calls, so we return the less noisy option for now.
-   if len(fns) == 0:
+   n_function_calls = len(fns)
+   if n_function_calls == 0:
        return (float('Inf'), [])
 
    vec1 = []
@@ -281,7 +282,8 @@ def calc_function_dist(origin_calls, control_calls):
        else:
            common += 1 
    commonality_factor = (1 / common) * (len(vec1)-common) if common > 0 else 10 
-   return (math.dist(vec1, vec2) * commonality_factor, diff_functions)
+   svp = 20.0 / n_function_calls if n_function_calls < 15 else 1.0
+   return (math.dist(vec1, vec2) * commonality_factor * svp, diff_functions)
 
 def lookup_control_literals(db, control_url, debug=True):
    assert db is not None
@@ -356,7 +358,7 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
       print(t)
    return t
 
-def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=100.0, control_cache=None, debug=False):
+def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=150.0, control_cache=None, debug=False):
    assert ast_desired_sum >= 0
    assert function_call_sum >= 0
 
