@@ -1,5 +1,5 @@
 import django.db.models as m
-from djongo.models import ObjectIdField
+from djongo.models import ObjectIdField, DjongoManager
 from djongo.models.json import JSONField
 
 class JavascriptControl(m.Model):
@@ -124,6 +124,9 @@ class ControlHit(m.Model):
    cited_on_path = m.CharField(max_length=1024)
    control_family = m.CharField(max_length=255)
    diff_functions = JSONField()
+
+   # permit direct access to mongo for convenient API
+   objects = DjongoManager()
 
    # responsibility for this data is left entirely to etl_publish_hits.py
    class Meta:

@@ -1,0 +1,25 @@
+
+{% extends "search_form.html" %}
+
+{% block searchresults %}
+   <table>
+       <tr><th>XREF</th>
+           <th>Functions called differently</th>
+           <th>Diff literals</th>
+           <th>Origin URL</th>
+           <th>Cited on</th>
+           <th>Control URL</th>
+       </tr>
+
+       {% for o in page_obj %}
+       <tr>
+           <td>{{ o.xref }}</td>
+           <td>{{ o.diff_functions }}</td>
+           <td>{{ o.diff_literals }}</td>
+           <td>{{ o.origin_url }}</td>
+           <td>{{ o.control_url }}</td>
+           <td>{{ o.cited_on }}</td>
+       </tr>
+       {% endfor %}
+   </table>
+{% endblock %}

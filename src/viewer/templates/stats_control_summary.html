@@ -1,0 +1,24 @@
+{% extends "search.html" %}
+
+{% block searchform %}
+{% endblock %}
+
+{% block searchresults %}
+   <table>
+       <tr><th>Max. AST distance</th>
+           <th>Max. literal distance</th>
+           <th>Max. diff literals</th>
+           <th>Stddev. AST distance</th>
+           <th>N     </th>
+           <th>Control URL</th>
+       </tr> 
+   {% for r in page_obj %}
+       <tr><td>{{ r.max_ast_dist |floatformat }} </td>
+           <td>{{ r.max_literal_dist |floatformat }} </td>
+           <td>{{ r.max_diff_literals |floatformat }} </td>
+           <td>{{ r.stddev_ast_dist |floatformat }} </td>
+           <td>{{ r.n }} </td>
+           <td>{{ r.control_url }}</td>
+       </tr>
+   {% endfor %}
+{% endblock %}

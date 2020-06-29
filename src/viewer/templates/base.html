@@ -1,4 +1,5 @@
 {% load static %}
+{% load menubuilder %}
 <html>
     <head>
         <title>AU Javascript Viewer</title>
@@ -12,7 +13,13 @@
         </div>
 
         <div class="menubar">
-            <ul>{% load menubuilder %}{% menu search %}
+            <h3>Search</h3>
+            <ul>{% menu search %}
+                {% for item in menuitems %}<li><a href="{{ item.url }}" title="{{ item.title|escape }}"{% if item.current %} class='current'{% endif %}>{{ item.title }}</a></li>
+                {% endfor %}
+            </ul>
+            <h3>Statistics</h3>
+            <ul>{%menu stats %}
                 {% for item in menuitems %}<li><a href="{{ item.url }}" title="{{ item.title|escape }}"{% if item.current %} class='current'{% endif %}>{{ item.title }}</a></li>
                 {% endfor %}
             </ul>

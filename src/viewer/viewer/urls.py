@@ -16,7 +16,7 @@ Including another URLconf
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
-from viewer import views 
+from viewer import views, stats
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -36,4 +36,7 @@ urlpatterns = [
         path('search/host/', views.host_search),
         path('search/control/', views.control_search),
         path('search/distance/', views.distance_search),
+        path('search/recent/', views.recent_search),
+        path('search/function/', views.function_search),
+        path('statistics/by-control/', stats.by_control_stats),
     ] + urlpatterns
