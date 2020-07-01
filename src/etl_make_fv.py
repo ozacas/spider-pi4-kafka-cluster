@@ -52,9 +52,6 @@ def save_to_kafka(producer, results, to='analysis-results', key=None):
        assert isinstance(key, bytes)
    producer.send(to, results, key=key)
 
-def javascript_only():
-   return lambda v: 'javascript' in v.get('content-type', '') and v.get('size_bytes') >= 1500
-
 def iterate(consumer, max, cache, verbose=False):
    assert consumer is not None
    assert cache is not None
