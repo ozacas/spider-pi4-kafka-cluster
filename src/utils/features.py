@@ -358,7 +358,7 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
       print(t)
    return t
 
-def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=150.0, control_cache=None, debug=False):
+def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=100.0, ast_weight=0.55, fcall_weight=0.8, control_cache=None, debug=False):
    assert ast_desired_sum >= 0
    assert function_call_sum >= 0
 
@@ -367,22 +367,25 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
 
    # only those controls within max_distance (either side) from the desired feature sum (from the AST vector under test) are considered feasible
    # all others need not be searched. This could be tighter.
-   lb = ast_desired_sum - max_distance 
-   ub = ast_desired_sum + max_distance
+   ast_fract = max_distance * ast_weight 
+   fcall_fract = max_distance * fcall_weight
+   assert ast_fract > 0.0 and fcall_fract > 0.0
+   lb = ast_desired_sum - ast_fract  # AST suffers from minification/obfuscation problems so we de-weight it relative to fcall 
+   ub = ast_desired_sum + ast_fract
    # but we now also consider function call distance (only use half max_distance since function calls are less frequent than AST features)
-   lb_fc = function_call_sum - (max_distance / 2)
-   ub_fc = function_call_sum + (max_distance / 2)
+   lb_fc = function_call_sum - fcall_fract # Function call distance suffers from function-renaming problems eg. different minifications tools used
+   ub_fc = function_call_sum + fcall_fract
 
    n = n_cached = 0
    ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub } }) 
    fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc } })
    feasible_controls = []
-   seen = set()
-   for rec in chain(ast_hits, fcall_hits): 
+   seen = set() # dont process each hit more than once, no matter how many strategies for finding hits report it
+   for rec in chain(fcall_hits, ast_hits):  # use function call hits first, since if we find a good hit we can save time...
        n += 1
        control_url = rec.get('origin')
        if control_url in seen:
-           continue # de-dupe if function call hit was also hit by ast_hits
+           continue 
        seen.add(control_url)
 
        if control_cache is not None and control_url in control_cache:
@@ -465,7 +468,7 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
    # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
    if debug:
        print("find_best_control({})".format(origin_url))
-   feasible_controls = find_feasible_controls(db, ast_sum, fcall_sum, debug=debug, control_cache=control_cache) 
+   feasible_controls = find_feasible_controls(db, ast_sum, fcall_sum, debug=debug, control_cache=control_cache, max_distance=max_distance) 
    for fc_tuple in feasible_controls:
        control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple
        assert isinstance(control, dict)
@@ -476,6 +479,8 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
        # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
        new_distance, ast_dist, call_dist, diff_functions = distance(input_ast_vector, control_ast_vector, 
                                                                     input_features['calls_by_count'], control_call_vector, debug=debug)
+       if call_dist < 5.0 and new_distance > max_distance:
+           print("WARNING: rejecting possibly feasible control due to bad total distance: {} {} {} {} {}".format(new_distance, ast_dist, call_dist, control_url, origin_url))
        if new_distance < best_distance and new_distance <= max_distance:
            if debug:
                print("Got good distance {} for {} (was {}, max={})".format(new_distance, control_url, best_distance, max_distance)) 
