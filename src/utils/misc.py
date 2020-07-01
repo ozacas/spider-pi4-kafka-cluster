@@ -5,6 +5,9 @@ import json
 from utils.models import Password
 from urllib.parse import urlparse
 
+def javascript_only():
+   return lambda v: 'javascript' in v.get('content-type', v.get('content_type', '')) and v.get('size_bytes') >= 1500
+
 def json_value_serializer():
     """
     Returns a callable which serialises the supplied value with correct handling of UTF-8 encoded literals in artefacts

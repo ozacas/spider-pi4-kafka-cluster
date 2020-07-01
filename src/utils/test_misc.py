@@ -24,3 +24,14 @@ def test_json_utf8_clean():
 def test_random_user_agent():
    ua = random_user_agent()
    assert ua is not None and len(ua) > 0
+
+def test_javascript_only():
+   cb = javascript_only()
+   d = { 'content_type': 'application/rubbish', 'size_bytes': 2000 }
+   assert not cb(d) 
+   d = { 'content-type': 'application/javascript', 'size_bytes': 2000 }  # javascript_only() MUST support both content-type and content_type
+   assert cb(d) 
+   d = { 'content_type': 'text/javascript', 'size_bytes': 3000 }
+   assert cb(d)
+   d = { 'content_type': 'text/javascript', 'size_bytes': 1499 }  # must be false since bytes < 1500
+   assert not cb(d)
