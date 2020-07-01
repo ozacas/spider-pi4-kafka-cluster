@@ -29,20 +29,25 @@ Basic Administration
 
 Let ansible do the work.
 
-** Provisioning the cluster (once ssh and linux setup)
+### Provisioning the cluster (once ssh and linux setup)
 
-ANSIBLE_NOCOWS=1 ANSIBLE_NOCOLOR=1 ansible-playbook -i cluster-inventory install-cluster.yml
+> ansible-playbook -i cluster-inventory install-cluster.yml
 
 Will take a long time (for system updates) and trigger a reboot to get system services incl. kafka/zookeeper sync'ed.
 
-** Provisioning required software across the cluster (only required for each release to deploy, no reboots)
+### Provisioning required software across the cluster (only required for each release to deploy, no reboots)
 
-ANSIBLE_NOCOWS=1 ANSIBLE_NOCOLOR=1 ansible-playbook -i cluster-inventory install-software.yml
+> ansible-playbook -i cluster-inventory install-software.yml
 
-** Running core system
+### Running core system
 
-(edit group_vars/all to ensure correct settings)
-ANSIBLE_NOCOWS=1 ANSIBLE_NOCOLOR=1 ansible-playbook -i cluster-inventory run-system.yml
+> vi group_vars/all # edit to control what run-system does and creds etc...
+> ansible-playbook -i cluster-inventory run-system.yml
+
+### When run done...
+
+> ansible-playbook -i cluster-inventory stop-system.yml
+> ansible-playbook -i cluster-inventory shutdown-cluster.yml
 
 I use kafdrop (installed on the ansible control workstation) and kafka-manager (now known as CMAK) to admin the kafka cluster and keep track of things.
 Kafkaspider saves to pi2:/data/kafkaspider16 to avoid pounding mongo and slowing down the crawl. etl_upload_artefacts pushes a batch at the 
