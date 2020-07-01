@@ -103,6 +103,7 @@ def process_hit(db, m, args):
     #             'sha256': 'd6941fcfdd12069e20f4bb880ecbab12d797d9696cae1b05ec9d59fb9bd90b51', 'md5': '2b10377115ab0747535acb1ad38b26bd', 
     #             'inline': False, 'content_type': 'text/javascript', 'when': '2020-06-04 03:28:28.483855', 'size_bytes': 14951, 
     #             'origin': 'https://homes.mirvac.com/homes-portfolio',  'js_id': '5e8ef7df582045cdd24ce8ae' }
+    best_control_is_hit = False
     best_control, next_best_control = find_best_control(db, m, debug=args.v, control_cache=vector_cache,
                                                         max_distance=args.max_distance)
     ovec = m['literals_by_count']
@@ -116,18 +117,18 @@ def process_hit(db, m, args):
             assert cntl_doc is not None
             ######### Vet the control URL
             # temporarily printed as assert's are rarely failing - most likely an error elsewhere in the pipeline
-            print("artefact hash: ", m['sha256'], m['md5'], " control_hashes: ", cntl_doc.get('sha256'), cntl_doc.get('md5'))
+            #print("artefact hash: ", m['sha256'], m['md5'], " control_hashes: ", cntl_doc.get('sha256'), cntl_doc.get('md5'))
             assert cntl_doc.get('size_bytes') == m['size_bytes']
             assert cntl_doc.get('sha256') == m['sha256']  # these exist to catch sha256 hash collisions if any, to verify whether if they happen in production...
             assert cntl_doc.get('md5') == m['md5']
 
         update_literal_distance(db, best_control, ovec, fail_if_difference=args.defensive and best_control.sha256_matched)
+        best_control_is_hit = True
 
     d = save_vetting(db, best_control)
     best_control.xref = d['xref']
     assert best_control.xref is not None
     producer.send(args.to, d) 
-
     if (args.report_bad or args.report_all) and len(best_control.control_url) == 0:
         print(best_control)
     if (args.report_good or args.report_all) and len(best_control.control_url) > 0:
@@ -140,7 +141,7 @@ def process_hit(db, m, args):
         next_best_control.xref = d2['xref']
         assert len(next_best_control.xref) > 0
         if next_best_control.literal_dist < 0.0: # if the literal distance calculation fails (eg. missing control features) we ignore the hit
-            return
+            return False
 
         best_mult = best_control.distance()
         next_best_mult = next_best_control.distance()
@@ -149,6 +150,8 @@ def process_hit(db, m, args):
             print(next_best_control) 
             producer.send(args.to, d2)
             assert d2['xref'] != d['xref']  # xref must not be the same document otherwise something has gone wrong 
+
+    return best_control_is_hit
 
 def calculate_vectors(db, m, defensive, java, extractor, force=False):
     vectors_as_dict = find_or_update_analysis_content(db, m, defensive=defensive, force=force, java=java, extractor=extractor)
@@ -161,7 +164,7 @@ if __name__ == "__main__":
     group = args.group
     if len(group) < 1:
         group = None
-    consumer = KafkaConsumer(args.consume_from, group_id=group, auto_offset_reset=args.start, 
+    consumer = KafkaConsumer(args.consume_from, group_id=group, auto_offset_reset=args.start, enable_auto_commit=False, max_poll_interval_ms=60000000,
                              bootstrap_servers=args.bootstrap, value_deserializer=json_value_deserializer())
     producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
     setup_signals(cleanup)
@@ -172,26 +175,46 @@ if __name__ == "__main__":
     print("Index creation complete.")
     
     vector_cache = pylru.lrucache(20 * 1000) # bigger the better since we want to avoid large-scale mongo queries
-    for m in next_artefact(consumer, args.n,
-                                 filter_cb=lambda m: m.get('size_bytes') >= args.min_size, verbose=args.v):
-        try:
-            calculate_vectors(db, m, args.defensive, args.java, args.extractor)
-        except ValueError as ve:
-            print("WARNNG - ignoring script which could not be analysed: {}".format(m))
-            print(str(ve))
-            continue
-
-        try:
-            process_hit(db, m, args)
-        except ValueError as ve:
-            # if we get a ValueError with args.defensive it likely means data corruption since
-            # there should be no literal differences when sha256 matches. So we update the database record and try again.
-            # Otherwise raise as per normal
-            if args.defensive:
+    batch_size = 2000
+    batch_id = 0                     # used to keep track of last_successful_batch and last batch
+    last_successful_batch_id = None
+    fail_runif_consecutive_bad = 5   # abort run if more than this number of batches consecutively are considered bad
+    expected_hits = 200              # NB: relative to batch_size ie. at least 10% must be hits or we fail the batch
+    for batch_of_messages in batch(next_artefact(consumer, args.n, filter_cb=javascript_only(), verbose=args.v), n=batch_size):
+        good_in_batch = 0
+        for m in sorted(batch_of_messages, key=lambda v: v.get('sha256')):
+            try:
+                calculate_vectors(db, m, args.defensive, args.java, args.extractor)
+            except ValueError as ve:
+                print("WARNNG - ignoring script which could not be analysed: {}".format(m))
                 print(str(ve))
-                print("WARNING: recalculating db entry in case of data-corruption:")
-                calculate_vectors(db, m, args.defensive, args.java, args.extractor, force=True)
-                process_hit(db, m, args)
-            else:
-                raise ve
+                continue
+
+            try:
+                is_hit = process_hit(db, m, args)
+            except ValueError as ve:
+                # if we get a ValueError with args.defensive it likely means data corruption since
+                # there should be no literal differences when sha256 matches. So we update the database record and try again.
+                # Otherwise raise as per normal
+                if args.defensive:
+                    print(str(ve))
+                    print("WARNING: recalculating db entry in case of data-corruption:")
+                    calculate_vectors(db, m, args.defensive, args.java, args.extractor, force=True)
+                    is_hit = process_hit(db, m, args)
+                else:
+                    raise ve
+
+            if is_hit:
+                good_in_batch += 1 
+     
+        print("Got {} hits in batch of {} (require at least {} to be successful batch).".format(good_in_batch, batch_size, expected_hits))
+        consumer.commit() # update consumer offsets since the batch is now processed
+        if good_in_batch < expected_hits:
+            tmp = last_successful_batch_id if last_successful_batch_id is not None else 0
+            assert batch_id - tmp < fail_runif_consecutive_bad
+            print("WARNING: batch id {} failed: only {} hits".format(batch_id, good_in_batch))
+        else:
+            last_successful_batch_id = batch_id
+        batch_id += 1 
+                 
     cleanup()
