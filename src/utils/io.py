@@ -85,11 +85,11 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ens
    d = asdict(jsr)
    d.update({ "analysis_bytes": Binary(bytes_content), 'last_updated': datetime.utcnow() })
 
-   # only perform and update if no existing analysis?  
+   # do not perform an update iff existing analysis?  
    if iff_not_exists:
        # https://blog.serverdensity.com/checking-if-a-document-exists-mongodb-slow-findone-vs-find/ 
        # dont do the update below if the analysis content already exists...
-       cursor = db.collection.find({'_id': ObjectId(js_id) }, {'_id': 1}).limit(1)
+       cursor = db.analysis_content.find({'js_id': ObjectId(js_id) }, {'js_id': 1}).limit(1)
        if cursor is not None: # data exists, so we dont update
            return
 
@@ -101,8 +101,8 @@ def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     for message in filter(lambda m: filter_cb is None or filter_cb(m.value), iterable):
         yield message.value
         n += 1
-        if verbose and n % 10000 == 0:
-            print("Processed {} records. {}".format(n, str(datetime.utcnow())))
+        if verbose and n % 1000 == 0:
+            print("Reported {} records. {}".format(n, str(datetime.utcnow())))
         if n >= max:
             break
 

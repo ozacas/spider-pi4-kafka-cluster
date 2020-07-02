@@ -1,9 +1,11 @@
-from unittest.mock import Mock
+from unittest import mock
 from dataclasses import dataclass
 from typing import Dict
 import pytest
 from utils.models import DownloadArtefact
+from utils.test_features import load_data
 from utils.io import *
+import datetime
 
 @dataclass
 class Junk:
@@ -60,7 +62,7 @@ def test_download_artefact(): # should really be in test_models... but historica
 def test_save_url():
    t = DownloadArtefact(url='http://www.blah.blah/foo.js', path='full/123yu4u43yu4y43.js',
              checksum='1a...', host='pi2', origin='http://www.blah.blah/index.html', when='2019-10-10')
-   m = Mock() 
+   m = mock.Mock() 
    ret = save_url(m, t)
    assert ret is not None # TODO FIXME: better test than this...
    assert len(m.method_calls) == 1
@@ -71,11 +73,11 @@ def test_save_url():
    assert len(kwargs) == 0
 
 def test_save_script_correct_checksum():
-   m = Mock()
+   m = mock.Mock()
    # hash values must correspond to the script_bytes... or else the code-under-test will think the mock database is "corrupt"
    script_bytes = 'console.write.(blah blah)'.encode()
    m.scripts.find_one.return_value = { '_id': "abc123", 'sha256': 'd76a62e336adcdda817ad46287d08b616ccdbfd4e771b08cfeba864626433081', 'md5': 'f8f4392b9ce13de380ecdbe256030807', 'size_bytes': 25, 'code': script_bytes }
-   m2 = Mock()
+   m2 = mock.Mock()
    m2.inserted_id = 'abc123ff'
    m.scripts.insert_one.return_value = m2
 
@@ -98,7 +100,7 @@ def test_save_script_correct_checksum():
    assert len(m.method_calls) == 3 # db.urls.insert_one(), db.scripts.find_one(), db.script_url.insert_one()
 
 def test_save_script_incorrect_checksum():
-   m = Mock()
+   m = mock.Mock()
    jsr = DownloadArtefact(url='X', path='full/foo.js', checksum='X' * 32, host='pi3', origin='crap.html', when='2020-04-25')
    with pytest.raises(ValueError):
        ret = save_script(m, jsr, 'rubbish.code.which.does.not.match.required.checksum'.encode())
@@ -117,3 +119,65 @@ def test_batch():
    i = iter([1,2,3])
    ret = list(batch(i, n=3))
    assert ret == [(1, 2, 3)]
+
+@pytest.fixture(scope="module")
+def expected_analysis_results():
+   from utils.fixtures.fouac__find_one import fouac_find_one_expected_results
+   return fouac_find_one_expected_results()
+
+def test_find_or_update_analysis_content(pytestconfig, expected_analysis_results):
+   # NB: here we want to test the symettry of the two key methods in io.py - find_analysis_or_update() and save_analysis_content()
+   #     specifically that they co-ordinate together to achieve the correct result
+   db = mock.Mock()
+   db.analysis_content.find_one.return_value = expected_analysis_results
+   with open("{}/src/test-javascript/json2_4.9.2.min.js".format(pytestconfig.rootdir), 'rb') as fp:
+       bytes = fp.read()
+       m = { 'url': 'http://blah.blah', 'sha256': hashlib.sha256(bytes).hexdigest(),
+             'md5': hashlib.md5(bytes).hexdigest(), 'size_bytes': len(bytes),
+             'js_id': 'fafafa'*4 } # FAKED, not actually present in database since we are mocking...
+
+       # first test when the code is "in the database"
+       results = find_or_update_analysis_content(db, m)
+       assert isinstance(results, dict)
+       assert 'statements_by_count' in results
+       assert 'literals_by_count' in results
+       assert 'calls_by_count' in results
+       assert db.method_calls == [mock.call.analysis_content.find_one({ 'js_id': 'fafafa'*4 })]
+
+       # and now when it isnt
+       db.analysis_content.find_one.return_value = None
+       with pytest.raises(ValueError):
+           results = find_or_update_analysis_content(db, m, fail_iff_not_found=True)
+
+       # also when it isnt... but this time we'll re-analyse bytes to verify ability to re-compute lost data
+       # first time find_one() is called it is not there, but after analyse_script() and the second find_one() call it will be in the database
+       db = mock.Mock()
+       db.scripts.find_one.return_value = { 'code': bytes, '_id': ObjectId("5e38ff66bef5d2ec18b150ab"), 
+                                            'sha256': m.get('sha256'), 'md5': m.get('md5'),
+                                            'size_bytes': len(bytes) }
+       db.analysis_content.find_one.side_effect = [None, expected_analysis_results]
+       results2 = find_or_update_analysis_content(db, m, 
+                                                  java='/usr/bin/java', 
+                                                  extractor='{}/src/extract-features.jar'.format(pytestconfig.rootdir))
+       assert results2 == results
+       assert len(db.method_calls) == 4
+       assert db.method_calls[0] == mock.call.analysis_content.find_one({'js_id': 'fa'*12})
+       assert db.method_calls[1] == mock.call.scripts.find_one({'_id': ObjectId('fafafafafafafafafafafafa')})
+       assert db.method_calls[3] == mock.call.analysis_content.find_one({'js_id': 'fafafafafafafafafafafafa'})
+       method, args, kwargs = db.method_calls[2]
+       assert method == 'analysis_content.find_one_and_update'
+       assert kwargs == { 'upsert': True }
+       assert args[0] == { 'js_id': str(db.scripts.find_one.return_value.get('_id')) }
+       assert isinstance(args[1], dict)
+       assert args[1].keys() == set(['$set']) # all fields should be updated...
+       fv = args[1].get('$set')
+       # dont bother checking last updated...
+       expected_results = {
+           'url': 'http://blah.blah', 'sha256': '6c16b51a66747d60a59bf985bbb77f40922eabb1d7401d1564da78ec025e65e5', 
+           'md5': '35d899a81986173f44f9bbe686cc583c', 'js_id': '5e38ff66bef5d2ec18b150ab', 'inline': False,
+           'content_type': 'text/javascript', 'size_bytes': 3133, 'origin': None
+       }
+       for k in ['url', 'sha256', 'md5', 'js_id', 'content_type', 'size_bytes', 'origin', 'inline']:
+           assert fv[k] == expected_results[k]
+       assert 'analysis_bytes' in fv
+       assert 'last_updated' in fv
