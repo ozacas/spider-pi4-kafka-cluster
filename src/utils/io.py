@@ -24,6 +24,8 @@ def find_or_update_analysis_content(db, m, fail_iff_not_found=False, defensive=F
        byte_content_doc = db.analysis_content.find_one({ 'js_id': js_id })
        if fail_iff_not_found and byte_content_doc is None:   # prevent infinite recursion
            raise ValueError("No data for {}".format(js_id))
+       elif byte_content_doc is None:
+           print("WARNING: unable to locate analysis content for {}".format(js_id))
     else:
        byte_content_doc = None
 
@@ -82,19 +84,21 @@ def save_analysis_content(db, jsr: JavascriptArtefact, bytes_content: bytes, ens
    if ensure_indexes:
        db.analysis_content.create_index([( 'js_id', ASCENDING ) ], unique=True)
 
-   d = asdict(jsr)
-   d.update({ "analysis_bytes": Binary(bytes_content), 'last_updated': datetime.utcnow() })
-
    # do not perform an update iff existing analysis?  
    if iff_not_exists:
        # https://blog.serverdensity.com/checking-if-a-document-exists-mongodb-slow-findone-vs-find/ 
        # dont do the update below if the analysis content already exists...
-       cursor = db.analysis_content.find({'js_id': ObjectId(js_id) }, {'js_id': 1}).limit(1)
+       cursor = db.analysis_content.find({'js_id': js_id }, {'js_id': 1}).limit(1)
        if cursor is not None: # data exists, so we dont update
-           return
+           print("Found hit for {}".format(js_id))
+           return False
 
    # lookup artefact by ID - altered content will get a new ID as long as its sha256 hash isnt already known
+   d = asdict(jsr)
+   d.update({ "analysis_bytes": Binary(bytes_content), 'last_updated': datetime.utcnow() })
    ret = db.analysis_content.find_one_and_update({ "js_id": js_id }, { "$set": d }, upsert=True)
+   print("Saved analysis content for {}".format(js_id))
+   return True
 
 def next_artefact(iterable, max: float, filter_cb: callable, verbose=False):
     n = 0
