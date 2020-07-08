@@ -35,12 +35,12 @@ def lookup_artefacts(db, origin_url, xref):
        print(result)
        if result is None:
           raise ValueError("Failed to match {} - nothing to report!".format(origin_url))
-       return (result.get('control_url'), result.get('origin_js_id'), origin_url)
+       return (result.get('control_url'), result.get('origin_js_id'), origin_url, result.get('cited_on'))
    else:
        for t in [db.vet_against_control, db.vet_against_control_20200517,  db.vet_against_control_20200524 ]:
            result = t.find_one({ '_id': ObjectId(xref) })
            if not result is None:
-               return (result.get('control_url'), result.get('origin_js_id'), result.get('origin_url'))
+               return (result.get('control_url'), result.get('origin_js_id'), result.get('origin_url'), result.get('cited_on'))
        raise ValueError("Unable to locate xref {} - typo?".format(xref))
 
 
@@ -129,7 +129,8 @@ if __name__ == "__main__":
 
    mongo = pymongo.MongoClient(args.db, args.port, username=args.dbuser, password=str(args.dbpassword))
    db = mongo[args.dbname]
-   control_url, artefact_js_id, artefact_url = lookup_artefacts(db, args.url, args.xref)
+   control_url, artefact_js_id, artefact_url, cited_on = lookup_artefacts(db, args.url, args.xref)
+   print("Artefact seen on {}".format(cited_on))
    assert control_url is not None and len(control_url) > 0
    assert artefact_url is not None and len(artefact_url) > 0
    assert artefact_js_id is not None and len(artefact_js_id) > 0
