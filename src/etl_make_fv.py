@@ -137,6 +137,7 @@ def main(args, consumer=None, producer=None, db=None, cache=None):
               fv_cache[js_id] = (byte_content, js_id)
 
       assert js_id == jsr.js_id
+      assert isinstance(js_id, str) and isinstance(jsr.js_id, str) and len(jsr.js_id) > 0
       save_analysis_content(db, jsr, byte_content, ensure_indexes=is_first, iff_not_exists=True)
       save_to_kafka(producer, asdict(jsr), to=args.to, key=jsr.sha256.encode('utf-8'))
       is_first = False
