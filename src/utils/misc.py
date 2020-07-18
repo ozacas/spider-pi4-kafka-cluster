@@ -111,7 +111,7 @@ def add_mongo_arguments(args, default_host='pi1', default_port=27017, default_db
    args.add_argument("--dbpassword", 
                      help="MongoDB password for user (prompted if not supplied)", type=Password, default=Password.DEFAULT)
 
-def add_kafka_arguments(args, producer=False, consumer=True, default_from='', default_group='', default_to=''):
+def add_kafka_arguments(args, producer=False, consumer=True, default_from='', default_group='', default_to='', default_start='latest'):
    args.add_argument("--bootstrap", 
                   help="Kafka bootstrap servers [kafka2]", 
                   type=str, default="kafka2")
@@ -123,8 +123,8 @@ def add_kafka_arguments(args, producer=False, consumer=True, default_from='', de
                       help="Use specified kafka consumer group to remember where we left off [{}]".format(default_group), 
                       type=str, default=default_group)
        args.add_argument("--start", 
-                      help="Consume from earliest|latest message available in from topic [latest]", 
-                      type=str, default='latest', choices=('earliest', 'latest'))
+                      help="Consume from earliest|latest message available in from topic [{}]".format(default_start), 
+                      type=str, default=default_start, choices=('earliest', 'latest'))
        args.add_argument("--n",
                       help="Consume no more than N records [Inf]",
                       type=float, default=float('Inf'))

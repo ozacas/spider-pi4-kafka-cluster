@@ -73,7 +73,7 @@ if __name__ == "__main__":
                 producer=True, # and save to a topic
                 default_from='javascript-artefact-control-results',
                 default_group='etl-publish-hits',
-                default_to='etl-good-hits')
+                default_to='etl-good-hits', default_start='earliest')
     add_mongo_arguments(a, default_access="read-write", default_user='rw')
     add_extractor_arguments(a)
     add_debug_arguments(a)
