@@ -8,7 +8,7 @@ import tempfile
 import json
 from bson.objectid import ObjectId
 from subprocess import run
-from utils.features import find_script, calculate_ast_vector, analyse_script, compute_distance, calculate_vector, calculate_literal_distance, truncate_literals
+from utils.features import *
 from utils.misc import add_mongo_arguments, add_debug_arguments
 from utils.models import JavascriptArtefact
 from datetime import datetime
@@ -60,6 +60,17 @@ def save_script(db, filename, js_id, artefact_url):
    with open(filename, 'wb+') as fp:
        fp.write(script.get('code'))
 
+def beautify(out_filename, beautifier_exe, in_fname):
+   assert len(out_filename) > 0
+   assert os.path.exists(beautifier_exe)
+   assert os.path.exists(in_fname)
+
+   proc = run([beautifier_exe, "-o", out_filename, in_fname])
+   if proc.returncode != 0:
+      raise Exception("Unable to beautify {}!".format(in_fname))
+   else:
+      assert os.path.exists(out_filename)
+
 def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
    assert len(control_url) > 0 and len(artefact_url) > 0
    assert os.path.exists(artefact_fname)
@@ -90,6 +101,12 @@ def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
    print(v2)
    dist = compute_distance(v1, v2) 
    print("AST distance: {:.2f}".format(dist))
+   diff_features = []
+   for feature_idx, feature in enumerate(ast_feature_list):
+       if v1[feature_idx] != v2[feature_idx]:
+          diff_features.append('{} ({})'.format(feature, abs(v1[feature_idx] - v2[feature_idx])))
+   print("AST features which are different:", ','.join(diff_features))
+
    diffs = []
    all_calls = set(cntrl['calls_by_count'].keys()).union(ret['calls_by_count'].keys()) 
    for fn in all_calls:
@@ -117,7 +134,7 @@ def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
  
 
 if __name__ == "__main__":
-   a = argparse.ArgumentParser(description="Run meld on the chosen URL as its best control, after JS beatification (optional)")
+   a = argparse.ArgumentParser(description="View side-by-side graphical diff on the chosen URL/XREF against best control, after JS beautification to improve side-by-side comparison")
    add_mongo_arguments(a, default_access='read-only', default_user='ro')
    add_debug_arguments(a)
    grp = a.add_mutually_exclusive_group(required=True)
@@ -152,12 +169,8 @@ if __name__ == "__main__":
       # 2. beautify them (ie. reduce minimisation to ensure consistent representation for diff'ing etc.)
       bs1 = "{}/1c.js".format(tdir)
       bs2 = "{}/2a.js".format(tdir)
-      proc = run([args.beautifier, "-o", bs1, "{}/control.js".format(tdir)])
-      if proc.returncode != 0:
-         raise Exception("Unable to beautify control!")
-      proc = run([args.beautifier, "-o", bs2, "{}/artefact.js".format(tdir)])
-      if proc.returncode != 0:
-         raise Exception("Unable to beautify artefact!")
+      beautify(bs2, args.beautifier, artefact_fname)
+      beautify(bs1, args.beautifier, control_fname)
 
       # 3. run meld on the resulting beautified-JS for both control and artefact
       diff_proc = run([args.diff, bs1, bs2])
