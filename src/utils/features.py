@@ -3,7 +3,7 @@ import json
 import os
 from io import StringIO
 import re
-import math 
+import math
 import hashlib
 import pylru
 from codecs import encode, decode
@@ -17,16 +17,24 @@ from tempfile import NamedTemporaryFile
 from urllib.parse import urlparse
 
 # comes from MongoDB (db.statements_by_count_keys collection) but for performance is listed here
-ast_feature_list =  [ "ArrayLiteral", "Assignment", "AstRoot", "Block", "BreakStatement", "CatchClause", "ConditionalExpression",
+ast_feature_list =  ("ArrayLiteral", "Assignment", "AstRoot", "Block", "BreakStatement", "CatchClause", "ConditionalExpression",
         "ContinueStatement", "DoLoop", "ElementGet", "EmptyExpression", "EmptyStatement", "ExpressionStatement", "ForInLoop", "ForLoop",
         "FunctionCall", "FunctionNode", "IfStatement", "InfixExpression", "KeywordLiteral", "Label", "LabeledStatement", "Name",
         "NewExpression", "NumberLiteral", "ObjectLiteral", "ObjectProperty", "ParenthesizedExpression", "PropertyGet",
         "RegExpLiteral", "ReturnStatement", "Scope", "StringLiteral", "SwitchCase", "SwitchStatement", "ThrowStatement",
-        "TryStatement", "UnaryExpression", "VariableDeclaration", "VariableInitializer", "WhileLoop", "WithStatement", "XmlLiteral", "XmlString" ]
+        "TryStatement", "UnaryExpression", "VariableDeclaration", "VariableInitializer", "WhileLoop", "WithStatement", "XmlLiteral", "XmlString" )
 
+# we DOWNPLAY some weights IFF they are likely to represent malicious activity eg. literals with code so
+# that the distance is reduced ie. we get to the next part of the pipeline. This is counterintuitive.
+ast_feature_weights = (0.5, 1.0, 0.1, 1.0, 1.1, 1.1, 1.0,
+                       1.0, 1.0, 0.8, 0.1, 0.1, 1.0, 1.0, 1.0,
+                       0.8, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                       1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                       0.8, 1.0, 1.0, 0.6, 1.0, 1.0, 1.0,
+                       1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.7, 0.7 )
 
 def safe_for_mongo(items):
-   """ 
+   """
    Returns a dict which has all keys made safe for insertion into MongoDB.
    This primarily means fields with a key starting with '$' are replaced with 'F$'
    """
@@ -39,7 +47,7 @@ def safe_for_mongo(items):
 
 def as_url_fields(url, prefix=''):
     """
-    Returns a dict with keys prefixed by prefix representing component parts and attributes of the chosen url. 
+    Returns a dict with keys prefixed by prefix representing component parts and attributes of the chosen url.
     urlparse is used for parsing the url.
     """
     up = urlparse(url)
@@ -72,7 +80,7 @@ def find_script(db, url, want_code=True, debug=False):
                 print(ret)
             if ret:
                # 3. ok, now we can get the script document to return the hash
-               script_doc = db.scripts.find_one({ '_id': ret.get('script') }, { 'code': 1 if want_code else 0 }) 
+               script_doc = db.scripts.find_one({ '_id': ret.get('script') }, { 'code': 1 if want_code else 0 })
                if debug:
                    print(script_doc)
                return (script_doc, url_id)
@@ -96,7 +104,7 @@ def validate_feature_vectors(db, msg, java, extractor):
     features, failed, stderr = analyse_script(ret.get('code'), jsr, java=java, feature_extractor=extractor)
     if failed:
         return False
-    
+
     l = len(features['literals_by_count'])
     o = len(msg['literals_by_count'])
     print(l, " ", o)
@@ -104,10 +112,10 @@ def validate_feature_vectors(db, msg, java, extractor):
     assert features['statements_by_count'] == msg['statements_by_count']
     assert features['calls_by_count'] == msg['calls_by_count']
     return True
- 
+
 def find_sha256_hash(db, url):
    """
-   Similar to find_script(), but returns only the sha256 hexdigest (if found) 
+   Similar to find_script(), but returns only the sha256 hexdigest (if found)
    """
    script, url_id = find_script(db, url, want_code=False)
    if script:
@@ -115,16 +123,24 @@ def find_sha256_hash(db, url):
    return (None, None)
 
 def get_script(db, artefact):
+   """
+   Return a tuple (byte_content, id) representing a downloaded artefact using db.
+   (None, None) if not present in the database. If artefact is a string, it is
+   assumed to be an object ID, else if artefact.js_id is set it is looked up
+   by this ID. If all else fails the artefact (sha256, md5, size_in_bytes) are
+   used to locate the artefact on disk.
+   """
    if isinstance(artefact, str):
        js = db.scripts.find_one({ '_id': ObjectId(artefact) })
+       # FALLTHRU
    elif isinstance(artefact, JavascriptArtefact) and len(artefact.js_id) > 0:
        ret = get_script(db, artefact.js_id)
        assert ret[1] == artefact.js_id    # verify we found the right artefact?
        return ret
    else:
        # if its an inline script it will be in db.snippets otherwise it will be in db.scripts - important to get it right!
-       d = { 'sha256': artefact.sha256.strip(), 
-             'md5': artefact.md5.strip(), 
+       d = { 'sha256': artefact.sha256.strip(),
+             'md5': artefact.md5.strip(),
              'size_bytes': artefact.size_bytes } # ENSURE we set the right fields so Mongo uses the index
        collection = db.snippets if artefact.inline else db.scripts
        js = collection.find_one(d)
@@ -161,16 +177,16 @@ def is_artefact_packed(filename, byte_content):
 
    try:
        source = fast_decode(byte_content)
-       is_packed = packer.detect(source) 
+       is_packed = packer.detect(source)
        if is_packed:
            ret = packer.unpack(source)
-           # TODO FIXME... yuk this is so silly! But we have to return bytes since extract-features.jar program expects that... 
+           # TODO FIXME... yuk this is so silly! But we have to return bytes since extract-features.jar program expects that...
            # fortunately most artefacts arent packed so this is not as expensive as it could be...
            result = decode(encode(ret, 'utf-8', 'backslashreplace'), 'unicode-escape').encode()
            assert isinstance(result, bytes)
            assert len(result) > 0
            return (True, result)
-       # else 
+       # else
        return (False, byte_content)
    except Exception as e:
        # we fail an artefact that is purportedly packed, but which cannot be unpacked...
@@ -184,8 +200,13 @@ def save_temp_file(byte_content):
     tmpfile.write(byte_content)
     tmpfile.close()
     return (tmpfile, tmpfile.name)
-    
+
 def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
+   """
+   Extract features from the specified artefact (jsr) by executing the
+   specified java program to identify features using Mozilla Rhino. Primitive
+   support for unpacking Dave Edward's p.a.c.k.e.r is available but imperfect.
+   """
    is_bytes = isinstance(js, bytes)
    if is_bytes:
        tmpfile, fname = save_temp_file(js)
@@ -209,11 +230,12 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
 
    # ensure we get lossless output using recommendations reported at: https://bugs.python.org/issue34618
    environ = os.environ.copy()
-   environ['PYTHONIOENCODING'] = 'utf-8' 
+   environ['PYTHONIOENCODING'] = 'utf-8'
 
    # save to file and run extract-features.jar to identify the javascript features
-   process = subprocess.run([java, "-jar", feature_extractor, fname, jsr.url], env=environ, capture_output=True, encoding='utf-8', errors='strict')
-   
+   process = subprocess.run([java, "-jar", feature_extractor, fname, jsr.url],
+                            env=environ, capture_output=True, encoding='utf-8', errors='strict')
+
    # turn process stdout into something we can save
    ret = process.stdout
    assert isinstance(ret, str)
@@ -228,32 +250,47 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
 
 def compute_distance(v1, v2, short_vector_penalty=True):
    svp = 1.0
-   denom = len(v1) 
+   denom = len(v1)
    if denom == 0:
       denom = 1
    if short_vector_penalty and denom < 15:
       svp = 20.0 / denom
    return math.dist(v1, v2) * svp
 
-def calculate_ast_vector(d):
+def calculate_ast_vector(d, use_weights=False):
+   """
+   Compute an AST syntax vector, by default not weighted. Returns the tuple (vector, sum) where the
+   vector has len(ast_feature_list) and with values in the same order.
+   """
    global ast_feature_list
-   return calculate_vector(d, feature_names=ast_feature_list)
+   global ast_feature_weights
+   weights = None if not use_weights else ast_feature_weights
+   return calculate_vector(d, feature_names=ast_feature_list, feature_weights=weights)
 
-def calculate_vector(features, feature_names=None):
+def calculate_vector(features, feature_names=None, feature_weights=None):
+   """
+   Compute a tuple (vector, sum) comprising the total value of all features specified by feature_names.
+   If feature_weights is not None each selected feature will be multiplied by its corresponding weight
+   NOTE: weights must be in the same order as feature_names
+   """
    if feature_names is None:
        raise ValueError("must supply a list of vector feature names (set semantics)")
+   if feature_weights is not None:
+       assert len(feature_weights) == len(feature_names)
 
    ret = []
    sum = 0
-   for f in feature_names:
-       v = features.get(f, 0)
+   for idx, f in enumerate(feature_names):
+       # NB: tricky - 1 is an INT so by default result is also int, only if weighted will it be float - careful!
+       weight = 1 if feature_weights is None else feature_weights[idx]
+       v = features.get(f, 0) * weight
        sum += v
        ret.append(v)  # vector must always have the same length with the keys in a consistent order for comparison
 
    return (ret, sum)
 
 def calc_function_dist(origin_calls, control_calls):
-   # function distance is a little different: all function calls are used for distance, even if only present in one vector 
+   # function distance is a little different: all function calls are used for distance, even if only present in one vector
    o_calls = set(origin_calls.keys())
    c_calls = set(control_calls.keys())
    fns = c_calls.union(o_calls)
@@ -276,12 +313,12 @@ def calc_function_dist(origin_calls, control_calls):
        a = origin_calls.get(key, 0)
        b = control_calls.get(key, 0)
        vec1.append(a)
-       vec2.append(b) 
+       vec2.append(b)
        if a != b:
            diff_functions.append(key)
        else:
-           common += 1 
-   commonality_factor = (1 / common) * (len(vec1)-common) if common > 0 else 10 
+           common += 1
+   commonality_factor = (1 / common) * (len(vec1)-common) if common > 0 else 10
    svp = 20.0 / n_function_calls if n_function_calls < 15 else 1.0
    return (math.dist(vec1, vec2) * commonality_factor * svp, diff_functions)
 
@@ -310,13 +347,13 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
    # NB: control_literals are not truncated to 200 chars, so we do it on-the-fly as performance is ok for now
    v1 = []
    v2 = []
-   
+
    features = set()
    diff_literals = []
    n_not_in_origin = n_not_in_control = 0
    for k in origin_literals.keys():
        features.add(k)
-       if not k in control_literals:  # case 1: k is not a literal present in the control 
+       if not k in control_literals:  # case 1: k is not a literal present in the control
           v1.append(origin_literals[k])
           v2.append(0)
           n_not_in_control += 1
@@ -329,7 +366,7 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
           v1.append(v1_count)
           v2.append(v2_count)
           if v1_count != v2_count:
-              diff_literals.append(k) 
+              diff_literals.append(k)
               if fail_if_difference:
                   raise ValueError("Found incorrect case 2 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
    for k in control_literals.keys():
@@ -342,7 +379,7 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
           if fail_if_difference:
               raise ValueError("Found incorrect case 3 difference: {}\n{}\n{}".format(k, control_literals, origin_literals))
 
-   assert len(v1) == len(v2)       
+   assert len(v1) == len(v2)
    assert len(features) == len(v1)
 
    t = (
@@ -358,40 +395,45 @@ def calculate_literal_distance(control_literals, origin_literals, debug=False, f
       print(t)
    return t
 
-def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=100.0, ast_weight=0.55, fcall_weight=0.8, control_cache=None, debug=False):
-   assert ast_desired_sum >= 0
-   assert function_call_sum >= 0
+def find_plausible_controls(db, ast_desired_sum, function_call_sum, max_distance=100.0, ast_weight=0.55, fcall_weight=0.8):
+    """
+    We consider two strategies:
+    1) look for syntax vector within max_distance * ast_weight of the ast_desired_sum
+    2) look for function call vectors within max_distance * fcall_weight of the function_call_sum
+    A possible third strategy would be to look for a regexp literal match, but this is not currently supported.
+    An iterable is returned.
+    """
+    assert ast_desired_sum >= 0
+    assert function_call_sum >= 0
 
-   if ast_desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
-       return []
+    if ast_desired_sum < 50: # vector too small for meaningful comparison? In other words, no feasible controls
+      return []
 
-   # only those controls within max_distance (either side) from the desired feature sum (from the AST vector under test) are considered feasible
-   # all others need not be searched. This could be tighter.
-   ast_fract = max_distance * ast_weight 
-   fcall_fract = max_distance * fcall_weight
-   assert ast_fract > 0.0 and fcall_fract > 0.0
-   lb = ast_desired_sum - ast_fract  # AST suffers from minification/obfuscation problems so we de-weight it relative to fcall 
-   ub = ast_desired_sum + ast_fract
-   # but we now also consider function call distance (only use half max_distance since function calls are less frequent than AST features)
-   lb_fc = function_call_sum - fcall_fract # Function call distance suffers from function-renaming problems eg. different minifications tools used
-   ub_fc = function_call_sum + fcall_fract
+    ast_fract = max_distance * ast_weight
+    fcall_fract = max_distance * fcall_weight
+    assert ast_fract > 0.0 and fcall_fract > 0.0
+    lb = ast_desired_sum - ast_fract  # AST suffers from minification/obfuscation problems so we de-weight it relative to fcall
+    ub = ast_desired_sum + ast_fract
+    # but we now also consider function call distance (only use half max_distance since function calls are less frequent than AST features)
+    lb_fc = function_call_sum - fcall_fract # Function call distance suffers from function-renaming problems eg. different minifications tools used
+    ub_fc = function_call_sum + fcall_fract
+    ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub } })
+    fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc } })
+    return chain(ast_hits, fcall_hits)
 
+def find_feasible_controls(db, plausible_controls, control_cache=None, debug=False):
    n = n_cached = 0
-   ast_hits = db.javascript_controls_summary.find({ 'sum_of_ast_features': { '$gte': lb, '$lt': ub } }) 
-   fcall_hits = db.javascript_controls_summary.find({ 'sum_of_function_calls': { '$gte': lb_fc, '$lt': ub_fc } })
    feasible_controls = []
    seen = set() # dont process each hit more than once, no matter how many strategies for finding hits report it
-   for rec in chain(fcall_hits, ast_hits):  # use function call hits first, since if we find a good hit we can save time...
+   for rec in filter(lambda r: r.get('origin') not in seen, plausible_controls):  # use function call hits first, since if we find a good hit we can save time...
        n += 1
-       control_url = rec.get('origin')
-       if control_url in seen:
-           continue 
+       control_url = r.get('origin')
        seen.add(control_url)
 
        if control_cache is not None and control_url in control_cache:
            t = control_cache[control_url]
            feasible_controls.append(t)
-           control_cache[control_url] = t # mark record as MRU ie. least likely to be evicted, since it is being hit 
+           control_cache[control_url] = t # mark record as MRU ie. least likely to be evicted, since it is being hit
            n_cached += 1
        else:
            ast_sum = rec.get('sum_of_ast_features')
@@ -405,14 +447,14 @@ def find_feasible_controls(db, ast_desired_sum, function_call_sum, max_distance=
            vectors = json.loads(vector_doc.get('analysis_bytes'))
            ast_vector, calc_sum = calculate_ast_vector(vectors['statements_by_count'])
            assert calc_sum == ast_sum # database must match calculated or something is very wrong...
-           t = (control_doc, ast_sum, ast_vector, vectors['calls_by_count']) 
+           t = (control_doc, ast_sum, ast_vector, vectors['calls_by_count'])
            if control_cache is not None:
                control_cache[control_url] = t
            feasible_controls.append(t)
 
    if debug:
        print("find_feasible_controls():")
-       print("ast range [{:.2f}, {:.2f}] function call range [{:.2f}, {:.2f}]".format(lb, ub, lb_fc, ub_fc))
+       assert len(feasible_controls) == n
        if n > 0:
            print("Considered {} controls - cache hit rate {:.2f}%".format(n, (float(n_cached) / n)*100.0))
        else:
@@ -424,20 +466,36 @@ def fix_literals(literals_to_encode):
    ret = map(lambda v: v.replace(',', '%2C'), literals_to_encode)
    return ','.join(ret)
 
-def distance(origin_ast, control_ast, origin_calls, control_calls, debug=False, additive_weight=0.5, ast_weight=0.8):
+def distance(origin_ast, control_ast, origin_calls, control_calls,
+             debug=False, weight_ast_vectors=False, additive_weight=0.5, ast_weight=0.75):
    if debug:
        assert isinstance(origin_ast, list)
        assert isinstance(control_ast, list)
        assert isinstance(origin_calls, dict)
        assert isinstance(control_calls, dict)
        assert len(origin_ast) == len(control_ast)
-   ast_dist = compute_distance(origin_ast, control_ast, short_vector_penalty=True) 
+
+   if weight_ast_vectors:
+       global ast_feature_weights
+       assert len(ast_feature_weights) == len(origin_ast)
+       assert len(ast_feature_weights) == len(control_ast)
+       tmp = []
+       for n1, n2 in zip(ast_feature_weights, origin_ast):
+           tmp.append(n1 * n2)
+       origin_ast = tmp # NB: MUST not side-effect input data
+       tmp = []
+       for n1, n2 in zip(ast_feature_weights, control_ast):
+           tmp.append(n1 * n2)
+       control_ast = tmp # NB: MUST not side-effect input data
+
+   ast_dist = compute_distance(origin_ast, control_ast, short_vector_penalty=True)
    assert ast_dist >= 0.0
    call_dist, diff_functions = calc_function_dist(origin_calls, control_calls)
    assert call_dist >= 0.0
    # the additive term is not taken entirely: only up to the additive weight fraction, since we must manage total distance to not reject legitimate hits
-   # weight AST distance slightly less than 1 to not weight syntax too highly   
-   return ((ast_dist * ast_weight * call_dist) + (ast_dist + call_dist)*additive_weight, ast_dist, call_dist, diff_functions)
+   # weight AST distance slightly less than 1 to not weight syntax too highly
+   return ((ast_dist * ast_weight * call_dist) + (ast_dist + call_dist)*additive_weight,
+           ast_dist, call_dist, diff_functions)
 
 def find_best_control(db, input_features, max_distance=200.0, debug=False, control_cache=None):
    """
@@ -454,12 +512,12 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
    assert isinstance(origin_js_id, str) and len(origin_js_id) == 24
 
    best_distance = float('Inf')
-   input_ast_vector, ast_sum = calculate_ast_vector(input_features['statements_by_count'])
+   input_ast_vector, ast_sum = calculate_ast_vector(input_features['statements_by_count']) # NB: UNweighted vector
    fcall_sum = sum(input_features['calls_by_count'].values())
    best_control = BestControl(control_url='', origin_url=origin_url, cited_on=cited_on,
-                              sha256_matched=False, 
-                              ast_dist=float('Inf'), 
-                              function_dist=float('Inf'), 
+                              sha256_matched=False,
+                              ast_dist=float('Inf'),
+                              function_dist=float('Inf'),
                               literal_dist=0.0,
                               diff_functions='',
                               origin_js_id=origin_js_id)
@@ -468,33 +526,34 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
    # we open the distance to explore "near by" a little bit... but the scoring for these hits is unchanged
    if debug:
        print("find_best_control({})".format(origin_url))
-   feasible_controls = find_feasible_controls(db, ast_sum, fcall_sum, debug=debug, control_cache=control_cache, max_distance=max_distance) 
+   plausible_controls = find_plausible_controls(db, ast_sum, fcall_sum, max_distance=max_distance)
+   feasible_controls = find_feasible_controls(db, plausible_controls, debug=debug, control_cache=control_cache)
    for fc_tuple in feasible_controls:
-       control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple
+       control, control_ast_sum, control_ast_vector, control_call_vector = fc_tuple # NB: unweighted ast vector
        assert isinstance(control, dict)
        assert control_ast_sum > 0
        assert isinstance(control_ast_vector, list)
        control_url = control.get('origin')
 
        # compute what we can for now and if we can update it later we will. Otherwise the second_best control may have some fields not-computed
-       new_distance, ast_dist, call_dist, diff_functions = distance(input_ast_vector, control_ast_vector, 
+       new_distance, ast_dist, call_dist, diff_functions = distance(input_ast_vector, control_ast_vector,
                                                                     input_features['calls_by_count'], control_call_vector, debug=debug)
        if call_dist < 5.0 and new_distance > max_distance:
            print("WARNING: rejecting possibly feasible control due to bad total distance: {} {} {} {} {}".format(new_distance, ast_dist, call_dist, control_url, origin_url))
        if new_distance < best_distance and new_distance <= max_distance:
            if debug:
-               print("Got good distance {} for {} (was {}, max={})".format(new_distance, control_url, best_distance, max_distance)) 
+               print("Got good distance {} for {} (was {}, max={})".format(new_distance, control_url, best_distance, max_distance))
            new_control = BestControl(control_url=control_url, # control artefact from CDN (ground truth)
-                                      origin_url=origin_url, # JS at spidered site 
+                                      origin_url=origin_url, # JS at spidered site
                                       origin_js_id=origin_js_id,
                                       cited_on=cited_on,
-                                      sha256_matched=False, 
-                                      ast_dist=ast_dist, 
-                                      function_dist=call_dist, 
+                                      sha256_matched=False,
+                                      ast_dist=ast_dist,
+                                      function_dist=call_dist,
                                       literal_dist=0.0,
                                       diff_functions=' '.join(diff_functions))
 
-           # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate 
+           # NB: look at product of two distances before deciding to update best_* - hopefully this results in a lower false positive rate
            #     (with accidental ast hits) as the number of controls in the database increases
            if best_control.is_better(new_control, max_distance=max_distance):
                second_dist = second_best_control.distance() if second_best_control is not None else 0.0
@@ -503,7 +562,7 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
                        print("NOTE: improved second_best control was {} now is {}".format(second_best_control, new_control))
                    second_best_control = new_control
                # NB: dont update best_* since we dont consider this hit a replacement for current best_control
-           else: 
+           else:
                best_distance = new_distance
                second_best_control = best_control
                best_control = new_control
@@ -513,7 +572,9 @@ def find_best_control(db, input_features, max_distance=200.0, debug=False, contr
                    hash_match = (control['sha256'] == input_features['sha256'])
                    best_control.sha256_matched = hash_match
                    break    # save time since we've likely found the best control but this may mean next_best_control is not second best in rare cases
-
+       else:
+          if debug:
+              print("Rejecting control {} ast_dist={} fcall_dist={} total={}".format(control['origin'], ast_dist, call_dist, new_distance))
    # NB: literal fields in best_control/next_best_control are updated elsewhere... not here
    return (best_control, second_best_control)
 
@@ -549,25 +610,25 @@ def identify_control_subfamily(cntl_url):
    subfamily = None
    last_slash_idx = cntl_url.rfind('/')
    assert last_slash_idx > 0
-   subfamily = cntl_url[last_slash_idx+1:] 
+   subfamily = cntl_url[last_slash_idx+1:]
    if subfamily.endswith(".min.js") or subfamily.endswith("-min.js"):
        subfamily = subfamily[:-6]
    if subfamily.endswith('.js'):
        subfamily = subfamily[:-3]
    subfamily = subfamily.rstrip('-_.') # cleanup punctuation
-   subfamily = re.sub('[-_.#~/]+', '-', subfamily) 
+   subfamily = re.sub('[-_.#~/]+', '-', subfamily)
    subfamily = re.sub('\b[a-f0-9]+$', '', subfamily) # remove hex digests at end if any
    subfamily = subfamily.lower()
    if 'woocommerce' in cntl_url:
        if len(subfamily) > 20:
-           subfamily=subfamily[0:20]
+           subfamily = subfamily[0:20]
        if 'woocommerce-admin' in cntl_url:
-           subfamily = "woocommerce-admin-" + subfamily 
+           subfamily = "woocommerce-admin-" + subfamily
        else:
-           subfamily = "woocommerce-" + subfamily 
-      
+           subfamily = "woocommerce-" + subfamily
+
    # some of the above rules may re-introduce punctuation at the end. Sooo...
-   subfamily = subfamily.rstrip('-') 
+   subfamily = subfamily.rstrip('-')
 
    # and some final rules
    if subfamily.startswith("kendo-culture"):
@@ -579,7 +640,7 @@ def identify_control_subfamily(cntl_url):
    mapping = ( ('admin-', 'admin'), ('chunk-googlesitekit-adminbar-', 'googlesitekit-adminbar'),
                ('chunk-googlesitekit-setup-wizard-', 'googlesitekit-setup-wizard'), ('chunk-googlesitekit-setup-wrapper-', 'googlesitekit-setup-wrapper'),
                ('date-', 'date'), ('editor', 'editor'), ('edit-', 'edit'), ('editor-', 'editor'), ('eland-tracker-', 'eland-tracker'),
-               ('jquery-spservices-', 'jquery-spservices'), ('login-', 'login'), ('modernizr-', 'modernizr'), 
+               ('jquery-spservices-', 'jquery-spservices'), ('login-', 'login'), ('modernizr-', 'modernizr'),
                ('moment-timezone-with-data-', 'moment-timezone-with-data'), ('chunk-googlesitekit-', 'googlesitekit'),
                ('admin-ajaxwatcher-', 'admin-ajaxwatcher'), ('authorizenet-accept-', 'authorizenet'),
                ('jquery-ui-timepicker-addon-', 'jquery-ui-timepicker-addon'), ('ui-bootstrap-', 'ui-bootstrap'),
@@ -591,7 +652,7 @@ def identify_control_subfamily(cntl_url):
        starts_with, replace_with = t
        if subfamily.startswith(starts_with):
            subfamily = replace_with
- 
-   assert subfamily is not None # POST-CONDITION: must not be true or we will have problems accurately computing a probability  
+
+   assert subfamily is not None # POST-CONDITION: must not be true or we will have problems accurately computing a probability
    assert isinstance(subfamily, str)
    return (cntl_url, subfamily)

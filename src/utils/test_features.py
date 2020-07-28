@@ -77,6 +77,9 @@ def test_compute_ast_vector():
    tuple = calculate_ast_vector(d) 
    assert tuple == ([10, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 18) 
    assert compute_distance(tuple[0], tuple[0]) <= 0.001
+   tuple = calculate_ast_vector(d, use_weights=True)
+   assert tuple[0] == [5.0, 7.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+   assert pytest.approx(tuple[1], 12.1)
 
 @pytest.fixture(scope="module")
 def analyse_script_expected_results(pytestconfig):
