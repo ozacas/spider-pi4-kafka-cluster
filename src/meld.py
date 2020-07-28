@@ -104,8 +104,9 @@ def report_vectors(db, artefact_fname, control_url: str, artefact_url: str):
    diff_features = []
    for feature_idx, feature in enumerate(ast_feature_list):
        if v1[feature_idx] != v2[feature_idx]:
-          diff_features.append('{} ({})'.format(feature, abs(v1[feature_idx] - v2[feature_idx])))
-   print("AST features which are different:", ','.join(diff_features))
+          diff_features.append((feature, abs(v1[feature_idx] - v2[feature_idx])))
+   items = ['{} ({})'.format(t[0], t[1]) for t in sorted(diff_features, key=lambda t: t[1])]
+   print("AST features which are different: ", ','.join(items))
 
    diffs = []
    all_calls = set(cntrl['calls_by_count'].keys()).union(ret['calls_by_count'].keys()) 
