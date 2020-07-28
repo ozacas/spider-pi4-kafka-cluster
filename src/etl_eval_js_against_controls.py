@@ -14,11 +14,11 @@ from utils.misc import *
 from dataclasses import asdict
 
 a = argparse.ArgumentParser(description="Evaluate and permanently store each AST vector against all controls, storing results in MongoDB and Kafka")
-add_kafka_arguments(a, 
+add_kafka_arguments(a,
                     consumer=True,
                     producer=True, # and save to a topic
                     default_from='analysis-results',
-                    default_group='etl-eval-js-against-controls', 
+                    default_group='etl-eval-js-against-controls',
                     default_to="javascript-artefact-control-results")
 add_mongo_arguments(a, default_access="read-write", default_user='rw')
 add_extractor_arguments(a)
@@ -46,7 +46,7 @@ def cleanup(*args):
         mongo.close()
     except NameError:
         pass # NameError occurs when using --file as consumer has not been setup since it is not required
-    rm_pidfile('pid.eval.controls')
+    rm_pidfile('pid.eval.controls', root='.')
     sys.exit(0)
 
 if args.v:
@@ -62,8 +62,9 @@ if args.file:
            raise ValueError("Failed to analyse script: {}\n{}".format(jsr, stderr))
        m = json.loads(byte_content.decode())
        m.update(asdict(jsr))
-       best_control, next_best_control = find_best_control(db, m, 
-                                                           max_distance=args.max_distance, debug=True) 
+       print(m)
+       best_control, next_best_control = find_best_control(db, m,
+                                                           max_distance=args.max_distance, debug=True)
        update_literal_distance(db, best_control, m['literals_by_count'], fail_if_difference=best_control.sha256_matched) # check that literals are ok too...
 
        print("*** WINNING CONTROL HIT")
@@ -72,7 +73,7 @@ if args.file:
        print(next_best_control)
        cleanup()
 
-def save_vetting(db, hit: BestControl):
+def save_vetting(db, hit: BestControl) -> dict:
     d = asdict(hit)
     assert 'cited_on' in d and len(d['cited_on']) > 0
     assert 'control_url' in d  # control url may be empty for poor quality (or no) hits
@@ -81,9 +82,9 @@ def save_vetting(db, hit: BestControl):
 
     control_url = hit.control_url
     origin_url = hit.origin_url
-    ret = db.vet_against_control.find_one_and_update({ 'origin_url': origin_url, 'control_url': control_url }, 
-                                                     { "$set": d}, 
-                                                     upsert=True, 
+    ret = db.vet_against_control.find_one_and_update({ 'origin_url': origin_url, 'control_url': control_url },
+                                                     { "$set": d},
+                                                     upsert=True,
                                                      return_document=pymongo.ReturnDocument.AFTER)
     assert ret is not None and '_id' in ret
     xref = str(ret.get('_id'))
@@ -94,23 +95,23 @@ def save_vetting(db, hit: BestControl):
 def process_hit(db, m, args):
     """
     Process a message (m) indicating an artefact under test and identify the best available control
-    May raise ValueError if the result is illogical: sha256_matched but literal differences identified (often this is an 
+    May raise ValueError if the result is illogical: sha256_matched but literal differences identified (often this is an
     indicator of data error inside the MongoDB). Results are published to kafka (args.to topic) and db.vet_against_control in Mongo
     """
     assert db is not None
     assert isinstance(m, dict)
-    # example m: {'url': 'https://homes.mirvac.com/-/media/Project/Mirvac/Residential/Base-Residential-Site/Base-Residential-Site-Theme/scripts/navigationmin.js', 
-    #             'sha256': 'd6941fcfdd12069e20f4bb880ecbab12d797d9696cae1b05ec9d59fb9bd90b51', 'md5': '2b10377115ab0747535acb1ad38b26bd', 
-    #             'inline': False, 'content_type': 'text/javascript', 'when': '2020-06-04 03:28:28.483855', 'size_bytes': 14951, 
+    # example m: {'url': 'https://homes.mirvac.com/-/media/Project/Mirvac/Residential/Base-Residential-Site/Base-Residential-Site-Theme/scripts/navigationmin.js',
+    #             'sha256': 'd6941fcfdd12069e20f4bb880ecbab12d797d9696cae1b05ec9d59fb9bd90b51', 'md5': '2b10377115ab0747535acb1ad38b26bd',
+    #             'inline': False, 'content_type': 'text/javascript', 'when': '2020-06-04 03:28:28.483855', 'size_bytes': 14951,
     #             'origin': 'https://homes.mirvac.com/homes-portfolio',  'js_id': '5e8ef7df582045cdd24ce8ae' }
     best_control_is_hit = False
     best_control, next_best_control = find_best_control(db, m, debug=args.v, control_cache=vector_cache,
                                                         max_distance=args.max_distance)
     ovec = m['literals_by_count']
     if best_control is None or len(best_control.control_url) == 0:
-        pass 
+        pass
     else:
-        # 2. check that sha256's match each artefact iff find_best_control() said the hashes matched 
+        # 2. check that sha256's match each artefact iff find_best_control() said the hashes matched
         #    (since next_best_control has distance it cannot be a hash match)
         if args.defensive and best_control.sha256_matched:
             cntl_doc = db.javascript_controls.find_one({ 'origin': best_control.control_url })
@@ -128,7 +129,7 @@ def process_hit(db, m, args):
     d = save_vetting(db, best_control)
     best_control.xref = d['xref']
     assert best_control.xref is not None
-    producer.send(args.to, d) 
+    producer.send(args.to, d)
     if (args.report_bad or args.report_all) and len(best_control.control_url) == 0:
         print(best_control)
     if (args.report_good or args.report_all) and len(best_control.control_url) > 0:
@@ -147,9 +148,9 @@ def process_hit(db, m, args):
         next_best_mult = next_best_control.distance()
         if next_best_mult <= best_mult and next_best_mult < 50.0: # only report good hits though... otherwise poor hits will generate lots of false positives
             print("NOTE: next best control looks as good as best control")
-            print(next_best_control) 
+            print(next_best_control)
             producer.send(args.to, d2)
-            assert d2['xref'] != d['xref']  # xref must not be the same document otherwise something has gone wrong 
+            assert d2['xref'] != d['xref']  # xref must not be the same document otherwise something has gone wrong
 
     return best_control_is_hit
 
@@ -169,12 +170,12 @@ if __name__ == "__main__":
     producer = KafkaProducer(value_serializer=json_value_serializer(), bootstrap_servers=args.bootstrap)
     setup_signals(cleanup)
     # 1. process the analysis results topic to get vectors for each javascript artefact which has been processed by 1) kafkaspider AND 2) etl_make_fv
-    save_pidfile('pid.eval.controls')
+    save_pidfile('pid.eval.controls', root='.')
     print("Creating required index in vet_against_control collection... please wait")
     db.vet_against_control.create_index([( 'origin_url', pymongo.ASCENDING), ('control_url', pymongo.ASCENDING )], unique=True)
     print("Index creation complete.")
-    
-    vector_cache = pylru.lrucache(20 * 1000) # bigger the better since we want to avoid large-scale mongo queries
+
+    vector_cache = pylru.lrucache(25 * 1000) # bigger the better since we want to avoid large-scale mongo queries
     batch_size = 2000
     batch_id = 0                     # used to keep track of last_successful_batch and last batch
     last_successful_batch_id = None
@@ -205,8 +206,8 @@ if __name__ == "__main__":
                     raise ve
 
             if is_hit:
-                good_in_batch += 1 
-     
+                good_in_batch += 1
+
         print("Got {} hits in batch of {} (require at least {} to be successful batch).".format(good_in_batch, batch_size, expected_hits))
         consumer.commit() # update consumer offsets since the batch is now processed
         if good_in_batch < expected_hits:
@@ -215,6 +216,6 @@ if __name__ == "__main__":
             print("WARNING: batch id {} failed: only {} hits".format(batch_id, good_in_batch))
         else:
             last_successful_batch_id = batch_id
-        batch_id += 1 
-                 
+        batch_id += 1
+
     cleanup()
