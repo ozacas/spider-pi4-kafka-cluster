@@ -9,4 +9,6 @@ scrapy
 dnspython
 BeautifulSoup4
 jsbeautifier>1.10.2
+pyod
+psutil
 #sqlite3
