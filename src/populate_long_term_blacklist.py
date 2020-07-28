@@ -11,6 +11,7 @@ add_kafka_arguments(a,
                     consumer=True, # ensure we can read from a topic
                     producer=True, # and save to a topic
                     default_from='html-page-stats',
+                    default_start='earliest',
                     default_group='populate-long-term-blacklist',
                     default_to='kafkaspider-long-term-disinterest')
 add_debug_arguments(a)
