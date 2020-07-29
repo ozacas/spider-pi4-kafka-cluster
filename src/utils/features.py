@@ -201,11 +201,13 @@ def save_temp_file(byte_content):
     tmpfile.close()
     return (tmpfile, tmpfile.name)
 
-def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar"):
+def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/src/extract-features.jar", desired_encoding = 'utf-8'):
    """
    Extract features from the specified artefact (jsr) by executing the
    specified java program to identify features using Mozilla Rhino. Primitive
    support for unpacking Dave Edward's p.a.c.k.e.r is available but imperfect.
+
+   Data transfer between processes is accomplished using desired_encoding
    """
    is_bytes = isinstance(js, bytes)
    if is_bytes:
@@ -230,16 +232,16 @@ def analyse_script(js, jsr, java='/usr/bin/java', feature_extractor="/home/acas/
 
    # ensure we get lossless output using recommendations reported at: https://bugs.python.org/issue34618
    environ = os.environ.copy()
-   environ['PYTHONIOENCODING'] = 'utf-8'
+   environ['PYTHONIOENCODING'] = desired_encoding
 
    # save to file and run extract-features.jar to identify the javascript features
    process = subprocess.run([java, "-jar", feature_extractor, fname, jsr.url],
-                            env=environ, capture_output=True, encoding='utf-8', errors='strict')
+                            env=environ, capture_output=True, encoding=desired_encoding, errors='strict')
 
    # turn process stdout into something we can save
    ret = process.stdout
    assert isinstance(ret, str)
-   bytes_content = ret.encode('utf-8', errors='strict') # any errors will hopefully get caught, despite double-encoding
+   bytes_content = ret.encode(desired_encoding, errors='strict') # any errors will hopefully get caught, despite double-encoding
    assert isinstance(bytes_content, bytes)
 
    # cleanup
