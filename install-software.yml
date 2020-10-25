@@ -11,17 +11,26 @@
   gather_facts: no
   tasks:
      - file:
-         path: /home/acas/data
+         path: "/home/{{ ansible_user }}/data"
          state: directory
          mode: '0750'
      - file: 
          path: /data/kafkaspider
          state: directory
-         owner: acas  # must be same user as will run the spider
+         owner: "{{ ansible_user }}"  # must be same user as will run the spider
          mode: '0750'
        become: yes
 
-- name: key system requirements for thug software install
+- name: key system requirements for thug software install (ARM)
+  gather_facts: no
+  hosts: thug_hosts
+  become: yes
+  tasks:
+    - package: 
+        name: ['rsync']
+        state: present
+
+- name: key system requirements for thug software install (X86)
   gather_facts: no
   hosts: x86_thug_hosts
   become: yes
@@ -35,11 +44,11 @@
   hosts: thug_hosts x86_thug_hosts
   tasks:
      - file: # purge existing contents since we want a clean slate (ie. not cumulative)
-         path: /home/acas/src
+         path: "/home/{{ ansible_user }}/src"
          state: absent
      - synchronize:
          src: src
-         dest: /home/acas
+         dest: "/home/{{ ansible_user }}"
          rsync_opts:
            - "--exclude=.git" 
            - "--exclude=.tox"
@@ -57,8 +66,11 @@
            ssdeep
            pkgconfig
            gcc
+           gcc-fortran 
            graphviz
            cronie
+           cblas
+           #python-numpy 
          update_cache: yes
      - pacman: upgrade=yes 
 
@@ -78,17 +90,17 @@
   tasks:
      - pip:
          executable: pip3
-         requirements: /home/acas/src/requirements.txt
+         requirements: "/home/{{ ansible_user }}/src/requirements.txt"
 
 - name: ensure python3 pre-reqs are install
   hosts: x86_thug_hosts
   become: yes
   tasks:
      - pip:
-         requirements: /home/acas/src/requirements.txt
+         requirements: "/home/{{ ansible_user }}/src/requirements.txt"
 
 - name: setup thug low-privilege account to reduce risk
-  hosts: pi1 pi2 x86_thug_hosts
+  hosts: thug_hosts x86_thug_hosts
   become: yes
   tasks:
      - group:
@@ -102,7 +114,7 @@
          state: present
 
 - name: setup spider low-privilege account (kafkaspider and snippetspider)
-  hosts: pi2 x86_thug_hosts
+  hosts: thug_hosts x86_thug_hosts
   become: yes
   tasks:
     - user:
@@ -136,7 +148,7 @@
            - requests==2.22.0
            - six==1.13.0
            - yara-python==3.11.0
-           - zope.interface==4.7.1
+           - zope.interface
            - cffi
            - scrapy
 
@@ -145,10 +157,10 @@
   tasks:
     - unarchive:
         src: software/GeoLite2-City_20200114.tar.gz
-        dest: /home/acas/data
+        dest: "/home/{{ ansible_user }}/data"
     - copy:
         src: software/filted_au_websites.csv
-        dest: /home/acas/data/filtered_au_websites.csv
+        dest: "/home/{{ ansible_user }}/data/filtered_au_websites.csv"
         mode: '0644'
 
 - name: thug file install
@@ -216,14 +228,14 @@
     - copy: src=software/daemonize dest=/usr/local/bin/daemonize owner=root group=root mode='0711'
 
 - name: run cron jobs to ensure maintenance is done
-  hosts: pi1
+  hosts: pi8
   become: yes # so we can install into a low-privilege user crontab
   tasks:
     - cron:
         name: "weekly blacklist sites"
         special_time: weekly
         user: lowpriv
-        job: /usr/bin/python3.8 /home/acas/src/populate_long_term_blacklist.py --start earliest --group populate-long-term-blacklist
+        job: /usr/bin/python3.8 "/home/{{ ansible_user }}/src/populate_long_term_blacklist.py --start earliest --group populate-long-term-blacklist"
     - cron:
         user: lowpriv
         name: PASSWORD
@@ -233,9 +245,9 @@
         name: "retry failed downloads"
         special_time: weekly
         user: lowpriv  # to reduce security risk of fetching from bad sites
-        job: /usr/bin/python3.8  /home/acas/src/retry_broken_downloads.py --v --start earliest --dbuser rw
+        job: /usr/bin/python3.8  "/home/{{ ansible_user }}/src/retry_broken_downloads.py --v --start earliest --dbuser rw"
     - cron:
         name: "publish hits"
         special_time: weekly
         user: lowpriv
-        job: /usr/bin/python3.8 /home/acas/src/etl_publish_hits.py --v --tail --bad --dbuser rw
+        job: /usr/bin/python3.8 "/home/{{ ansible_user }}/src/etl_publish_hits.py --v --tail --bad --dbuser rw"

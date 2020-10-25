@@ -429,7 +429,7 @@ def find_feasible_controls(db, plausible_controls, control_cache=None, debug=Fal
    seen = set() # dont process each hit more than once, no matter how many strategies for finding hits report it
    for rec in filter(lambda r: r.get('origin') not in seen, plausible_controls):  # use function call hits first, since if we find a good hit we can save time...
        n += 1
-       control_url = r.get('origin')
+       control_url = rec.get('origin')
        seen.add(control_url)
 
        if control_cache is not None and control_url in control_cache:
@@ -456,7 +456,6 @@ def find_feasible_controls(db, plausible_controls, control_cache=None, debug=Fal
 
    if debug:
        print("find_feasible_controls():")
-       assert len(feasible_controls) == n
        if n > 0:
            print("Considered {} controls - cache hit rate {:.2f}%".format(n, (float(n_cached) / n)*100.0))
        else:

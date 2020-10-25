@@ -19,7 +19,7 @@ def test_as_ip():
 
 def test_is_au():
    au_loc = AustraliaGeoLocator() 
-   assert au_loc.is_au('portal.aisi.gov.au') == True
+   assert au_loc.is_au('www.vic.gov.au') == True
    assert au_loc.is_au('bbc.co.uk') == False
 
 def test_country_code():

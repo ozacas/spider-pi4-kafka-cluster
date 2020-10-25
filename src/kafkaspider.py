@@ -193,7 +193,7 @@ class KafkaSpiderMixin(object):
             n = d['n_pages']
             calc[site] = max(n, calc.get('site', 0))
 
-        hosts = set([site for site in calc.keys() if calc[site] >= 100 ])
+        hosts = set([site for site in calc.keys() if calc[site] >= 80 ])
 
         self.logger.info("Long-term blacklist has {} sites.".format(len(hosts)))
         return hosts

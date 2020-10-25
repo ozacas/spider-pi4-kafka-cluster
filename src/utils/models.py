@@ -67,6 +67,7 @@ class DownloadArtefact:
    path: str
    when: str
    js_id: str = ''   # db.scripts.get('_id') == js_id - should always be valid in normal operations
+   status: str = ''  # typically 'downloaded'
 
    def __lt__(self, other):
        return self.checksum < other.checksum

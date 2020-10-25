@@ -1,10 +1,13 @@
-ROOT: /home/acas/src 
-PID_ROOT: /home/acas  # where the PID files are kept (dont keep in ROOT since it gets wiped with each deploy)
-MONGO_RO_PASS: XXX
-MONGO_RW_PASS: XXX
-# 0: run uploadartefats and all programs to support the pipeline, distributed over the available machines (wont kill existing processes)
+ROOT: "/home/{{ ansible_user }}/src"
+PID_ROOT: "/home/{{ ansible_user }}"  # where the PID files are kept (dont keep in ROOT since it gets wiped with each deploy)
+SPIDER_ROOT: /home/spider
+LOWPRIV_ROOT: /home/lowpriv
+MONGO_RO_PASS: ziKzCCWP285PikxmrVxSs
+MONGO_RW_PASS: KtcMW7F9xiCwGqdbSYNR5
+# 0: run uploadartefacts and all programs to support the pipeline, distributed over the available machines (wont kill existing processes)
 # 1: run kafkaspider, snippetspider and all programs to support the pipeline, distributed over the available machines (wont kill existing processes)
-SPIDER: 0  # must be 0 or 1 
+# 2: resolve backlog of feature vector data by running these instances to the exclusion of most others (wont kill existing processes)
+# 3: resolve backlog of evaluation of JS against controls
+SPIDER: 1
 ARTEFACT_TOPIC: javascript-artefacts-16
 DATA_ROOT: /data/kafkaspider16
-

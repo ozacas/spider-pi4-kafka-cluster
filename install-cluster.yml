@@ -23,7 +23,7 @@
 
 - name: disable bluetooth/wifi on raspberry pi
   become: yes
-  hosts: pi1 pi2 pi3 pi4 pi5
+  hosts: thug_hosts pi3 pi4 pi5
   gather_facts: no
   tasks:
     - blockinfile:
@@ -83,6 +83,10 @@
            192.168.1.82 pi3
            192.168.1.83 pi4
            192.168.1.84 pi5
+           192.168.1.85 pi6
+           192.168.1.86 pi7
+           192.168.1.87 pi8
+           192.168.1.88 pi9
            192.168.1.82 kafka1
            192.168.1.82 zookeeper1
            192.168.1.83 kafka2
@@ -231,6 +235,7 @@
 - name: ensure pymongo is installed on MongoDB hosts and setup RBAC
   hosts: mongodb_host
   become: yes
+  ignore_errors: yes
   tasks:
     - pip: name=pymongo executable=pip3
     - mongodb_user: # create superuser
@@ -268,6 +273,7 @@
 - name: setup mongo on database host for thug to store into
   hosts: mongodb_host
   become: yes
+  ignore_errors: yes
   vars:
     MONGO_HOME: "/data/mongodb"
     MONGO_SW: "{{ MONGO_HOME }}/mongodb-linux-aarch64-ubuntu1804-4.2.2"

@@ -2,19 +2,20 @@
 # start various applications in required configurations for normal operation
 
 - name: ensure permissions for run are correct
-  hosts: pi2
+  hosts: pi8
   become: yes
-  gather_facts: no
   tasks:
+    - set_fact:
+        user: "{{ ansible_user }}"
     - file:
         path: "{{ item }}"
         state: directory
-        owner: acas
+        owner: "{{ user }}"
         group: lowpriv
         mode: '0750'
-      with_items:
-        - /home/acas
-        - /home/acas/data
+      loop:
+        - "/home/{{ user }}"
+        - "/home/{{ user }}/data"
         - /data
     - file:
         path: "{{ item }}"
@@ -26,45 +27,46 @@
         - /data/kafkaspider16
 
 - name: run kafkaspider to crawl AU web
-  hosts: pi2
+  hosts: pi8
   gather_facts: no
   become: yes
   become_user: spider
   tasks:
-    - command: 
+    - debug: msg="{{ SPIDER_ROOT }} {{ ROOT }}"
+    - command:
          chdir: "{{ SPIDER_ROOT }}"
          creates: "{{ SPIDER_ROOT }}/pid.kafkaspider" # ansible wont start this cmd if this file exists
          cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RW_PASS }}" -c "{{ ROOT }}" -o log.out.kafkaspider -e log.err.kafkaspider /usr/bin/taskset -c 1,2 scrapy runspider kafkaspider.py -L INFO
-      when: SPIDER == 1 
+      when: SPIDER == 1
 
 - name: crawl backlog of downloaded artefacts and ingest into MongoDB (program will exit once done)
-  hosts: pi2
+  hosts: pi8
   gather_facts: no
   become: yes
   become_user: spider
   tasks:
      - stat: path="{{ DATA_ROOT }}"
        register: data_root
-     - command: 
+     - command:
          chdir: "{{ SPIDER_ROOT }}"
          creates: "{{ SPIDER_ROOT }}/pid.upload.artefacts"
          cmd: /usr/local/bin/daemonize -E PASSWORD="{{ MONGO_RW_PASS }}" -c "{{ SPIDER_ROOT }}" -o log.out.uploadartefacts -e log.err.uploadartefacts /usr/bin/taskset -c 1 python3 "{{ ROOT }}/etl_upload_artefacts.py" --n 400000 --root "{{ DATA_ROOT }}" --artefacts "{{ ARTEFACT_TOPIC }}" --group "js2mongo-{{ inventory_hostname_short }}" --start earliest
        when: SPIDER == 0 and data_root.stat.exists and data_root.stat.isdir
 
 - name: compute feature vectors and ingest into MongoDB
-  hosts: pi2 
+  hosts: thug_hosts
   gather_facts: no
   become_user: lowpriv
   become: yes
-  tasks: 
-     - command: 
+  tasks:
+     - command:
          chdir: "{{ LOWPRIV_ROOT }}"
          creates: "{{ LOWPRIV_ROOT }}/pid.make.fv"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ LOWPRIV_ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 "{{ ROOT }}/etl_make_fv.py" --cache 5000 --v
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ LOWPRIV_ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 2,3 python3 "{{ ROOT }}/etl_make_fv.py" --cache 10000 --v
 
 
-- name: run extra feature vector instance when backlogging
-  hosts: pi1 x86_thug_hosts
+- name: run extra feature vector instance when backlogging (NO CPU affinity constraints)
+  hosts: x86_thug_hosts
   gather_facts: no
   become_user: lowpriv
   become: yes
@@ -72,24 +74,28 @@
     - command:
          chdir: "{{ LOWPRIV_ROOT }}"
          creates: "{{ LOWPRIV_ROOT }}/pid.make.fv"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ LOWPRIV_ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/taskset -c 1,2 python3 "{{ ROOT }}/etl_make_fv.py" --dbuser rw --cache 5000 --v
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{ MONGO_RW_PASS }}" -c "{{ LOWPRIV_ROOT }}" -o log.out.makefv -e log.err.makefv /usr/bin/python3 "{{ ROOT }}/etl_make_fv.py" --dbuser rw --cache 10000 --v
       when: SPIDER == 2
 
 - name: process JS artefacts and assign best control (if any)
-  hosts: pi2 
+  hosts: thug_hosts
+  become_user: lowpriv
+  become: yes
   tasks:
-     - command: 
-         chdir: "{{ PID_ROOT }}"
-         creates: "{{ PID_ROOT }}/pid.eval.controls"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --report-good --max-distance 300.0
+     - command:
+         chdir: "{{ LOWPRIV_ROOT }}"
+         creates: "{{ LOWPRIV_ROOT }}/pid.eval.controls"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ LOWPRIV_ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 "{{ ROOT }}/etl_eval_js_against_controls.py" --report-good --max-distance 300.0
 
 - name: extra instance if falling behind on control evaluation
   hosts: x86_thug_hosts
+  become_user: lowpriv
+  become: yes
   tasks:
     - command:
-         chdir: "{{ PID_ROOT }}"
-         creates: "{{ PID_ROOT }}/pid.eval.controls"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 etl_eval_js_against_controls.py --report-good --max-distance 300.0
+         chdir: "{{ LOWPRIV_ROOT }}"
+         creates: "{{ LOWPRIV_ROOT }}/pid.eval.controls"
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ LOWPRIV_ROOT }}" -o log.out.evaljs -e log.err.evaljs /usr/bin/taskset -c 3 python3 "{{ ROOT }}/etl_eval_js_against_controls.py" --report-good --max-distance 300.0
       when: SPIDER == 3
 
 - name: store javascript snippets embedded on HTML pages limited to only 1 CPU core
@@ -97,8 +103,8 @@
   become: yes
   become_user: spider
   tasks:
-     - command: 
+     - command:
          chdir: "{{ SPIDER_ROOT }}"
          creates: "{{ SPIDER_ROOT }}/pid.snippetspider"
-         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ SPIDER_ROOT }}" -o log.out.snippetspider -e log.err.snippetspider /usr/bin/taskset -c 2 scrapy  runspider /home/acas/src/snippet_spider.py -L INFO
-       when: SPIDER == 1 
+         cmd: /usr/local/bin/daemonize -E "PASSWORD={{MONGO_RW_PASS}}" -c "{{ SPIDER_ROOT }}" -o log.out.snippetspider -e log.err.snippetspider /usr/bin/taskset -c 2 scrapy  runspider "/home/{{ ansible_user }}/src/snippet_spider.py" -L INFO
+       when: SPIDER == 1

@@ -15,14 +15,6 @@
     - systemd: name=zookeeper state=stopped 
 #    - wait_for: port=2081 state=drained
 
-- name: shutdown mongo
-  become: yes
-  hosts: mongodb_host
-  gather_facts: no
-  tasks:
-    - systemd: name=mongodb state=stopped
-#    - wait_for: port=27017 state=drained
-
 - name: poweroff cluster
   become: yes
   hosts: kafka_hosts thug_hosts zookeeper_hosts x86_thug_hosts

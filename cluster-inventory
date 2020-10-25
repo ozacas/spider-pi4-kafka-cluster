@@ -1,9 +1,9 @@
 [thug_hosts]
-pi1
-pi2
+pi8 ansible_ssh_user=k8s
+pi9 ansible_ssh_user=k8s
 
 [x86_thug_hosts]
-192.168.1.7
+192.168.1.114
 
 [x86_thug_hosts:vars]
 ansible_python_interpreter=/usr/bin/python3.5
@@ -20,9 +20,6 @@ pi3
 pi3
 pi4
 pi5
-
-[mongodb_host]
-pi1
 
 [control_workstation]
 192.68.1.151 ansible_connection=local
