@@ -8,7 +8,7 @@ pylru
 scrapy
 dnspython
 BeautifulSoup4
-jsbeautifier>1.10.2
+jsbeautifier>=1.15.4
 #pyod
 psutil
 #sqlite3
